@@ -116,12 +116,14 @@ async function createAgent(program: string, args: string[], cwd: string | null, 
   const term = mountTerminal(
     host,
     (data) => {
-      const p = panes.get(id);
-      if (p?.running) void sendInput(id, data);
+      // Always forward keystrokes AND xterm's automatic answers (e.g. the ConPTY
+      // cursor-position-report reply that unblocks the very first render) as long
+      // as the pane still exists — never gate on `running`, or the early reply is
+      // dropped and ConPTY stalls (blank pane).
+      if (panes.has(id)) void sendInput(id, data).catch(() => {});
     },
     (cols, rows) => {
-      const p = panes.get(id);
-      if (p?.running) void resizePty(id, cols, rows);
+      if (panes.has(id)) void resizePty(id, cols, rows).catch(() => {});
     },
   );
 

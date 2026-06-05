@@ -21,11 +21,12 @@ beforeEach(() => {
 });
 
 describe("ipc", () => {
-  it("spawnPty passes camelCase args including the channel", async () => {
-    await spawnPty("powershell.exe", ["-NoLogo"], 80, 24, () => {});
+  it("spawnPty passes agentId + camelCase args including the channel", async () => {
+    await spawnPty("agent-1", "powershell.exe", ["-NoLogo"], 80, 24, () => {});
     expect(invoke).toHaveBeenCalledWith(
       "pty_spawn",
       expect.objectContaining({
+        agentId: "agent-1",
         program: "powershell.exe",
         args: ["-NoLogo"],
         cols: 80,
@@ -35,14 +36,14 @@ describe("ipc", () => {
     );
   });
 
-  it("sendInput / resizePty / killPty call the right commands", async () => {
-    await sendInput("ls\r");
-    expect(invoke).toHaveBeenCalledWith("pty_input", { data: "ls\r" });
+  it("input / resize / kill are addressed by agentId", async () => {
+    await sendInput("agent-2", "ls\r");
+    expect(invoke).toHaveBeenCalledWith("pty_input", { agentId: "agent-2", data: "ls\r" });
 
-    await resizePty(120, 40);
-    expect(invoke).toHaveBeenCalledWith("pty_resize", { cols: 120, rows: 40 });
+    await resizePty("agent-2", 120, 40);
+    expect(invoke).toHaveBeenCalledWith("pty_resize", { agentId: "agent-2", cols: 120, rows: 40 });
 
-    await killPty();
-    expect(invoke).toHaveBeenCalledWith("pty_kill");
+    await killPty("agent-2");
+    expect(invoke).toHaveBeenCalledWith("pty_kill", { agentId: "agent-2" });
   });
 });

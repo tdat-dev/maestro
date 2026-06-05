@@ -1,3 +1,4 @@
+use serde::Serialize;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, State};
 
@@ -6,10 +7,17 @@ use crate::error::CommandError;
 use crate::state::AppState;
 use portable_pty::PtySize;
 
+#[derive(Clone, Serialize)]
+struct ExitPayload {
+    id: String,
+    code: u32,
+}
+
 #[tauri::command]
 pub fn pty_spawn(
     app: AppHandle,
     state: State<'_, AppState>,
+    agent_id: String,
     program: String,
     args: Vec<String>,
     cols: u16,
@@ -29,47 +37,60 @@ pub fn pty_spawn(
 
     let channel = on_bytes.clone();
     let app2 = app.clone();
+    let exit_id = agent_id.clone();
 
-    let mut sup = state
-        .supervisor
+    let mut reg = state
+        .registry
         .lock()
         .map_err(|_| CommandError::Failed("state poisoned".into()))?;
-    sup.spawn(
+    reg.spawn(
+        agent_id,
         &spec,
         size,
         move |bytes| {
             let _ = channel.send(bytes.to_vec());
         },
         move |code| {
-            let _ = app2.emit("pty-exit", code);
+            let _ = app2.emit("pty-exit", ExitPayload { id: exit_id, code });
         },
     )
     .map_err(CommandError::from)
 }
 
 #[tauri::command]
-pub fn pty_input(state: State<'_, AppState>, data: String) -> Result<(), CommandError> {
-    let mut sup = state
-        .supervisor
+pub fn pty_input(
+    state: State<'_, AppState>,
+    agent_id: String,
+    data: String,
+) -> Result<(), CommandError> {
+    let mut reg = state
+        .registry
         .lock()
         .map_err(|_| CommandError::Failed("state poisoned".into()))?;
-    sup.write_input(data.as_bytes()).map_err(CommandError::from)
+    reg.write_input(&agent_id, data.as_bytes())
+        .map_err(CommandError::from)
 }
 
 #[tauri::command]
-pub fn pty_resize(state: State<'_, AppState>, cols: u16, rows: u16) -> Result<(), CommandError> {
-    let mut sup = state
-        .supervisor
+pub fn pty_resize(
+    state: State<'_, AppState>,
+    agent_id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), CommandError> {
+    let reg = state
+        .registry
         .lock()
         .map_err(|_| CommandError::Failed("state poisoned".into()))?;
-    sup.resize(cols, rows).map_err(CommandError::from)
+    reg.resize(&agent_id, cols, rows).map_err(CommandError::from)
 }
 
 #[tauri::command]
-pub fn pty_kill(state: State<'_, AppState>) -> Result<(), CommandError> {
-    let mut sup = state
-        .supervisor
+pub fn pty_kill(state: State<'_, AppState>, agent_id: String) -> Result<(), CommandError> {
+    let mut reg = state
+        .registry
         .lock()
         .map_err(|_| CommandError::Failed("state poisoned".into()))?;
-    sup.kill().map_err(CommandError::from)
+    reg.kill(&agent_id);
+    Ok(())
 }

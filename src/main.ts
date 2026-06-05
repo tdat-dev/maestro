@@ -2,115 +2,141 @@ import { mountTerminal, type TerminalHandle } from "./terminal";
 import { spawnPty, sendInput, resizePty, killPty, onExit } from "./ipc";
 
 /* ====================================================================
- * Focused pane = a REAL agent running under a Windows ConPTY.
- * Spawn -> live PTY -> type into it -> Kill tears down the whole tree
- * via a Win32 Job Object (verified by the Rust integration tests).
+ * Multi-agent grid. Each "Spawn agent" creates a NEW pane backed by its
+ * own real ConPTY process. They run concurrently; closing a pane kills
+ * that agent's whole process tree (Win32 Job Object) — independently.
  * ==================================================================== */
 
-const host = document.getElementById("liveTerm") as HTMLElement;
-const empty = document.getElementById("termEmpty") as HTMLElement | null;
-const statusEl = document.getElementById("agentStatus");
-const dotEl = document.getElementById("agentDot");
-const nameEl = document.getElementById("agentName");
-const countEl = document.getElementById("agentCount");
+interface Pane {
+  id: string;
+  el: HTMLElement;
+  term: TerminalHandle;
+  running: boolean;
+}
 
-let term: TerminalHandle | null = null;
-let running = false;
-let unlistenExit: (() => void) | null = null;
+const panes = new Map<string, Pane>();
+let counter = 0;
+const enc = new TextEncoder();
 
-function setStatus(text: string, cls: "" | "run" | "err") {
-  if (statusEl) {
-    statusEl.textContent = text;
-    statusEl.className = "agent-status" + (cls ? " " + cls : "");
+const grid = document.getElementById("grid") as HTMLElement;
+const spawnTile = document.getElementById("btnSpawn") as HTMLElement;
+
+const RESTART_SVG =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>';
+const KILL_SVG =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+
+function newId(): string {
+  counter += 1;
+  return "agent-" + counter;
+}
+
+function buildPaneEl(id: string, name: string): HTMLElement {
+  const el = document.createElement("section");
+  el.className = "pane";
+  el.dataset.id = id;
+  el.innerHTML = `
+    <div class="pane-head">
+      <span class="dot idle" data-dot title="status"></span>
+      <span class="pane-name">${name}</span>
+      <span class="badge shell">shell</span>
+      <span class="spacer"></span>
+      <span class="agent-status" data-status>spawning…</span>
+      <div class="pane-ctrls">
+        <button class="pctrl" data-restart aria-label="Restart agent">${RESTART_SVG}</button>
+        <button class="pctrl danger" data-kill aria-label="Kill agent (tree)">${KILL_SVG}</button>
+      </div>
+    </div>
+    <div class="term-host" data-host></div>`;
+  return el;
+}
+
+function setStatus(p: Pane, text: string, cls: "" | "run" | "err") {
+  const s = p.el.querySelector<HTMLElement>("[data-status]");
+  if (s) {
+    s.textContent = text;
+    s.className = "agent-status" + (cls ? " " + cls : "");
   }
-}
-function setDot(state: "idle" | "run" | "err" | "await") {
-  if (dotEl) dotEl.className = "dot " + state;
-}
-function setCount(n: number) {
-  if (countEl) countEl.textContent = String(n);
-}
-function clearExit() {
-  if (unlistenExit) {
-    unlistenExit();
-    unlistenExit = null;
-  }
+  const d = p.el.querySelector<HTMLElement>("[data-dot]");
+  if (d) d.className = "dot " + (cls === "run" ? "run" : cls === "err" ? "err" : "idle");
 }
 
-function ensureTerm(): TerminalHandle {
-  if (term) return term;
-  if (empty) empty.style.display = "none";
-  term = mountTerminal(
+function updateCount() {
+  const c = document.getElementById("agentCount");
+  if (c) c.textContent = String([...panes.values()].filter((p) => p.running).length);
+}
+
+async function createAgent(program = "powershell.exe", args = ["-NoLogo"], name = "powershell") {
+  const id = newId();
+  const el = buildPaneEl(id, name);
+  grid.insertBefore(el, spawnTile);
+
+  const host = el.querySelector<HTMLElement>("[data-host]")!;
+  const term = mountTerminal(
     host,
     (data) => {
-      if (running) void sendInput(data);
+      const p = panes.get(id);
+      if (p?.running) void sendInput(id, data);
     },
     (cols, rows) => {
-      if (running) void resizePty(cols, rows);
+      const p = panes.get(id);
+      if (p?.running) void resizePty(id, cols, rows);
     },
   );
-  return term;
-}
 
-async function spawnAgent() {
-  const t = ensureTerm();
-  if (running) {
-    try {
-      await killPty();
-    } catch {
-      /* ignore */
-    }
-    clearExit();
-    running = false;
-  }
-  t.reset();
-  const { cols, rows } = t.fit();
-  setStatus("spawning…", "");
-  setDot("idle");
-  if (nameEl) nameEl.textContent = "powershell";
+  const pane: Pane = { id, el, term, running: false };
+  panes.set(id, pane);
+  updateCount();
+
+  el.querySelector("[data-kill]")?.addEventListener("click", () => void removeAgent(id));
+  el.querySelector("[data-restart]")?.addEventListener("click", async () => {
+    await removeAgent(id);
+    await createAgent(program, args, name);
+  });
+
+  const { cols, rows } = term.fit();
   try {
-    await spawnPty("powershell.exe", ["-NoLogo"], cols, rows, (bytes) => t.write(bytes));
-    running = true;
-    setStatus("running", "run");
-    setDot("run");
-    setCount(1);
-    unlistenExit = await onExit((code) => {
-      running = false;
-      setStatus(`exited (${code})`, "");
-      setDot("idle");
-      setCount(0);
-    });
+    await spawnPty(id, program, args, cols, rows, (bytes) => term.write(bytes));
+    pane.running = true;
+    setStatus(pane, "running", "run");
+    updateCount();
   } catch (e) {
-    setStatus("spawn failed", "err");
-    setDot("err");
-    t.write(new TextEncoder().encode(`\r\n\x1b[31m[spawn failed: ${String(e)}]\x1b[0m\r\n`));
+    setStatus(pane, "spawn failed", "err");
+    term.write(enc.encode(`\r\n\x1b[31m[spawn failed: ${String(e)}]\x1b[0m\r\n`));
   }
 }
 
-async function killAgent() {
+async function removeAgent(id: string) {
+  const p = panes.get(id);
+  if (!p) return;
   try {
-    await killPty();
+    await killPty(id);
   } catch {
     /* ignore */
   }
-  clearExit();
-  running = false;
-  setStatus("killed", "");
-  setDot("idle");
-  setCount(0);
+  p.term.dispose();
+  p.el.remove();
+  panes.delete(id);
+  updateCount();
 }
 
-document.getElementById("btnNewAgent")?.addEventListener("click", () => void spawnAgent());
-document.getElementById("btnSpawn")?.addEventListener("click", () => void spawnAgent());
-document.getElementById("btnSpawnInline")?.addEventListener("click", () => void spawnAgent());
-document.getElementById("btnRestart")?.addEventListener("click", () => void spawnAgent());
-document.getElementById("btnKill")?.addEventListener("click", () => void killAgent());
+// One global exit listener routes pty-exit events to the right pane.
+void onExit((id, code) => {
+  const p = panes.get(id);
+  if (p) {
+    p.running = false;
+    setStatus(p, `exited (${code})`, "");
+    updateCount();
+  }
+});
+
+document.getElementById("btnNewAgent")?.addEventListener("click", () => void createAgent());
+document.getElementById("btnSpawn")?.addEventListener("click", () => void createAgent());
 
 /* ====================================================================
  * Mission-control shell interactions (Direction B).
  * ==================================================================== */
 
-// live clock
 const clk = document.getElementById("clock");
 const zone = document.getElementById("clockzone");
 try {
@@ -130,7 +156,6 @@ function tick() {
 tick();
 setInterval(tick, 1000);
 
-// dock tabs
 const tabs = Array.from(document.querySelectorAll<HTMLElement>(".tab"));
 tabs.forEach((t) => {
   t.addEventListener("click", () => {
@@ -145,7 +170,6 @@ tabs.forEach((t) => {
   });
 });
 
-// activity filter chips
 document.querySelectorAll<HTMLElement>(".fchip").forEach((c) => {
   c.addEventListener("click", () => {
     document.querySelectorAll(".fchip").forEach((x) => x.classList.remove("on"));
@@ -153,7 +177,6 @@ document.querySelectorAll<HTMLElement>(".fchip").forEach((c) => {
   });
 });
 
-// activity collapse
 const act = document.getElementById("activity");
 const cb = document.getElementById("collapseBtn");
 cb?.addEventListener("click", () => {
@@ -162,7 +185,6 @@ cb?.addEventListener("click", () => {
   if (cb.firstChild) cb.firstChild.textContent = collapsed ? "Expand " : "Collapse ";
 });
 
-// composer autosize
 const ta = document.querySelector<HTMLTextAreaElement>(".composer textarea");
 ta?.addEventListener("input", () => {
   ta.style.height = "auto";

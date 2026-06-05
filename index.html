@@ -240,7 +240,7 @@ button,[role="button"],[tabindex]{cursor:pointer}
     </div>
     <div class="proj">
       <span class="name">— no project —</span>
-      <span class="chip-branch"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M18 11.5c0 4-6 2-6 6.5"/></svg> M0 · single-agent preview</span>
+      <span class="chip-branch"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M18 11.5c0 4-6 2-6 6.5"/></svg> M0 · multi-agent live</span>
     </div>
     <div class="spacer"></div>
     <div class="actions">
@@ -259,40 +259,11 @@ button,[role="button"],[tabindex]{cursor:pointer}
   </header>
 
   <main class="main">
-    <div class="grid">
-      <!-- FOCUSED = REAL live terminal (M0) -->
-      <section class="pane focused" id="focusedPane">
-        <div class="pane-head">
-          <span class="dot idle" id="agentDot" title="idle"></span>
-          <span class="pane-name" id="agentName">live agent</span>
-          <span class="badge shell" id="agentBadge">shell</span>
-          <span class="spacer"></span>
-          <span class="agent-status" id="agentStatus">idle</span>
-          <div class="pane-ctrls">
-            <button class="pctrl" id="btnRestart" aria-label="Restart"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
-            <button class="pctrl danger" id="btnKill" aria-label="Kill agent (tree)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-          </div>
-        </div>
-        <div class="term-host" id="liveTerm">
-          <div class="term-empty" id="termEmpty">
-            <div class="big">No agent running</div>
-            <div class="sub">Spawn a real process under a Windows ConPTY. You can type into it, and "Kill" tears down its <em>entire</em> process tree via a Win32 Job Object.</div>
-            <button class="go" id="btnSpawnInline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Spawn powershell</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- The remaining panes are the designed shell (wired to live data in M1) -->
-      <section class="pane"><div class="pane-head"><span class="dot run"></span><span class="pane-name">test-harness</span><span class="badge opencode">OpenCode</span><span class="spacer"></span><span class="counter"><b>9.8k</b> tok <span class="cost">$0.41</span></span></div><div class="term"><div class="ln"><span class="pr"><span class="p">$</span></span> vitest run --coverage</div><div class="ln dim">· <span class="file">limiter.spec.ts</span> ......... <span class="ok">passed</span></div><div class="ln ok">47 passed <span class="warn">1 retried</span></div><div class="ln dim">cov: stmts 91.4% · branch 84.2%</div></div></section>
-      <section class="pane error"><div class="pane-head"><span class="dot err"></span><span class="pane-name">edge-deploy</span><span class="badge gemini">Gemini</span><span class="spacer"></span><span class="counter"><b>5.2k</b> tok <span class="cost">$0.18</span></span></div><div class="term"><div class="ln"><span class="pr"><span class="p">$</span></span> wrangler deploy --env preview</div><div class="ln er">Error 10021: script exceeds 1 MB</div><div class="ln warn">agent paused — needs human triage</div></div></section>
-      <section class="pane"><div class="pane-head"><span class="dot idle"></span><span class="pane-name">docs-writer</span><span class="badge aider">Aider</span><span class="spacer"></span><span class="counter"><b>12.0k</b> tok <span class="cost">$0.33</span></span></div><div class="term"><div class="ln dim">· updated <span class="file">docs/rate-limits.md</span> <span class="add">+88</span></div><div class="ln ok">committed a1f9c2 "docs: rate limit guide"</div><div class="ln dim">idle — awaiting next instruction</div></div></section>
-      <section class="pane"><div class="pane-head"><span class="dot run"></span><span class="pane-name">security-audit</span><span class="badge codex">Codex</span><span class="spacer"></span><span class="counter"><b>17.5k</b> tok <span class="cost">$0.92</span></span></div><div class="term"><div class="ln"><span class="pr"><span class="p">$</span></span> scan deps + auth surface</div><div class="ln warn">2 medium: missing rate cap on /auth/reset</div><div class="ln ok">no criticals · 0 secrets leaked</div></div></section>
-      <section class="pane"><div class="pane-head"><span class="dot run"></span><span class="pane-name">frontend-sync</span><span class="badge claude">Claude Code</span><span class="spacer"></span><span class="counter"><b>28.9k</b> tok <span class="cost">$2.11</span></span></div><div class="term"><div class="ln dim">· regenerating client from openapi.yaml</div><div class="ln"><span class="hl">edit</span> <span class="file">web/src/api/rates.ts</span> <span class="add">+47</span> <span class="del">-9</span></div><div class="ln ok">3 components retyped</div></div></section>
-
+    <div class="grid" id="grid">
       <button class="tile-spawn" id="btnSpawn">
         <span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>
         <span class="t">Spawn agent</span>
-        <span class="sub">pick adapter · worktree · prompt</span>
+        <span class="sub">real ConPTY · type · tree-kill</span>
       </button>
     </div>
   </main>

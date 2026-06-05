@@ -1,8 +1,8 @@
 use std::sync::Mutex;
 
-use crate::core::supervisor::Supervisor;
+use crate::core::registry::Registry;
 
 #[derive(Default)]
 pub struct AppState {
-    pub supervisor: Mutex<Supervisor>,
+    pub registry: Mutex<Registry>,
 }

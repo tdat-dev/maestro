@@ -28,8 +28,12 @@ interface Pane {
   term: TerminalHandle;
   running: boolean;
   spawnedAt: number | null;
+  lastOutputAt: number; // ms of the last PTY output — drives the active/idle status
   color: string;
 }
+
+// No PTY output for this long while alive ⇒ the agent is idle (waiting at a prompt).
+const IDLE_MS = 1200;
 
 // Per-CLI identity color for the monogram tile (brand-adjacent, distinct on dark).
 const CLI_COLORS: Record<string, string> = {
@@ -326,7 +330,7 @@ function createAgent(ws: Workspace, spec: AgentSpec): () => Promise<void> {
     },
   );
 
-  const pane: Pane = { id, el, term, running: false, spawnedAt: null, color: spec.color };
+  const pane: Pane = { id, el, term, running: false, spawnedAt: null, lastOutputAt: 0, color: spec.color };
   ws.panes.set(id, pane);
   layoutGrid(ws);
   updateCount();
@@ -344,9 +348,13 @@ function createAgent(ws: Workspace, spec: AgentSpec): () => Promise<void> {
       // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows
       // can actually launch them — see launchSpec.
       const launch = launchSpec(spec.program, spec.args);
-      await spawnPty(id, launch.program, launch.args, spec.cwd, cols, rows, (bytes) => term.write(bytes));
+      await spawnPty(id, launch.program, launch.args, spec.cwd, cols, rows, (bytes) => {
+        pane.lastOutputAt = Date.now();
+        term.write(bytes);
+      });
       pane.running = true;
       pane.spawnedAt = Date.now();
+      pane.lastOutputAt = Date.now();
       setStatus(pane, "running", "run");
       updateCount();
       // Re-fit once the grid layout has settled; correct the PTY size if it moved.
@@ -711,13 +719,22 @@ function tick() {
   const d = new Date();
   const p = (n: number) => (n < 10 ? "0" : "") + n;
   if (clk) clk.textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-  // Live uptime on every running pane, across all workspaces.
+  // Live uptime + active/idle activity on every running pane, across all workspaces.
   const now = Date.now();
   for (const w of workspaces.values())
     for (const pane of w.panes.values()) {
       if (pane.running && pane.spawnedAt != null) {
         const u = pane.el.querySelector<HTMLElement>("[data-uptime]");
         if (u) u.textContent = fmtUptime(now - pane.spawnedAt);
+        // active (output flowing) vs idle (quiet, waiting at a prompt)
+        const idle = now - pane.lastOutputAt > IDLE_MS;
+        pane.el.classList.toggle("run", !idle);
+        const s = pane.el.querySelector<HTMLElement>("[data-status]");
+        const want = idle ? "idle" : "run";
+        if (s && !s.classList.contains(want)) {
+          s.className = "pane-stat " + want;
+          s.textContent = idle ? "idle" : "running";
+        }
       }
     }
 }

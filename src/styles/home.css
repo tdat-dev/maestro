@@ -1,6 +1,6 @@
 /* Home / launcher screen. */
 /* "Back to workspace" pill — only on Home when tabs are still alive. */
-.home-resume{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:6;
+.home-resume{position:fixed;top:9px;left:50%;transform:translateX(-50%);z-index:260;
   display:inline-flex;align-items:center;gap:8px;padding:8px 13px;border-radius:9px;
   border:1px solid var(--line-strong);background:rgba(22,27,34,.8);backdrop-filter:blur(8px);
   color:var(--text-2);font-size:12.5px;font-weight:500;cursor:pointer;transition:border-color .15s,color .15s,background .15s}

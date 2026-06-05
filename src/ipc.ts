@@ -1,6 +1,7 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open, confirm } from "@tauri-apps/plugin-dialog";
 
 /**
  * Thin wrappers around the Tauri pty_* commands. Every call is addressed to a
@@ -45,4 +46,22 @@ export async function onExit(cb: (agentId: string, code: number) => void): Promi
 export async function pickFolder(defaultPath?: string): Promise<string | null> {
   const res = await open({ directory: true, multiple: false, defaultPath });
   return typeof res === "string" ? res : null;
+}
+
+/** Native confirm dialog. Returns true if the user accepts. */
+export async function confirmDialog(message: string, title: string): Promise<boolean> {
+  return confirm(message, { title, kind: "warning" });
+}
+
+/** Register a handler for the window's close (X) button. Call event.preventDefault()
+ *  inside to keep the window open. */
+export async function onWindowClose(
+  handler: (event: { preventDefault(): void }) => void | Promise<void>,
+): Promise<void> {
+  await getCurrentWindow().onCloseRequested(handler);
+}
+
+/** Force the window closed without re-firing onCloseRequested. */
+export async function destroyWindow(): Promise<void> {
+  await getCurrentWindow().destroy();
 }

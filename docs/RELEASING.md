@@ -1,23 +1,25 @@
 # Releasing Maestro (auto-update)
 
 Maestro ships with the Tauri updater. An installed app checks
-`https://github.com/whalelo/maestro/releases/latest/download/latest.json` on
+`https://github.com/tdat-dev/maestro/releases/latest/download/latest.json` on
 launch and, if a newer **signed** build exists, prompts the user to install it.
 
 > Change the endpoint in `src-tauri/tauri.conf.json` → `plugins.updater.endpoints`
-> if your GitHub owner/repo is not `whalelo/maestro`.
+> if your GitHub owner/repo is not `tdat-dev/maestro`.
 
 ## One-time setup
 
 1. **Signing key** — already generated at `.tauri/maestro_updater.key` (private,
    gitignored) with its public key baked into `tauri.conf.json`. **Back this file
    up somewhere safe.** If you lose it, existing installs can never be updated.
-2. **GitHub repo** — create `whalelo/maestro` on GitHub and push:
+2. **GitHub repo** — create `tdat-dev/maestro` on GitHub and push:
    ```powershell
-   git remote add origin https://github.com/whalelo/maestro.git
+   git remote add origin https://github.com/tdat-dev/maestro.git
    git push -u origin master
    ```
-   The repo must be **public** (the updater fetches the manifest without auth).
+   The repo (or at least its **Releases**) must be **public** — the updater
+   fetches the manifest and installer assets without auth. A private repo will
+   make auto-update fail for end users.
 3. **Install the updater-enabled build once.** The very first `0.1.0` you
    installed had no updater inside it, so it cannot self-update. Install the new
    signed `…-setup.exe` (below) once, manually. From then on updates are automatic.
@@ -50,7 +52,7 @@ launch and, if a newer **signed** build exists, prompts the user to install it.
      "platforms": {
        "windows-x86_64": {
          "signature": "<paste contents of maestro_0.1.1_x64-setup.exe.sig>",
-         "url": "https://github.com/whalelo/maestro/releases/download/v0.1.1/maestro_0.1.1_x64-setup.exe"
+         "url": "https://github.com/tdat-dev/maestro/releases/download/v0.1.1/maestro_0.1.1_x64-setup.exe"
        }
      }
    }

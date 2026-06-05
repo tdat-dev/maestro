@@ -10,6 +10,9 @@ import {
   onWindowClose,
   confirmDialog,
   destroyWindow,
+  minimizeWindow,
+  toggleMaximizeWindow,
+  requestCloseWindow,
 } from "./ipc";
 import { CLI_PRESETS, expandCrew, runLimited, launchSpec, effectiveArgs, type CrewState, type CliPreset } from "./crew";
 import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm } from "./workspaces";
@@ -570,6 +573,11 @@ document.getElementById("btnQuick")?.addEventListener("click", () => {
     ...cliLook(ps.badge, ps.label),
   })();
 });
+
+/* ---------------- frameless window controls ---------------- */
+document.getElementById("wcMin")?.addEventListener("click", () => void minimizeWindow());
+document.getElementById("wcMax")?.addEventListener("click", () => void toggleMaximizeWindow());
+document.getElementById("wcClose")?.addEventListener("click", () => void requestCloseWindow());
 
 /* ---------------- clock ---------------- */
 const clk = document.getElementById("clock");

@@ -22,6 +22,13 @@
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
 body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;overflow:hidden}
+/* ===== frameless custom title bar ===== */
+.win-ctrls{position:fixed;top:0;right:0;z-index:300;display:flex;height:38px}
+.wc{width:46px;height:38px;display:grid;place-items:center;color:var(--muted);background:transparent;transition:background .12s,color .12s}
+.wc:hover{background:rgba(255,255,255,.09);color:var(--text)}
+.wc.close:hover{background:#e3402f;color:#fff}
+.wc svg{width:10px;height:10px;display:block}
+.drag-strip{position:fixed;top:0;left:0;right:0;height:38px;z-index:250}
 button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer}
 svg{display:block;flex:none}
 [hidden]{display:none !important}
@@ -76,7 +83,7 @@ svg{display:block;flex:none}
 
 /* ========================= WORKSPACE ========================= */
 .app{display:grid;grid-template-rows:50px 40px 1fr;height:100vh;width:100vw}
-.topbar{display:flex;align-items:center;gap:14px;padding:0 16px;background:linear-gradient(180deg,#121821,#0f141b);border-bottom:1px solid var(--line);box-shadow:0 1px 0 rgba(0,0,0,.4)}
+.topbar{display:flex;align-items:center;gap:14px;padding:0 150px 0 16px;background:linear-gradient(180deg,#121821,#0f141b);border-bottom:1px solid var(--line);box-shadow:0 1px 0 rgba(0,0,0,.4)}
 .brand{display:flex;align-items:center;gap:9px;cursor:pointer}
 .brand .mark{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--accent-dim));display:grid;place-items:center;color:var(--accent-ink);box-shadow:0 0 0 1px rgba(198,241,53,.3),0 4px 14px rgba(198,241,53,.18)}
 .wordmark{font-family:var(--display);font-weight:800;font-style:italic;font-size:19px;letter-spacing:-.02em}
@@ -206,8 +213,16 @@ svg{display:block;flex:none}
 </head>
 <body>
 
+<!-- ============== custom window controls (frameless) ============== -->
+<div class="win-ctrls">
+  <button class="wc" id="wcMin" aria-label="Minimize"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><path d="M0 5h10"/></svg></button>
+  <button class="wc" id="wcMax" aria-label="Maximize"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="0.5" y="0.5" width="9" height="9"/></svg></button>
+  <button class="wc close" id="wcClose" aria-label="Close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M0 0l10 10M10 0L0 10"/></svg></button>
+</div>
+
 <!-- ===================== HOME ===================== -->
 <div class="home" id="home">
+  <div class="drag-strip" data-tauri-drag-region></div>
   <div class="home-inner">
     <div class="hero">
       <div class="logo-glow"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="miter"><path d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5"/></svg></div>
@@ -245,18 +260,14 @@ svg{display:block;flex:none}
 
 <!-- ===================== WORKSPACE ===================== -->
 <div class="app" id="app" hidden>
-  <header class="topbar">
-    <div class="brand" id="brandHome" title="Back to home">
-      <span class="mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="miter"><path d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5"/></svg></span>
-      <span class="wordmark">Maestro</span>
-    </div>
+  <header class="topbar" data-tauri-drag-region>
     <button class="tb-btn" id="btnNewAgent"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> New agent</button>
-    <div class="spacer"></div>
-    <div class="stats">
+    <div class="spacer" data-tauri-drag-region></div>
+    <div class="stats" data-tauri-drag-region>
       <span class="stat live"><span class="pip"></span><b id="runCount">0</b> live</span>
       <span class="stat"><b id="agentCount">0</b> agents</span>
     </div>
-    <span class="clock" id="clock">--:--:--</span>
+    <span class="clock" id="clock" data-tauri-drag-region>--:--:--</span>
   </header>
   <nav class="tabstrip" id="tabstrip">
     <button class="tab-add" id="tabAdd" aria-label="New workspace"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>

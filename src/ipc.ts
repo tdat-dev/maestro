@@ -65,3 +65,15 @@ export async function onWindowClose(
 export async function destroyWindow(): Promise<void> {
   await getCurrentWindow().destroy();
 }
+
+/* ---- custom title-bar window controls (frameless) ---- */
+export async function minimizeWindow(): Promise<void> {
+  await getCurrentWindow().minimize();
+}
+export async function toggleMaximizeWindow(): Promise<void> {
+  await getCurrentWindow().toggleMaximize();
+}
+/** Ask to close — fires onCloseRequested so the confirm + kill-all flow runs. */
+export async function requestCloseWindow(): Promise<void> {
+  await getCurrentWindow().close();
+}

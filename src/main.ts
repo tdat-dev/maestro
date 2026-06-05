@@ -278,9 +278,12 @@ function buildCrewGrid() {
     const card = document.createElement("div");
     card.className = "crew-card";
     card.dataset.id = p.id;
+    const cmd = [p.program, ...p.args].join(" ");
     card.innerHTML = `
-      <span class="cc-name" title="${p.program}">${p.label}</span>
-      <span class="cc-badge">${p.badge}</span>
+      <div class="cc-meta">
+        <span class="cc-name">${p.label}</span>
+        <span class="cc-badge" title="${cmd}">${cmd}</span>
+      </div>
       <div class="stepper">
         <button type="button" data-dec aria-label="One fewer">−</button>
         <span class="n" data-n>0</span>

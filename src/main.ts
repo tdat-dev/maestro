@@ -31,6 +31,7 @@ interface Pane {
   term: TerminalHandle;
   running: boolean;
   spawnedAt: number | null;
+  color: string;
 }
 
 // Per-CLI identity color for the monogram tile (brand-adjacent, distinct on dark).
@@ -291,7 +292,7 @@ function createAgent(ws: Workspace, spec: AgentSpec): () => Promise<void> {
     },
   );
 
-  const pane: Pane = { id, el, term, running: false, spawnedAt: null };
+  const pane: Pane = { id, el, term, running: false, spawnedAt: null, color: spec.color };
   ws.panes.set(id, pane);
   updateCount();
 
@@ -604,17 +605,40 @@ void refreshMaxIcon();
 void onWindowResized(refreshMaxIcon).catch(() => {});
 
 /* ---------------- broadcast input (type once → whole tab) ---------------- */
+const bcast = document.getElementById("bcast") as HTMLElement;
 const bcastInput = document.getElementById("bcastInput") as HTMLInputElement;
 const bcastSend = document.getElementById("bcastSend") as HTMLButtonElement;
 const bcastCountEl = document.getElementById("bcastCount");
+const bcastEmitter = document.getElementById("bcastEmitter");
+const bcastTargets = document.getElementById("bcastTargets");
 
 function activeRunning(): Pane[] {
   return activeWs ? [...activeWs.panes.values()].filter((p) => p.running) : [];
 }
 function updateBcast() {
-  const n = activeRunning().length;
-  if (bcastCountEl) bcastCountEl.textContent = `→ ${n} agent${n === 1 ? "" : "s"}`;
+  const targets = activeRunning();
+  const n = targets.length;
+  if (bcastCountEl) bcastCountEl.textContent = `${n} agent${n === 1 ? "" : "s"}`;
   bcastSend.disabled = n === 0 || bcastInput.value.length === 0;
+  bcastEmitter?.classList.toggle("live", n > 0);
+  // one identity-colored dot per receiving agent (cap, then +N).
+  if (bcastTargets) {
+    const cap = 14;
+    bcastTargets.replaceChildren();
+    for (const p of targets.slice(0, cap)) {
+      const d = document.createElement("span");
+      d.className = "t";
+      d.style.background = p.color;
+      bcastTargets.appendChild(d);
+    }
+    if (n > cap) {
+      const more = document.createElement("span");
+      more.className = "bcast-count";
+      more.style.marginLeft = "5px";
+      more.textContent = `+${n - cap}`;
+      bcastTargets.appendChild(more);
+    }
+  }
 }
 function flashPane(p: Pane) {
   p.el.classList.remove("recv");
@@ -633,6 +657,10 @@ function broadcast() {
   bcastInput.value = "";
   updateBcast();
   bcastInput.focus();
+  bcast.classList.remove("sent");
+  void bcast.offsetWidth; // restart the ripple
+  bcast.classList.add("sent");
+  setTimeout(() => bcast.classList.remove("sent"), 560);
 }
 bcastInput.addEventListener("input", updateBcast);
 bcastInput.addEventListener("keydown", (e) => {

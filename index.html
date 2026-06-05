@@ -133,6 +133,19 @@ svg{display:block;flex:none}
 .chip:hover{border-color:var(--line-strong);color:var(--text-2)}
 .chip.on{background:var(--accent-glow);border-color:var(--accent-dim);color:var(--accent)}
 .chips .or{font-size:10px;color:var(--muted-2)}
+.crew{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.crew-card{display:flex;align-items:center;gap:8px;padding:8px 9px;border:1px solid var(--line);border-radius:var(--r2);background:var(--surface-2)}
+.crew-card.on{border-color:var(--accent-dim);background:var(--accent-glow)}
+.crew-card .cc-name{flex:1;min-width:0;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crew-card .cc-badge{font-size:8.5px;font-weight:600;padding:1px 5px;border-radius:4px;background:var(--surface-3);color:var(--muted);border:1px solid var(--line-strong);flex:none}
+.stepper{display:flex;align-items:center;gap:4px;flex:none}
+.stepper button{width:20px;height:20px;border-radius:4px;background:var(--surface-3);color:var(--text-2);display:grid;place-items:center;font-size:14px;line-height:1}
+.stepper button:hover{background:var(--line-strong);color:var(--text)}
+.stepper .n{min-width:16px;text-align:center;font-variant-numeric:tabular-nums;font-size:12.5px}
+.crew-total{font-size:11px;color:var(--muted)}
+.crew-total b{color:var(--accent);font-variant-numeric:tabular-nums}
+.custom-row{display:flex;gap:6px;align-items:center}
+.custom-row .input{flex:1}
 .modal-foot{display:flex;gap:8px;justify-content:flex-end;padding:13px 16px;border-top:1px solid var(--line);background:var(--surface-0)}
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 15px;border-radius:var(--r2);border:1px solid var(--accent-dim);background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:12.5px}
 .btn:hover{background:#d3fc4d}
@@ -218,24 +231,25 @@ svg{display:block;flex:none}
         </div>
       </div>
       <div class="field">
-        <label for="mProg">Shell / command</label>
-        <input class="input" id="mProg" value="powershell.exe -NoLogo" spellcheck="false" autocapitalize="off" autocomplete="off">
+        <label>Crew — pick how many of each CLI</label>
+        <div class="crew" id="crewGrid"></div>
       </div>
       <div class="field">
-        <label>How many agents</label>
-        <div class="chips">
-          <button class="chip" data-n="1">1</button>
-          <button class="chip" data-n="2">2</button>
-          <button class="chip" data-n="4">4</button>
-          <button class="chip" data-n="8">8</button>
-          <span class="or">or</span>
-          <input class="input" id="mCount" type="number" min="1" max="32" value="1" style="max-width:70px;text-align:center">
+        <label for="mCustom">Custom command</label>
+        <div class="custom-row">
+          <input class="input" id="mCustom" placeholder="e.g. ollama run llama3" spellcheck="false" autocapitalize="off" autocomplete="off">
+          <div class="stepper" data-custom-stepper>
+            <button type="button" data-dec aria-label="One fewer">−</button>
+            <span class="n" data-custom-n>0</span>
+            <button type="button" data-inc aria-label="One more">+</button>
+          </div>
         </div>
       </div>
+      <div class="crew-total">Total: <b id="crewTotal">0</b> agents</div>
     </div>
     <div class="modal-foot">
       <button class="btn-ghost" id="mCancel">Cancel</button>
-      <button class="btn" id="mSpawn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Spawn</button>
+      <button class="btn" id="mSpawn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> <span id="mSpawnLabel">Spawn</span></button>
     </div>
   </div>
 </div>

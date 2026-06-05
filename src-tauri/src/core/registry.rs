@@ -62,4 +62,9 @@ impl Registry {
     pub fn kill(&mut self, id: &str) {
         self.agents.remove(id);
     }
+
+    /// Kill every agent (each Drop tears its tree down).
+    pub fn clear(&mut self) {
+        self.agents.clear();
+    }
 }

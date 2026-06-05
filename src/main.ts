@@ -1,5 +1,5 @@
 import { mountTerminal, type TerminalHandle } from "./terminal";
-import { spawnPty, sendInput, resizePty, killPty, onExit, pickFolder } from "./ipc";
+import { spawnPty, sendInput, resizePty, killPty, killAll, onExit, pickFolder } from "./ipc";
 
 /* Home launcher ⇄ Workspace grid.
  * Home is shown while there are 0 agents (the prominent "create" entry).
@@ -42,7 +42,24 @@ const KILL_SVG =
 
 function newId(): string {
   counter += 1;
-  return "agent-" + counter;
+  // Unique across page reloads too, so it never collides with a still-running
+  // backend agent from a previous (HMR-reloaded) frontend session.
+  return `agent-${counter}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function errMsg(e: unknown): string {
+  if (typeof e === "string") return e;
+  if (e && typeof e === "object") {
+    const o = e as Record<string, unknown>;
+    if (typeof o.Failed === "string") return o.Failed;
+    if (typeof o.message === "string") return o.message;
+    try {
+      return JSON.stringify(e);
+    } catch {
+      /* fall through */
+    }
+  }
+  return String(e);
 }
 
 function basename(p: string): string {
@@ -131,7 +148,7 @@ async function createAgent(program: string, args: string[], cwd: string | null, 
     });
   } catch (e) {
     setStatus(pane, "spawn failed", "err");
-    term.write(enc.encode(`\r\n\x1b[31m[spawn failed: ${String(e)}]\x1b[0m\r\n`));
+    term.write(enc.encode(`\r\n\x1b[31m[spawn failed: ${errMsg(e)}]\x1b[0m\r\n`));
   }
 }
 
@@ -300,6 +317,9 @@ tick();
 setInterval(tick, 1000);
 
 /* ---------------- init ---------------- */
+// On a fresh frontend load we've lost track of any backend agents (e.g. after an
+// HMR reload), so clear them to avoid orphans + id collisions.
+void killAll().catch(() => {});
 renderRecents();
 showView();
 

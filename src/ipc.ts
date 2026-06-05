@@ -33,6 +33,10 @@ export async function killPty(agentId: string): Promise<void> {
   await invoke("pty_kill", { agentId });
 }
 
+export async function killAll(): Promise<void> {
+  await invoke("pty_kill_all");
+}
+
 export async function onExit(cb: (agentId: string, code: number) => void): Promise<UnlistenFn> {
   return listen<{ id: string; code: number }>("pty-exit", (e) => cb(e.payload.id, e.payload.code));
 }

@@ -96,3 +96,13 @@ pub fn pty_kill(state: State<'_, AppState>, agent_id: String) -> Result<(), Comm
     reg.kill(&agent_id);
     Ok(())
 }
+
+#[tauri::command]
+pub fn pty_kill_all(state: State<'_, AppState>) -> Result<(), CommandError> {
+    let mut reg = state
+        .registry
+        .lock()
+        .map_err(|_| CommandError::Failed("state poisoned".into()))?;
+    reg.clear();
+    Ok(())
+}

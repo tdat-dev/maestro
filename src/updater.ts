@@ -19,8 +19,8 @@ export async function checkForUpdates(silent = true): Promise<void> {
   if (!update) return; // already on the latest version (or endpoint had none)
 
   const ok = await confirmDialog(
-    `Có bản cập nhật ${update.version}. Tải về và cài đặt ngay? Maestro sẽ khởi động lại.`,
-    "Có bản cập nhật",
+    `Update ${update.version} is available. Download and install now? Maestro will restart.`,
+    "Update available",
   );
   if (!ok) return;
 

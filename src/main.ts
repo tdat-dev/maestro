@@ -139,8 +139,8 @@ function activateWorkspace(ws: Workspace) {
 async function removeWorkspace(ws: Workspace) {
   if (ws.panes.size > 0) {
     const ok = await confirmDialog(
-      `Đóng workspace "${ws.name}" — ${ws.panes.size} terminal sẽ bị tắt?`,
-      "Đóng workspace",
+      `Close workspace "${ws.name}"? Its ${ws.panes.size} terminal(s) will be killed.`,
+      "Close workspace",
     );
     if (!ok) return;
   }
@@ -623,7 +623,7 @@ void onWindowClose(async (event) => {
   for (const w of workspaces.values()) total += w.panes.size;
   if (!needsCloseConfirm(total)) return; // nothing running — let it close
   event.preventDefault();
-  const ok = await confirmDialog(`${total} terminal đang chạy sẽ bị tắt. Đóng Maestro?`, "Đóng Maestro");
+  const ok = await confirmDialog(`${total} running terminal(s) will be killed. Quit Maestro?`, "Quit Maestro");
   if (ok) {
     closing = true;
     try {

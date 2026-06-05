@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maestro — Mission Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============ DESIGN TOKENS ============ */
+:root{
+  /* surfaces — layered charcoal/slate */
+  --bg:#0e1116;
+  --surface-0:#11161d;
+  --surface-1:#161b22;
+  --surface-2:#1c232c;
+  --surface-3:#232b35;
+  --raised:#283039;
+  /* lines */
+  --line:#2a323d;
+  --line-soft:#222a33;
+  --line-strong:#3a4552;
+  /* text — all >= 4.5:1 on their surfaces */
+  --text:#e8edf2;
+  --text-2:#c2ccd6;
+  --muted:#94a3b1;       /* ~5.2:1 on surface-1 */
+  --muted-2:#7d8b99;     /* ~4.6:1 on surface-1 */
+  /* electric accent — ONE: lime */
+  --accent:#c6f135;
+  --accent-dim:#9bbd2a;
+  --accent-ink:#10160a;
+  --accent-glow:rgba(198,241,53,.16);
+  /* status */
+  --run:#3ad29f;
+  --idle:#6b7785;
+  --await:#f5b14c;
+  --err:#ff6b6b;
+  --info:#5ec2f0;
+  /* adapters */
+  --ad-claude:#d98c5f;
+  --ad-codex:#9aa6ff;
+  --ad-gemini:#65c7f7;
+  --ad-opencode:#7ee0a8;
+  --ad-aider:#e6a3e0;
+  /* spacing scale */
+  --s1:4px; --s2:6px; --s3:8px; --s4:12px; --s5:16px; --s6:20px; --s7:24px; --s8:32px;
+  /* radii */
+  --r1:5px; --r2:6px; --r3:8px; --r4:10px;
+  /* shadows — soft layered depth */
+  --sh-1:0 1px 2px rgba(0,0,0,.4);
+  --sh-2:0 2px 6px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.5);
+  --sh-3:0 10px 30px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.4);
+  --sh-focus:0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  /* z-index scale */
+  --z-base:1; --z-grid:10; --z-focuspane:20; --z-dock:30; --z-topbar:40; --z-activity:35; --z-overlay:60;
+  /* type */
+  --mono:'IBM Plex Mono', ui-monospace, monospace;
+  --display:'Bricolage Grotesque', sans-serif;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--mono);
+  font-size:13px;
+  line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden;
+}
+::selection{background:var(--accent-glow);color:var(--text)}
+
+/* scrollbars */
+*::-webkit-scrollbar{width:9px;height:9px}
+*::-webkit-scrollbar-track{background:transparent}
+*::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:6px;border:2px solid transparent;background-clip:padding-box}
+*::-webkit-scrollbar-thumb:hover{background:#46525f;background-clip:padding-box}
+
+button{font-family:inherit;color:inherit;background:none;border:none}
+svg{display:block;flex:none}
+
+/* focus ring everywhere */
+:focus-visible{outline:none;box-shadow:var(--sh-focus);border-radius:var(--r2)}
+button,[role="button"],[tabindex]{cursor:pointer}
+
+/* ============ APP SHELL ============ */
+.app{
+  display:grid;
+  grid-template-rows:48px 1fr auto;
+  grid-template-columns:1fr 360px;
+  grid-template-areas:
+    "topbar topbar"
+    "main   dock"
+    "activity dock";
+  height:100vh;
+  width:100vw;
+}
+
+/* ============ TOP COMMAND BAR ============ */
+.topbar{
+  grid-area:topbar;
+  z-index:var(--z-topbar);
+  display:flex;
+  align-items:center;
+  gap:var(--s5);
+  padding:0 var(--s5);
+  background:linear-gradient(180deg,#141a22,#10151c);
+  border-bottom:1px solid var(--line);
+  box-shadow:var(--sh-1);
+}
+.brand{display:flex;align-items:center;gap:var(--s3);padding-right:var(--s5);border-right:1px solid var(--line)}
+.brand .mark{
+  width:26px;height:26px;border-radius:7px;
+  background:linear-gradient(135deg,var(--accent),var(--accent-dim));
+  display:grid;place-items:center;color:var(--accent-ink);
+  box-shadow:0 0 0 1px rgba(198,241,53,.25), 0 4px 12px var(--accent-glow);
+}
+.wordmark{
+  font-family:var(--display);
+  font-weight:800;
+  font-size:19px;
+  letter-spacing:-.02em;
+  color:var(--text);
+  font-style:italic;
+}
+.proj{display:flex;align-items:center;gap:var(--s3);min-width:0}
+.proj .name{font-weight:600;color:var(--text);font-size:12.5px;white-space:nowrap}
+.chip-branch{
+  display:inline-flex;align-items:center;gap:var(--s2);
+  padding:3px var(--s3);border-radius:var(--r1);
+  background:var(--surface-2);border:1px solid var(--line);
+  color:var(--text-2);font-size:11px;white-space:nowrap;
+}
+.chip-branch svg{color:var(--accent-dim)}
+.chip-branch .sep{color:var(--muted-2)}
+
+.topbar .spacer{flex:1}
+
+.actions{display:flex;align-items:center;gap:var(--s2)}
+.btn{
+  display:inline-flex;align-items:center;gap:var(--s2);
+  padding:6px var(--s4);border-radius:var(--r2);
+  border:1px solid var(--line);background:var(--surface-1);
+  color:var(--text-2);font-size:12px;font-weight:500;
+  transition:background .16s ease,border-color .16s ease,color .16s ease;
+}
+.btn:hover{background:var(--surface-2);border-color:var(--line-strong);color:var(--text)}
+.btn svg{color:var(--muted)}
+.btn:hover svg{color:var(--text-2)}
+.btn.primary{
+  background:var(--accent);color:var(--accent-ink);border-color:var(--accent-dim);font-weight:600;
+}
+.btn.primary svg{color:var(--accent-ink)}
+.btn.primary:hover{background:#d3fc4d}
+
+/* readouts */
+.readouts{display:flex;align-items:center;gap:var(--s4);padding-left:var(--s5);border-left:1px solid var(--line)}
+.meter{display:flex;flex-direction:column;gap:3px;min-width:62px}
+.meter .lab{display:flex;justify-content:space-between;align-items:baseline;font-size:9.5px;letter-spacing:.06em;color:var(--muted-2);text-transform:uppercase}
+.meter .lab b{font-size:11px;color:var(--text-2);font-weight:600;letter-spacing:0}
+.bar{height:4px;border-radius:3px;background:var(--surface-3);overflow:hidden}
+.bar > i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--accent-dim),var(--accent))}
+.bar.warn > i{background:linear-gradient(90deg,#c98b2a,var(--await))}
+
+.stat{display:flex;flex-direction:column;align-items:flex-end;gap:1px;padding-left:var(--s4);border-left:1px solid var(--line)}
+.stat .v{font-size:14px;font-weight:700;color:var(--text);letter-spacing:-.01em}
+.stat .v.accent{color:var(--accent)}
+.stat .k{font-size:9.5px;letter-spacing:.06em;color:var(--muted-2);text-transform:uppercase}
+.clock{font-variant-numeric:tabular-nums}
+
+/* ============ MAIN GRID ============ */
+.main{
+  grid-area:main;
+  z-index:var(--z-grid);
+  overflow:auto;
+  padding:var(--s4);
+  background:
+    radial-gradient(1200px 500px at 70% -10%, rgba(198,241,53,.035), transparent 60%),
+    var(--bg);
+}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-auto-rows:minmax(196px, 1fr);
+  gap:var(--s4);
+  min-height:100%;
+}
+
+/* ============ TERMINAL PANE ============ */
+.pane{
+  display:flex;flex-direction:column;
+  background:var(--surface-1);
+  border:1px solid var(--line);
+  border-radius:var(--r3);
+  overflow:hidden;
+  box-shadow:var(--sh-2);
+  position:relative;
+  transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+  opacity:0;
+  transform:translateY(8px);
+  animation:reveal .45s ease forwards;
+}
+@keyframes reveal{to{opacity:1;transform:none}}
+.pane:hover{border-color:var(--line-strong)}
+
+.pane.focused{
+  z-index:var(--z-focuspane);
+  border-color:var(--accent-dim);
+  box-shadow:0 0 0 1px var(--accent-dim), 0 0 0 4px var(--accent-glow), var(--sh-3);
+}
+.pane.await{border-color:rgba(245,177,76,.5)}
+.pane.error{border-color:rgba(255,107,107,.4)}
+
+.pane-head{
+  display:flex;align-items:center;gap:var(--s2);
+  padding:var(--s2) var(--s3);
+  background:linear-gradient(180deg,var(--surface-2),var(--surface-1));
+  border-bottom:1px solid var(--line);
+  flex:none;
+}
+.dot{width:8px;height:8px;border-radius:50%;flex:none;position:relative}
+.dot.run{background:var(--run);box-shadow:0 0 0 3px rgba(58,210,159,.16)}
+.dot.run::after{content:"";position:absolute;inset:-3px;border-radius:50%;border:1px solid var(--run);opacity:.5;animation:pulse 2s ease-out infinite}
+@keyframes pulse{0%{transform:scale(.7);opacity:.7}100%{transform:scale(1.7);opacity:0}}
+.dot.idle{background:var(--idle)}
+.dot.await{background:var(--await);box-shadow:0 0 0 3px rgba(245,177,76,.18)}
+.dot.err{background:var(--err);box-shadow:0 0 0 3px rgba(255,107,107,.16)}
+
+.pane-name{font-weight:600;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.badge{
+  font-size:9.5px;font-weight:600;letter-spacing:.02em;
+  padding:2px 6px;border-radius:4px;white-space:nowrap;flex:none;
+  border:1px solid transparent;
+}
+.badge.claude{color:var(--ad-claude);background:rgba(217,140,95,.12);border-color:rgba(217,140,95,.3)}
+.badge.codex{color:var(--ad-codex);background:rgba(154,166,255,.12);border-color:rgba(154,166,255,.3)}
+.badge.gemini{color:var(--ad-gemini);background:rgba(101,199,247,.12);border-color:rgba(101,199,247,.3)}
+.badge.opencode{color:var(--ad-opencode);background:rgba(126,224,168,.12);border-color:rgba(126,224,168,.3)}
+.badge.aider{color:var(--ad-aider);background:rgba(230,163,224,.12);border-color:rgba(230,163,224,.3)}
+
+.pane-head .spacer{flex:1}
+.counter{
+  display:flex;align-items:center;gap:var(--s2);
+  font-size:10px;color:var(--muted);white-space:nowrap;flex:none;
+  font-variant-numeric:tabular-nums;
+}
+.counter b{color:var(--text-2);font-weight:600}
+.counter .cost{color:var(--accent)}
+.pane-ctrls{display:flex;align-items:center;gap:1px;flex:none}
+.pctrl{
+  width:20px;height:20px;border-radius:4px;display:grid;place-items:center;
+  color:var(--muted-2);transition:background .14s ease,color .14s ease;
+}
+.pctrl:hover{background:var(--surface-3);color:var(--text)}
+.pctrl.danger:hover{background:rgba(255,107,107,.16);color:var(--err)}
+
+.term{
+  flex:1;overflow:auto;padding:var(--s3);
+  font-size:11.5px;line-height:1.5;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,.12), transparent 40px),
+    var(--surface-0);
+  color:var(--text-2);
+}
+.term .ln{white-space:pre-wrap;word-break:break-word}
+.term .pr{color:var(--accent)}
+.term .pr .u{color:var(--ad-codex)}
+.term .pr .p{color:var(--muted-2)}
+.term .ok{color:var(--run)}
+.term .warn{color:var(--await)}
+.term .er{color:var(--err)}
+.term .dim{color:var(--muted-2)}
+.term .file{color:var(--info)}
+.term .add{color:var(--run)}
+.term .del{color:var(--err)}
+.term .tok{color:var(--muted)}
+.term .hl{color:var(--text);font-weight:600}
+.cursor{display:inline-block;width:7px;height:13px;background:var(--accent);vertical-align:text-bottom;animation:blink 1.05s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* approval gate */
+.gate{
+  margin-top:var(--s3);
+  border:1px solid rgba(245,177,76,.45);
+  border-radius:var(--r2);
+  background:linear-gradient(180deg,rgba(245,177,76,.1),rgba(245,177,76,.04));
+  padding:var(--s3);
+}
+.gate-head{display:flex;align-items:center;gap:var(--s2);color:var(--await);font-weight:700;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:var(--s2)}
+.gate-cmd{color:var(--text);font-size:11px;background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:4px;padding:5px var(--s2);margin-bottom:var(--s3);white-space:pre-wrap}
+.gate-cmd .del{color:var(--err)}
+.gate-actions{display:flex;gap:var(--s2)}
+.gate-btn{
+  flex:1;display:inline-flex;align-items:center;justify-content:center;gap:var(--s2);
+  padding:6px;border-radius:var(--r1);font-weight:700;font-size:11px;
+  transition:filter .14s ease, background .14s ease;
+}
+.gate-btn.approve{background:var(--accent);color:var(--accent-ink)}
+.gate-btn.approve:hover{background:#d3fc4d}
+.gate-btn.deny{background:var(--surface-3);color:var(--text-2);border:1px solid var(--line-strong)}
+.gate-btn.deny:hover{background:rgba(255,107,107,.16);color:var(--err);border-color:rgba(255,107,107,.4)}
+
+/* spawn tile */
+.tile-spawn{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--s3);
+  border:1.5px dashed var(--line-strong);
+  border-radius:var(--r3);
+  background:rgba(255,255,255,.012);
+  color:var(--muted);
+  transition:border-color .18s ease, color .18s ease, background .18s ease;
+}
+.tile-spawn:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--accent-glow)}
+.tile-spawn .ic{width:40px;height:40px;border-radius:50%;border:1.5px solid currentColor;display:grid;place-items:center}
+.tile-spawn .t{font-weight:600;font-size:12.5px}
+.tile-spawn .sub{font-size:10px;color:var(--muted-2)}
+
+/* ============ RIGHT DOCK ============ */
+.dock{
+  grid-area:dock;
+  z-index:var(--z-dock);
+  display:flex;flex-direction:column;
+  background:var(--surface-1);
+  border-left:1px solid var(--line);
+  box-shadow:-4px 0 16px rgba(0,0,0,.25);
+  min-height:0;
+}
+.dock-tabs{display:flex;align-items:center;gap:0;padding:var(--s3) var(--s3) 0;border-bottom:1px solid var(--line);flex:none;background:var(--surface-0)}
+.tab{
+  position:relative;display:inline-flex;align-items:center;gap:var(--s2);
+  padding:var(--s3) var(--s4);border-radius:var(--r2) var(--r2) 0 0;
+  color:var(--muted);font-weight:600;font-size:12px;
+  transition:color .15s ease;
+}
+.tab svg{color:currentColor}
+.tab:hover{color:var(--text-2)}
+.tab.active{color:var(--text)}
+.tab.active::after{content:"";position:absolute;left:var(--s4);right:var(--s4);bottom:-1px;height:2px;background:var(--accent);border-radius:2px}
+.tab .pill{font-size:9.5px;padding:1px 6px;border-radius:10px;background:var(--surface-3);color:var(--muted);font-weight:700}
+.tab.active .pill{background:var(--accent-glow);color:var(--accent)}
+
+.dock-body{flex:1;overflow:auto;min-height:0}
+.panel{display:none;flex-direction:column;height:100%}
+.panel.active{display:flex}
+
+/* Lead chat */
+.chat{flex:1;overflow:auto;padding:var(--s4);display:flex;flex-direction:column;gap:var(--s4)}
+.msg{display:flex;flex-direction:column;gap:var(--s2);max-width:94%}
+.msg.you{align-self:flex-end;align-items:flex-end}
+.msg.lead{align-self:flex-start}
+.msg-meta{display:flex;align-items:center;gap:var(--s2);font-size:10px;color:var(--muted-2)}
+.msg-meta .who{font-weight:700;color:var(--muted)}
+.msg.lead .msg-meta .who{color:var(--accent-dim)}
+.avatar{width:18px;height:18px;border-radius:5px;display:grid;place-items:center;font-size:9px;font-weight:800}
+.avatar.lead{background:linear-gradient(135deg,var(--accent),var(--accent-dim));color:var(--accent-ink)}
+.avatar.you{background:var(--surface-3);color:var(--text-2);border:1px solid var(--line-strong)}
+.bubble{
+  padding:var(--s3) var(--s4);border-radius:var(--r3);font-size:12px;line-height:1.5;
+  color:var(--text-2);
+}
+.msg.you .bubble{background:var(--surface-3);border:1px solid var(--line-strong);border-top-right-radius:3px;color:var(--text)}
+.msg.lead .bubble{background:var(--surface-2);border:1px solid var(--line);border-top-left-radius:3px}
+.bubble code{background:rgba(0,0,0,.35);padding:1px 4px;border-radius:3px;color:var(--accent);font-size:11px}
+
+.toolcalls{display:flex;flex-direction:column;gap:4px;margin-top:2px}
+.tcall{
+  display:flex;align-items:center;gap:var(--s2);
+  padding:5px var(--s3);border-radius:var(--r2);
+  background:var(--surface-0);border:1px solid var(--line);
+  font-size:10.5px;color:var(--text-2);
+  transition:border-color .15s ease;
+}
+.tcall:hover{border-color:var(--line-strong)}
+.tcall .fn{color:var(--accent);font-weight:700}
+.tcall .arg{color:var(--muted)}
+.tcall .ic{width:13px;height:13px;color:var(--muted)}
+.tcall .res{margin-left:auto;font-size:9.5px;padding:1px 6px;border-radius:8px;font-weight:700}
+.tcall .res.ok{color:var(--run);background:rgba(58,210,159,.12)}
+.tcall .res.run{color:var(--info);background:rgba(94,194,240,.12)}
+
+.composer{flex:none;border-top:1px solid var(--line);padding:var(--s3);background:var(--surface-0)}
+.composer-row{display:flex;align-items:flex-end;gap:var(--s2);background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r3);padding:var(--s2)}
+.composer-row:focus-within{border-color:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-glow)}
+.composer textarea{
+  flex:1;resize:none;border:none;background:none;color:var(--text);
+  font-family:var(--mono);font-size:12px;line-height:1.5;max-height:90px;padding:4px var(--s2);
+}
+.composer textarea::placeholder{color:var(--muted-2)}
+.composer textarea:focus{outline:none}
+.send{
+  width:30px;height:30px;border-radius:var(--r2);flex:none;
+  background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;
+  transition:background .14s ease;
+}
+.send:hover{background:#d3fc4d}
+.composer-hint{display:flex;justify-content:space-between;margin-top:var(--s2);font-size:9.5px;color:var(--muted-2)}
+.composer-hint kbd{background:var(--surface-3);border:1px solid var(--line-strong);border-radius:3px;padding:0 4px;font-family:var(--mono);font-size:9px;color:var(--muted)}
+
+/* Tasks panel */
+.tasks{flex:1;overflow:auto;padding:var(--s4);display:flex;flex-direction:column;gap:var(--s5)}
+.task-col{display:flex;flex-direction:column;gap:var(--s2)}
+.task-col-head{display:flex;align-items:center;gap:var(--s2);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.task-col-head .cnt{margin-left:auto;font-size:9.5px;color:var(--muted-2);background:var(--surface-3);padding:0 6px;border-radius:8px}
+.task-col-head .swatch{width:7px;height:7px;border-radius:2px}
+.sw-todo{background:var(--idle)} .sw-run{background:var(--run)} .sw-rev{background:var(--await)} .sw-done{background:var(--accent-dim)}
+.tcard{
+  background:var(--surface-2);border:1px solid var(--line);border-left:2px solid var(--idle);
+  border-radius:var(--r2);padding:var(--s3);
+  transition:border-color .15s ease, background .15s ease;
+}
+.tcard:hover{background:var(--surface-3);border-color:var(--line-strong)}
+.tcard.run{border-left-color:var(--run)}
+.tcard.rev{border-left-color:var(--await)}
+.tcard.done{border-left-color:var(--accent-dim);opacity:.72}
+.tcard .tt{font-size:11.5px;color:var(--text);font-weight:500;line-height:1.4}
+.tcard.done .tt{text-decoration:line-through;text-decoration-color:var(--muted-2);color:var(--text-2)}
+.tcard .tmeta{display:flex;align-items:center;gap:var(--s2);margin-top:var(--s2);flex-wrap:wrap}
+.tag{font-size:9px;padding:1px 5px;border-radius:3px;background:var(--surface-0);border:1px solid var(--line);color:var(--muted)}
+.tag.dep{color:var(--info);border-color:rgba(94,194,240,.25)}
+.assignee{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;color:var(--text-2)}
+.assignee .ad{width:6px;height:6px;border-radius:2px}
+
+/* ============ ACTIVITY STRIP ============ */
+.activity{
+  grid-area:activity;
+  z-index:var(--z-activity);
+  background:var(--surface-0);
+  border-top:1px solid var(--line);
+  display:flex;flex-direction:column;
+  max-height:184px;
+  transition:max-height .22s ease;
+}
+.activity.collapsed{max-height:38px}
+.activity-head{
+  flex:none;display:flex;align-items:center;gap:var(--s3);
+  padding:var(--s2) var(--s4);height:38px;border-bottom:1px solid var(--line-soft);
+}
+.activity-head .ttl{display:flex;align-items:center;gap:var(--s2);font-weight:700;font-size:11px;color:var(--text-2);letter-spacing:.02em}
+.activity-head .ttl svg{color:var(--accent-dim)}
+.activity-head .live{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;color:var(--run);background:rgba(58,210,159,.1);padding:1px 7px;border-radius:8px;font-weight:700}
+.activity-head .live i{width:5px;height:5px;border-radius:50%;background:var(--run);box-shadow:0 0 6px var(--run)}
+.filters{display:flex;align-items:center;gap:var(--s2);margin-left:var(--s3)}
+.fchip{font-size:10px;padding:2px var(--s3);border-radius:12px;border:1px solid var(--line);background:var(--surface-1);color:var(--muted);transition:all .14s ease}
+.fchip:hover{color:var(--text-2);border-color:var(--line-strong)}
+.fchip.on{background:var(--accent-glow);border-color:var(--accent-dim);color:var(--accent)}
+.activity-head .spacer{flex:1}
+.collapse-btn{display:inline-flex;align-items:center;gap:var(--s2);font-size:10px;color:var(--muted);padding:4px var(--s3);border-radius:var(--r1);transition:background .14s ease,color .14s ease}
+.collapse-btn:hover{background:var(--surface-2);color:var(--text-2)}
+.collapse-btn svg{transition:transform .22s ease}
+.activity.collapsed .collapse-btn svg{transform:rotate(180deg)}
+
+.timeline{flex:1;overflow:auto;padding:var(--s2) var(--s4);font-size:11px}
+.tline{display:flex;align-items:baseline;gap:var(--s3);padding:3px 0;border-bottom:1px solid rgba(34,42,51,.5);white-space:nowrap}
+.tline:last-child{border-bottom:none}
+.tline .ts{color:var(--muted-2);font-variant-numeric:tabular-nums;flex:none;width:62px}
+.tline .from{color:var(--accent-dim);font-weight:600;flex:none}
+.tline .arrow{color:var(--muted-2);flex:none}
+.tline .to{color:var(--info);font-weight:600;flex:none}
+.tline .body{color:var(--text-2);overflow:hidden;text-overflow:ellipsis}
+.tline .kind{font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;padding:0 5px;border-radius:6px;flex:none}
+.tline .kind.broadcast{color:var(--await);background:rgba(245,177,76,.12)}
+.tline .kind.handoff{color:var(--info);background:rgba(94,194,240,.12)}
+.tline .kind.merge{color:var(--accent);background:var(--accent-glow)}
+.tline .kind.alert{color:var(--err);background:rgba(255,107,107,.12)}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation:none !important;transition:none !important}
+  .pane{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===================== TOP COMMAND BAR ===================== -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18V8l5 4 3-6 3 6 5-4v10"/></svg>
+      </span>
+      <span class="wordmark">Maestro</span>
+    </div>
+
+    <div class="proj">
+      <span class="name">orchard-api</span>
+      <span class="chip-branch">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M18 11.5c0 4-6 2-6 6.5"/></svg>
+        wt/feat-rate-limiter <span class="sep">·</span> 7 worktrees
+      </span>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="actions">
+      <button class="btn primary">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        New agent
+      </button>
+      <button class="btn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14l11-7z"/></svg>
+        Run template
+      </button>
+      <button class="btn" aria-label="Settings">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 14a1.6 1.6 0 0 0-1.5-1H1a2 2 0 0 1 0-4h.1A1.6 1.6 0 0 0 4.6 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 3a1.6 1.6 0 0 0 1-1.5V1a2 2 0 0 1 4 0v.1A1.6 1.6 0 0 0 17 4.6a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.6 1.6 0 0 0 21 10h.1a2 2 0 0 1 0 4H21a1.6 1.6 0 0 0-1.6 1z"/></svg>
+        Settings
+      </button>
+    </div>
+
+    <div class="readouts">
+      <div class="meter">
+        <div class="lab">RAM <b>21.4 / 32 GB</b></div>
+        <div class="bar"><i style="width:67%"></i></div>
+      </div>
+      <div class="meter">
+        <div class="lab">CPU <b>48%</b></div>
+        <div class="bar"><i style="width:48%"></i></div>
+      </div>
+      <div class="meter">
+        <div class="lab">GPU <b>83%</b></div>
+        <div class="bar warn"><i style="width:83%"></i></div>
+      </div>
+    </div>
+
+    <div class="stat">
+      <span class="v accent" id="costTotal">$14.82</span>
+      <span class="k">Session cost</span>
+    </div>
+    <div class="stat">
+      <span class="v">9</span>
+      <span class="k">Active agents</span>
+    </div>
+    <div class="stat">
+      <span class="v clock" id="clock">--:--:--</span>
+      <span class="k" id="clockzone">local</span>
+    </div>
+  </header>
+
+  <!-- ===================== MAIN GRID ===================== -->
+  <main class="main">
+    <div class="grid">
+
+      <!-- FOCUSED pane -->
+      <section class="pane focused" style="animation-delay:.02s">
+        <div class="pane-head">
+          <span class="dot run" title="running"></span>
+          <span class="pane-name">rate-limiter-core</span>
+          <span class="badge claude">Claude Code</span>
+          <span class="spacer"></span>
+          <span class="counter"><b id="liveTok">38.2k</b> tok <span class="cost">$3.91</span></span>
+          <div class="pane-ctrls">
+            <button class="pctrl" aria-label="Minimize"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+            <button class="pctrl" aria-label="Maximize"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button>
+            <button class="pctrl danger" aria-label="Close"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="term" id="liveTerm">
+          <div class="ln"><span class="pr"><span class="u">claude</span><span class="p">@orchard ~/api $</span></span> implement token-bucket limiter w/ redis backend</div>
+          <div class="ln dim">· reading <span class="file">src/middleware/limiter.ts</span> (142 lines)</div>
+          <div class="ln dim">· reading <span class="file">src/redis/client.ts</span> (88 lines)</div>
+          <div class="ln"><span class="hl">edit</span> <span class="file">src/middleware/limiter.ts</span> <span class="add">+64</span> <span class="del">-12</span></div>
+          <div class="ln"><span class="hl">edit</span> <span class="file">src/redis/scripts/bucket.lua</span> <span class="add">+31</span> <span class="del">-0</span></div>
+          <div class="ln dim">· running <span class="hl">pnpm test limiter</span></div>
+          <div class="ln ok">✓ 14 tests passed <span class="dim">(2.31s)</span></div>
+          <div class="ln tok">· context 38,204 tok · out 1,902 tok · $3.91 cumulative</div>
+          <div class="ln" id="liveLine"><span class="pr"><span class="u">claude</span><span class="p">@orchard ~/api $</span></span> <span id="typed"></span><span class="cursor"></span></div>
+        </div>
+      </section>
+
+      <!-- AWAITING APPROVAL pane -->
+      <section class="pane await" style="animation-delay:.05s">
+        <div class="pane-head">
+          <span class="dot await" title="awaiting approval"></span>
+          <span class="pane-name">db-migrator</span>
+          <span class="badge codex">Codex</span>
+          <span class="spacer"></span>
+          <span class="counter"><b>21.7k</b> tok <span class="cost">$1.04</span></span>
+          <div class="pane-ctrls">
+            <button class="pctrl" aria-label="Minimize"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+            <button class="pctrl" aria-label="Maximize"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button>
+            <button class="pctrl danger" aria-label="Close"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="term">
+          <div class="ln dim">· generated migration <span class="file">0042_add_rate_buckets.sql</span></div>
+          <div class="ln dim">· wants to apply against <span class="hl">staging</span></div>
+          <div class="gate" role="group" aria-label="Approval required">
+            <div class="gate-head">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+              Awaiting approval
+            </div>
+            <div class="gate-cmd">psql staging -f 0042_add_rate_buckets.sql
+<span class="del">DROP INDEX idx_legacy_rate;</span> ALTER TABLE …</div>
+            <div class="gate-actions">
+              <button class="gate-btn approve"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Approve</button>
+              <button class="gate-btn deny"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg> Deny</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- running -->
+      <section class="pane" style="animation-delay:.08s">
+        <div class="pane-head">
+          <span class="dot run"></span>
+          <span class="pane-name">test-harness</span>
+          <span class="badge opencode">OpenCode</span>
+          <span class="spacer"></span>
+          <span class="counter"><b>9.8k</b> tok <span class="cost">$0.41</span></span>
+          <div class="pane-ctrls">
+            <button class="pctrl" aria-label="Minimize"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+            <button class="pctrl danger" aria-label="Close"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="term">
+          <div class="ln"><span class="pr"><span class="p">$</span></span> vitest run --coverage</div>
+          <div class="ln dim">· <span class="file">limiter.spec.ts</span> ......... <span class="ok">✓</span></div>
+          <div class="ln dim">· <span class="file">redis.spec.ts</span> ........... <span class="ok">✓</span></div>
+          <div class="ln dim">· <span class="file">window.spec.ts</span> ......... <span class="warn">~</span> 1 flaky</div>
+          <div class="ln ok">✓ 47 passed <span class="warn">1 retried</span></div>
+          <div class="ln dim">cov: stmts 91.4% · branch 84.2%</div>
+        </div>
+      </section>
+
+      <!-- error -->
+      <section class="pane error" style="animation-delay:.11s">
+        <div class="pane-head">
+          <span class="dot err"></span>
+          <span class="pane-name">edge-deploy</span>
+          <span class="badge gemini">Gemini</span>
+          <span class="spacer"></span>
+          <span class="counter"><b>5.2k</b> tok <span class="cost">$0.18</span></span>
+          <div class="pane-ctrls">
+            <button class="pctrl" aria-label="Restart"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
+            <button class="pctrl danger" aria-label="Close"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="term">
+          <div class="ln"><span class="pr"><span class="p">$</span></span> wrangler deploy --env preview</div>
+          <div class="ln dim">· bundling worker… 412 KB</div>
+          <div class="ln er">✗ Error 10021: script exceeds 1 MB after compat shim</div>
+          <div class="ln er">  at deploy() · wrangler/dist/index.js:88</div>
+          <div class="ln dim">· retry 2/3 backing off 8s…</div>
+          <div class="ln warn">⚠ agent paused — needs human triage</div>
+        </div>
+      </section>
+
+      <!-- idle -->
+      <section class="pane" style="animation-delay:.14s">
+        <div class="pane-head">
+          <span class="dot idle"></span>
+          <span class="pane-name">docs-writer</span>
+          <span class="badge aider">Aider</span>
+          <span class="spacer"></span>
+          <span class="counter"><b>12.0k</b> tok <span class="cost">$0.33</span></span>
+          <div class="pane-ctrls">
+            <button class="pctrl" aria-label="Minimize"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+            <button class="pctrl danger" aria-label="Close"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="term">
+          <div class="ln dim">· updated <span class="file">docs/rate-limits.md</span> <span class="add">+88</span></div>
+          <div class="ln ok">✓ committed a1f9c2 "docs: rate limit guide"</div>
+          <div class="ln dim">idle — awaiting next instruction</div>
+          <div class="ln tok">· last active 2m 14s ago</div>
+        </div>
+      </section>
+
+      <!-- running -->
+      <section class="pane" style="animation-delay:.17s">
+        <div class="pane-head">
+          <span class="dot run"></span>
+          <span class="pane-name">security-audit</span>
+          <span class="badge codex">Codex</span>
+          <span class="spacer"></span>
+          <span class="counter"><b>17.5k</b> tok <span class="cost">$0.92</span></span>
+          <div class="pane-ctrls">
+            <button class="pctrl" aria-label="Minimize"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+            <button class="pctrl danger" aria-label="Close"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="term">
+          <div class="ln"><span class="pr"><span class="p">$</span></span> scan deps + auth surface</div>
+          <div class="ln dim">· semgrep 214 rules · 3.2k loc</div>
+          <div class="ln warn">⚠ 2 medium: missing rate cap on /auth/reset</div>
+          <div class="ln ok">✓ no criticals · 0 secrets leaked</div>
+          <div class="ln dim">· drafting findings → Lead…</div>
+        </div>
+      </section>
+
+      <!-- running -->
+      <section class="pane" style="animation-delay:.20s">
+        <div class="pane-head">
+          <span class="dot run"></span>
+          <span class="pane-name">frontend-sync</span>
+          <span class="badge claude">Claude Code</span>
+          <span class="spacer"></span>
+          <span class="counter"><b>28.9k</b> tok <span class="cost">$2.11</span></span>
+          <div class="pane-ctrls">
+            <button class="pctrl" aria-label="Minimize"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+            <button class="pctrl danger" aria-label="Close"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="term">
+          <div class="ln dim">· regenerating client from openapi.yaml</div>
+          <div class="ln"><span class="hl">edit</span> <span class="file">web/src/api/rates.ts</span> <span class="add">+47</span> <span class="del">-9</span></div>
+          <div class="ln"><span class="hl">edit</span> <span class="file">web/src/hooks/useLimit.ts</span> <span class="add">+22</span></div>
+          <div class="ln dim">· tsc --noEmit … <span class="ok">clean</span></div>
+          <div class="ln ok">✓ 3 components retyped</div>
+        </div>
+      </section>
+
+      <!-- idle -->
+      <section class="pane" style="animation-delay:.23s">
+        <div class="pane-head">
+          <span class="dot idle"></span>
+          <span class="pane-name">perf-bench</span>
+          <span class="badge gemini">Gemini</span>
+          <span class="spacer"></span>
+          <span class="counter"><b>6.4k</b> tok <span class="cost">$0.22</span></span>
+          <div class="pane-ctrls">
+            <button class="pctrl" aria-label="Minimize"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+            <button class="pctrl danger" aria-label="Close"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="term">
+          <div class="ln dim">· k6 run smoke.js — 200 vus</div>
+          <div class="ln ok">✓ p95 41ms · p99 88ms</div>
+          <div class="ln dim">· throughput 9.4k req/s</div>
+          <div class="ln dim">idle — results cached</div>
+        </div>
+      </section>
+
+      <!-- running -->
+      <section class="pane" style="animation-delay:.26s">
+        <div class="pane-head">
+          <span class="dot run"></span>
+          <span class="pane-name">log-triage</span>
+          <span class="badge opencode">OpenCode</span>
+          <span class="spacer"></span>
+          <span class="counter"><b>4.1k</b> tok <span class="cost">$0.14</span></span>
+          <div class="pane-ctrls">
+            <button class="pctrl" aria-label="Minimize"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+            <button class="pctrl danger" aria-label="Close"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="term">
+          <div class="ln dim">· tail prod logs · 14.2k lines</div>
+          <div class="ln dim">· clustering by stack signature…</div>
+          <div class="ln warn">⚠ spike: 429s up 3.1× last hour</div>
+          <div class="ln dim">· correlating w/ deploy a1f9c2</div>
+        </div>
+      </section>
+
+      <!-- SPAWN tile -->
+      <button class="tile-spawn" style="animation:reveal .45s ease .29s forwards;opacity:0">
+        <span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>
+        <span class="t">Spawn agent</span>
+        <span class="sub">pick adapter · worktree · prompt</span>
+      </button>
+
+    </div>
+  </main>
+
+  <!-- ===================== RIGHT DOCK ===================== -->
+  <aside class="dock">
+    <div class="dock-tabs" role="tablist">
+      <button class="tab active" role="tab" aria-selected="true" data-panel="lead">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Lead <span class="pill">live</span>
+      </button>
+      <button class="tab" role="tab" aria-selected="false" data-panel="tasks">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="11" width="12" height="4" rx="1"/><rect x="3" y="18" width="15" height="4" rx="1"/></svg>
+        Tasks <span class="pill">11</span>
+      </button>
+    </div>
+
+    <div class="dock-body">
+      <!-- LEAD PANEL -->
+      <div class="panel active" id="panel-lead">
+        <div class="chat">
+          <div class="msg you">
+            <div class="msg-meta"><span class="who">you</span><span>09:58</span><span class="avatar you">JM</span></div>
+            <div class="bubble">Ship the redis rate-limiter across the API. Coordinate frontend + docs and run the full verification gate before any merge.</div>
+          </div>
+
+          <div class="msg lead">
+            <div class="msg-meta"><span class="avatar lead">M</span><span class="who">Lead</span><span>09:58</span></div>
+            <div class="bubble">On it. Breaking this into four tracks and fanning out workers across isolated worktrees. I'll hold merges until tests + security are green.</div>
+            <div class="toolcalls">
+              <div class="tcall"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg><span class="fn">spawn_agent</span><span class="arg">claude · rate-limiter-core</span><span class="res ok">ok</span></div>
+              <div class="tcall"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg><span class="fn">spawn_agent</span><span class="arg">codex · db-migrator</span><span class="res ok">ok</span></div>
+              <div class="tcall"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4z"/></svg><span class="fn">submit_prompt</span><span class="arg">→ frontend-sync</span><span class="res ok">ok</span></div>
+            </div>
+          </div>
+
+          <div class="msg you">
+            <div class="msg-meta"><span class="who">you</span><span>10:03</span><span class="avatar you">JM</span></div>
+            <div class="bubble">db-migrator wants to drop <code>idx_legacy_rate</code> on staging — that's risky.</div>
+          </div>
+
+          <div class="msg lead">
+            <div class="msg-meta"><span class="avatar lead">M</span><span class="who">Lead</span><span>10:03</span></div>
+            <div class="bubble">Agreed — I gated it for your approval (top-right pane). I also kicked off the verification suite and broadcast a freeze on schema writes until you decide.</div>
+            <div class="toolcalls">
+              <div class="tcall"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span class="fn">run_verification</span><span class="arg">suite=full</span><span class="res run">running</span></div>
+              <div class="tcall"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l18-5v12L3 14zM11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg><span class="fn">broadcast</span><span class="arg">"freeze schema writes"</span><span class="res ok">9 sent</span></div>
+            </div>
+          </div>
+
+          <div class="msg lead">
+            <div class="msg-meta"><span class="avatar lead">M</span><span class="who">Lead</span><span>10:06</span></div>
+            <div class="bubble">core implementation is green (14/14). Once you approve the migration I'll merge <code>feat-rate-limiter</code> into <code>main</code>.</div>
+            <div class="toolcalls">
+              <div class="tcall"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M18 11.5c0 4-6 2-6 6.5"/></svg><span class="fn">merge</span><span class="arg">feat-rate-limiter → main</span><span class="res run">blocked</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="composer">
+          <div class="composer-row">
+            <textarea rows="1" placeholder="Message the Lead — direct, delegate, or ask for status…"></textarea>
+            <button class="send" aria-label="Send"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/></svg></button>
+          </div>
+          <div class="composer-hint"><span>Lead routes to 9 agents</span><span><kbd>Enter</kbd> send · <kbd>⇧↵</kbd> newline</span></div>
+        </div>
+      </div>
+
+      <!-- TASKS PANEL -->
+      <div class="panel" id="panel-tasks">
+        <div class="tasks">
+          <div class="task-col">
+            <div class="task-col-head"><span class="swatch sw-run"></span> Running <span class="cnt">3</span></div>
+            <div class="tcard run">
+              <div class="tt">Implement token-bucket limiter with redis backend</div>
+              <div class="tmeta"><span class="assignee"><span class="ad" style="background:var(--ad-claude)"></span>rate-limiter-core</span><span class="tag">core</span></div>
+            </div>
+            <div class="tcard run">
+              <div class="tt">Regenerate typed API client + hooks</div>
+              <div class="tmeta"><span class="assignee"><span class="ad" style="background:var(--ad-claude)"></span>frontend-sync</span><span class="tag dep">needs #core</span></div>
+            </div>
+            <div class="tcard run">
+              <div class="tt">Static + dependency security audit</div>
+              <div class="tmeta"><span class="assignee"><span class="ad" style="background:var(--ad-codex)"></span>security-audit</span><span class="tag">gate</span></div>
+            </div>
+          </div>
+
+          <div class="task-col">
+            <div class="task-col-head"><span class="swatch sw-rev"></span> Review <span class="cnt">2</span></div>
+            <div class="tcard rev">
+              <div class="tt">Apply migration 0042_add_rate_buckets</div>
+              <div class="tmeta"><span class="assignee"><span class="ad" style="background:var(--ad-codex)"></span>db-migrator</span><span class="tag" style="color:var(--await);border-color:rgba(245,177,76,.3)">approval</span></div>
+            </div>
+            <div class="tcard rev">
+              <div class="tt">Edge worker bundle size fix (10021)</div>
+              <div class="tmeta"><span class="assignee"><span class="ad" style="background:var(--ad-gemini)"></span>edge-deploy</span><span class="tag" style="color:var(--err);border-color:rgba(255,107,107,.3)">blocked</span></div>
+            </div>
+          </div>
+
+          <div class="task-col">
+            <div class="task-col-head"><span class="swatch sw-todo"></span> Todo <span class="cnt">4</span></div>
+            <div class="tcard">
+              <div class="tt">Add rate cap to /auth/reset endpoint</div>
+              <div class="tmeta"><span class="assignee"><span class="ad" style="background:var(--idle)"></span>unassigned</span><span class="tag dep">from audit</span></div>
+            </div>
+            <div class="tcard">
+              <div class="tt">Load test at 2× projected peak</div>
+              <div class="tmeta"><span class="assignee"><span class="ad" style="background:var(--ad-gemini)"></span>perf-bench</span><span class="tag dep">needs #migration</span></div>
+            </div>
+            <div class="tcard">
+              <div class="tt">Write upgrade / rollback runbook</div>
+              <div class="tmeta"><span class="assignee"><span class="ad" style="background:var(--ad-aider)"></span>docs-writer</span></div>
+            </div>
+            <div class="tcard">
+              <div class="tt">Wire 429 metrics into dashboard</div>
+              <div class="tmeta"><span class="assignee"><span class="ad" style="background:var(--idle)"></span>unassigned</span></div>
+            </div>
+          </div>
+
+          <div class="task-col">
+            <div class="task-col-head"><span class="swatch sw-done"></span> Done <span class="cnt">2</span></div>
+            <div class="tcard done">
+              <div class="tt">Author rate-limit user guide</div>
+              <div class="tmeta"><span class="assignee"><span class="ad" style="background:var(--ad-aider)"></span>docs-writer</span></div>
+            </div>
+            <div class="tcard done">
+              <div class="tt">Define limiter API contract (openapi)</div>
+              <div class="tmeta"><span class="assignee"><span class="ad" style="background:var(--ad-claude)"></span>rate-limiter-core</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===================== ACTIVITY STRIP ===================== -->
+  <section class="activity" id="activity">
+    <div class="activity-head">
+      <span class="ttl">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+        Inter-agent activity
+      </span>
+      <span class="live"><i></i> live</span>
+      <div class="filters">
+        <button class="fchip on">All</button>
+        <button class="fchip">Handoffs</button>
+        <button class="fchip">Broadcasts</button>
+        <button class="fchip">Merges</button>
+        <button class="fchip">Alerts</button>
+      </div>
+      <span class="spacer"></span>
+      <button class="collapse-btn" id="collapseBtn" aria-expanded="true">
+        Collapse
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+    </div>
+    <div class="timeline">
+      <div class="tline"><span class="ts">10:06:51</span><span class="from">rate-limiter-core</span><span class="arrow">→</span><span class="to">Lead</span><span class="kind handoff">handoff</span><span class="body">core green · 14/14 tests · ready to merge pending migration</span></div>
+      <div class="tline"><span class="ts">10:06:12</span><span class="from">Lead</span><span class="arrow">→</span><span class="to">all agents</span><span class="kind broadcast">broadcast</span><span class="body">freeze all schema writes until migration 0042 is approved</span></div>
+      <div class="tline"><span class="ts">10:05:40</span><span class="from">security-audit</span><span class="arrow">→</span><span class="to">Lead</span><span class="kind handoff">handoff</span><span class="body">2 medium findings · missing rate cap on /auth/reset</span></div>
+      <div class="tline"><span class="ts">10:04:58</span><span class="from">log-triage</span><span class="arrow">→</span><span class="to">edge-deploy</span><span class="kind alert">alert</span><span class="body">429 spike 3.1× correlates with your last deploy a1f9c2</span></div>
+      <div class="tline"><span class="ts">10:03:22</span><span class="from">db-migrator</span><span class="arrow">→</span><span class="to">Lead</span><span class="kind alert">alert</span><span class="body">destructive op detected (DROP INDEX) — requesting approval gate</span></div>
+      <div class="tline"><span class="ts">10:02:09</span><span class="from">frontend-sync</span><span class="arrow">→</span><span class="to">rate-limiter-core</span><span class="kind handoff">handoff</span><span class="body">pulled openapi.yaml @ rev 7 · regenerating client</span></div>
+      <div class="tline"><span class="ts">09:59:47</span><span class="from">Lead</span><span class="arrow">→</span><span class="to">main</span><span class="kind merge">merge</span><span class="body">queued feat-rate-limiter → main (blocked: 2 gates pending)</span></div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function(){
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- live clock ---- */
+  var clk = document.getElementById('clock');
+  var zone = document.getElementById('clockzone');
+  try{ zone.textContent = Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop().replace('_',' ').toLowerCase(); }catch(e){}
+  function tick(){
+    var d = new Date();
+    var p = function(n){return (n<10?'0':'')+n;};
+    clk.textContent = p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+  }
+  tick(); setInterval(tick,1000);
+
+  /* ---- dock tabs ---- */
+  var tabs = document.querySelectorAll('.tab');
+  tabs.forEach(function(t){
+    t.addEventListener('click', function(){
+      tabs.forEach(function(x){x.classList.remove('active');x.setAttribute('aria-selected','false');});
+      t.classList.add('active'); t.setAttribute('aria-selected','true');
+      document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('active');});
+      document.getElementById('panel-'+t.dataset.panel).classList.add('active');
+    });
+  });
+
+  /* ---- filter chips ---- */
+  document.querySelectorAll('.fchip').forEach(function(c){
+    c.addEventListener('click', function(){
+      document.querySelectorAll('.fchip').forEach(function(x){x.classList.remove('on');});
+      c.classList.add('on');
+    });
+  });
+
+  /* ---- activity collapse ---- */
+  var act = document.getElementById('activity');
+  var cb = document.getElementById('collapseBtn');
+  cb.addEventListener('click', function(){
+    var collapsed = act.classList.toggle('collapsed');
+    cb.setAttribute('aria-expanded', String(!collapsed));
+    cb.firstChild.textContent = collapsed ? 'Expand ' : 'Collapse ';
+  });
+
+  /* ---- composer autosize ---- */
+  var ta = document.querySelector('.composer textarea');
+  if(ta){
+    ta.addEventListener('input', function(){
+      ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight,90)+'px';
+    });
+  }
+
+  /* ---- fake terminal typing in focused pane ---- */
+  var phrases = [
+    'verify p95 latency under 50ms with limiter enabled',
+    'add jitter to backoff to avoid thundering herd',
+    'wire prom metrics: ratelimit_hits_total{route}',
+    'open PR → request review from Lead'
+  ];
+  var el = document.getElementById('typed');
+  if(el && !reduce){
+    var pi=0, ci=0, deleting=false;
+    function type(){
+      var full = phrases[pi];
+      if(!deleting){
+        el.textContent = full.slice(0, ci++);
+        if(ci > full.length){ deleting=true; setTimeout(type, 1400); return; }
+        setTimeout(type, 36 + Math.random()*34);
+      } else {
+        el.textContent = full.slice(0, ci--);
+        if(ci < 0){ deleting=false; ci=0; pi=(pi+1)%phrases.length; setTimeout(type, 320); return; }
+        setTimeout(type, 16);
+      }
+    }
+    type();
+  } else if(el){
+    el.textContent = phrases[0];
+  }
+
+  /* ---- jittering live token + cost counters ---- */
+  if(!reduce){
+    var tok = document.getElementById('liveTok');
+    var cost = document.getElementById('costTotal');
+    var baseTok = 38200, baseCost = 14.82;
+    setInterval(function(){
+      baseTok += Math.floor(Math.random()*180)+20;
+      baseCost += Math.random()*0.04;
+      tok.textContent = (baseTok/1000).toFixed(1)+'k';
+      cost.textContent = '$'+baseCost.toFixed(2);
+    }, 2200);
+  }
+})();
+</script>
+</body>
+</html>

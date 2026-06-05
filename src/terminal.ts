@@ -5,6 +5,7 @@ import "@xterm/xterm/css/xterm.css";
 export interface TerminalHandle {
   write(data: Uint8Array): void;
   fit(): { cols: number; rows: number };
+  reset(): void;
   dispose(): void;
 }
 
@@ -54,6 +55,7 @@ export function mountTerminal(
       fit.fit();
       return { cols: term.cols, rows: term.rows };
     },
+    reset: () => term.reset(),
     dispose: () => {
       ro.disconnect();
       term.dispose();

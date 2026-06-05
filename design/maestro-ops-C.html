@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maestro — Mission Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+/* ============ TOKENS ============ */
+:root{
+  /* palette — deep blue-black canvas */
+  --bg:#040810;
+  --bg-deep:#020509;
+  --surface:#0a1322;
+  --surface-2:#0e1a2e;
+  --surface-3:#13243d;
+  --panel-line:#1d3a5c;
+  --panel-line-soft:#162a44;
+
+  /* text — high contrast on dark */
+  --text:#e8f3ff;          /* >= 4.5:1 on surface */
+  --text-dim:#a9c3dc;      /* muted but readable */
+  --text-faint:#7d97b3;    /* metadata only, still > 4.5 on bg */
+
+  /* phosphor accents */
+  --green:#39ff14;
+  --green-soft:#7dffa0;
+  --green-dim:#1ea84f;
+  --amber:#ffb000;
+  --amber-soft:#ffd166;
+  --cyan:#27d3ff;
+  --cyan-dim:#1789ad;
+  --red:#ff5a52;
+  --red-soft:#ff8b85;
+  --magenta:#ff5fd2;
+
+  /* status */
+  --st-running:var(--green);
+  --st-idle:var(--cyan);
+  --st-await:var(--amber);
+  --st-error:var(--red);
+
+  /* spacing scale */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s8:32px;
+
+  --radius:3px;
+  --radius-lg:5px;
+
+  /* glow */
+  --glow-green:0 0 4px rgba(57,255,20,.55), 0 0 11px rgba(57,255,20,.18);
+  --glow-amber:0 0 4px rgba(255,176,0,.55), 0 0 11px rgba(255,176,0,.18);
+  --glow-cyan:0 0 4px rgba(39,211,255,.5), 0 0 11px rgba(39,211,255,.16);
+  --glow-red:0 0 4px rgba(255,90,82,.5), 0 0 11px rgba(255,90,82,.16);
+
+  /* z-index scale */
+  --z-base:0;
+  --z-panel:10;
+  --z-focused:20;
+  --z-dock:30;
+  --z-topbar:40;
+  --z-overlay:60;   /* scanline/vignette */
+  --z-modal:80;
+
+  --mono:'IBM Plex Mono', ui-monospace, monospace;
+  --display:'VT323', monospace;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--mono);
+  font-size:13px;
+  line-height:1.45;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+  position:relative;
+}
+
+/* ====== CRT overlays (atmosphere only, must not hurt readability) ====== */
+.crt-overlay{
+  position:fixed; inset:0; pointer-events:none; z-index:var(--z-overlay);
+}
+.crt-overlay::before{ /* scanlines, very subtle */
+  content:""; position:absolute; inset:0;
+  background:repeating-linear-gradient(
+    to bottom,
+    rgba(0,0,0,0) 0px,
+    rgba(0,0,0,0) 2px,
+    rgba(2,10,18,.16) 3px,
+    rgba(2,10,18,.16) 3px
+  );
+  mix-blend-mode:multiply;
+}
+.crt-overlay::after{ /* vignette */
+  content:""; position:absolute; inset:0;
+  background:radial-gradient(120% 120% at 50% 42%, rgba(0,0,0,0) 58%, rgba(0,0,0,.55) 100%);
+}
+
+::selection{background:rgba(57,255,20,.28);color:#fff}
+
+/* scrollbars */
+*::-webkit-scrollbar{width:9px;height:9px}
+*::-webkit-scrollbar-track{background:var(--bg-deep)}
+*::-webkit-scrollbar-thumb{background:var(--panel-line);border-radius:6px;border:2px solid var(--bg-deep)}
+*::-webkit-scrollbar-thumb:hover{background:var(--cyan-dim)}
+
+/* ====== focus rings ====== */
+button,input,textarea,.tab,.chip,.task-card,.filter-chip,[tabindex]{
+  outline:none;
+}
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+.tab:focus-visible,
+.chip:focus-visible,
+.task-card:focus-visible,
+.filter-chip:focus-visible,
+[tabindex]:focus-visible{
+  outline:2px solid var(--cyan);
+  outline-offset:2px;
+  box-shadow:var(--glow-cyan);
+}
+
+button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer}
+
+/* ============ APP SHELL GRID ============ */
+.app{
+  display:grid;
+  grid-template-rows:48px 1fr auto;
+  grid-template-columns:1fr 360px;
+  grid-template-areas:
+    "topbar topbar"
+    "main   dock"
+    "activity activity";
+  height:100vh;
+  position:relative;
+  z-index:var(--z-base);
+}
+
+/* ============ TOP COMMAND BAR ============ */
+.topbar{
+  grid-area:topbar;
+  z-index:var(--z-topbar);
+  display:flex;
+  align-items:center;
+  gap:var(--s4);
+  padding:0 var(--s4);
+  background:linear-gradient(180deg,var(--surface-2),var(--surface));
+  border-bottom:1px solid var(--panel-line);
+  box-shadow:0 1px 0 rgba(39,211,255,.08), 0 2px 14px rgba(0,0,0,.5);
+}
+.wordmark{
+  font-family:var(--display);
+  font-size:30px;
+  line-height:1;
+  letter-spacing:1px;
+  color:var(--green);
+  text-shadow:var(--glow-green);
+  padding-right:var(--s3);
+  border-right:1px solid var(--panel-line);
+  user-select:none;
+}
+.wordmark span{color:var(--green-soft)}
+
+.proj{display:flex;align-items:center;gap:var(--s2);min-width:0}
+.proj .pname{color:var(--text);font-weight:600;white-space:nowrap}
+.branch{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:11.5px;color:var(--cyan);
+  background:rgba(39,211,255,.07);
+  border:1px solid var(--cyan-dim);
+  border-radius:var(--radius);
+  padding:2px 7px;white-space:nowrap;
+}
+.branch svg{width:14px;height:14px}
+.worktree{color:var(--text-faint);font-size:11.5px;white-space:nowrap}
+
+.topbar .spacer{flex:1}
+
+.actions{display:flex;align-items:center;gap:var(--s2)}
+.btn{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:6px 11px;
+  font-size:12px;font-weight:600;
+  color:var(--text);
+  background:var(--surface-3);
+  border:1px solid var(--panel-line);
+  border-radius:var(--radius);
+  transition:background .16s ease,border-color .16s ease,color .16s ease,box-shadow .16s ease;
+}
+.btn svg{width:16px;height:16px}
+.btn:hover{background:var(--surface-2);border-color:var(--cyan-dim);color:var(--cyan)}
+.btn.primary{
+  color:var(--bg-deep);
+  background:var(--green);
+  border-color:var(--green);
+  box-shadow:0 0 10px rgba(57,255,20,.28);
+}
+.btn.primary:hover{background:var(--green-soft);border-color:var(--green-soft);color:var(--bg-deep)}
+.btn.icon-only{padding:6px}
+
+/* readouts — segmented LCD style */
+.readouts{display:flex;align-items:center;gap:var(--s3);padding-left:var(--s3);border-left:1px solid var(--panel-line)}
+.meter{display:flex;flex-direction:column;gap:2px;min-width:64px}
+.meter .lbl{font-size:9.5px;letter-spacing:1.5px;color:var(--text-faint);text-transform:uppercase}
+.meter .row{display:flex;align-items:baseline;gap:4px}
+.lcd{
+  font-family:var(--display);
+  font-size:20px;line-height:.9;
+  letter-spacing:1px;
+}
+.lcd.green{color:var(--green);text-shadow:var(--glow-green)}
+.lcd.amber{color:var(--amber);text-shadow:var(--glow-amber)}
+.lcd.cyan{color:var(--cyan);text-shadow:var(--glow-cyan)}
+.lcd.red{color:var(--red);text-shadow:var(--glow-red)}
+.lcd .unit{font-family:var(--mono);font-size:10px;color:var(--text-faint);text-shadow:none;letter-spacing:0}
+.bar{height:3px;width:100%;background:var(--bg-deep);border-radius:2px;overflow:hidden;border:1px solid var(--panel-line-soft)}
+.bar > i{display:block;height:100%;border-radius:2px}
+.bar > i.g{background:var(--green);box-shadow:0 0 6px rgba(57,255,20,.6)}
+.bar > i.a{background:var(--amber);box-shadow:0 0 6px rgba(255,176,0,.6)}
+.bar > i.c{background:var(--cyan);box-shadow:0 0 6px rgba(39,211,255,.6)}
+
+.stat-pill{
+  display:flex;flex-direction:column;gap:2px;align-items:flex-end;
+  padding-left:var(--s3);border-left:1px solid var(--panel-line);
+}
+.stat-pill .lbl{font-size:9.5px;letter-spacing:1.5px;color:var(--text-faint);text-transform:uppercase}
+.stat-pill .agentline{display:flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.dot.run{background:var(--st-running);box-shadow:var(--glow-green)}
+.dot.idle{background:var(--st-idle);box-shadow:var(--glow-cyan)}
+.dot.await{background:var(--st-await);box-shadow:var(--glow-amber)}
+.dot.err{background:var(--st-error);box-shadow:var(--glow-red)}
+.dot.pulse{animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+.clock{font-family:var(--display);font-size:20px;color:var(--cyan);text-shadow:var(--glow-cyan);letter-spacing:1px}
+
+/* ============ MAIN GRID OF PANES ============ */
+.main{
+  grid-area:main;
+  z-index:var(--z-panel);
+  overflow:auto;
+  padding:var(--s3);
+  background:
+    radial-gradient(80% 60% at 50% 0%, rgba(39,211,255,.04), rgba(0,0,0,0) 70%),
+    var(--bg);
+}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  grid-auto-rows:minmax(208px,1fr);
+  gap:var(--s3);
+  min-width:760px;
+}
+
+/* ====== pane ====== */
+.pane{
+  position:relative;
+  display:flex;flex-direction:column;
+  background:linear-gradient(180deg,var(--surface),var(--bg-deep));
+  border:1px solid var(--panel-line);
+  border-radius:var(--radius-lg);
+  overflow:hidden;
+  transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease;
+}
+.pane:hover{border-color:var(--cyan-dim)}
+/* decorative corner brackets */
+.pane::before,.pane::after{
+  content:"";position:absolute;width:11px;height:11px;pointer-events:none;opacity:.6;
+  border-color:var(--cyan-dim);border-style:solid;
+}
+.pane::before{top:5px;left:5px;border-width:1px 0 0 1px}
+.pane::after{bottom:5px;right:5px;border-width:0 1px 1px 0}
+
+.pane.focused{
+  border-color:var(--green);
+  box-shadow:var(--glow-green), 0 0 0 1px rgba(57,255,20,.35), 0 10px 30px rgba(0,0,0,.6);
+  z-index:var(--z-focused);
+}
+.pane.focused::before,.pane.focused::after{border-color:var(--green);opacity:.9}
+
+.pane.err{border-color:rgba(255,90,82,.5)}
+.pane.await{border-color:var(--amber)}
+.pane.await::before,.pane.await::after{border-color:var(--amber)}
+
+/* pane header */
+.phead{
+  display:flex;align-items:center;gap:var(--s2);
+  padding:6px 8px 6px 10px;
+  background:linear-gradient(180deg,var(--surface-2),var(--surface));
+  border-bottom:1px solid var(--panel-line-soft);
+  flex:none;
+}
+.phead .name{font-weight:700;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{
+  font-size:9.5px;font-weight:700;letter-spacing:.5px;
+  padding:2px 6px;border-radius:2px;white-space:nowrap;flex:none;
+  text-transform:uppercase;border:1px solid;
+}
+.badge.cc{color:var(--green);border-color:var(--green-dim);background:rgba(57,255,20,.08)}
+.badge.codex{color:var(--cyan);border-color:var(--cyan-dim);background:rgba(39,211,255,.08)}
+.badge.gemini{color:var(--magenta);border-color:rgba(255,95,210,.4);background:rgba(255,95,210,.08)}
+.badge.opencode{color:var(--amber);border-color:rgba(255,176,0,.4);background:rgba(255,176,0,.08)}
+.badge.aider{color:var(--amber-soft);border-color:rgba(255,209,102,.4);background:rgba(255,209,102,.08)}
+.phead .spacer{flex:1}
+.tok{font-size:10px;color:var(--text-faint);white-space:nowrap}
+.tok b{color:var(--green-soft);font-weight:600}
+.tok .cost{color:var(--amber-soft)}
+.pctrls{display:flex;gap:1px;flex:none}
+.pctrl{
+  width:20px;height:20px;display:grid;place-items:center;border-radius:2px;
+  color:var(--text-faint);transition:color .15s ease,background .15s ease;
+}
+.pctrl svg{width:13px;height:13px}
+.pctrl:hover{color:var(--text);background:var(--surface-3)}
+.pctrl.close:hover{color:var(--red);background:rgba(255,90,82,.12)}
+
+/* pane body terminal */
+.pbody{
+  flex:1;overflow:auto;padding:8px 10px;
+  font-size:11.5px;line-height:1.5;
+  background:
+    radial-gradient(90% 70% at 50% 100%, rgba(57,255,20,.025), rgba(0,0,0,0) 65%),
+    var(--bg-deep);
+}
+.pbody .ln{white-space:pre-wrap;word-break:break-word}
+.gl{color:var(--green);text-shadow:0 0 3px rgba(57,255,20,.35)}      /* phosphor green */
+.am{color:var(--amber);text-shadow:0 0 3px rgba(255,176,0,.32)}
+.cy{color:var(--cyan)}
+.rd{color:var(--red-soft)}
+.di{color:var(--text-dim)}
+.fa{color:var(--text-faint)}
+.prompt{color:var(--green-soft)}
+.diff-add{color:var(--green)}
+.diff-del{color:var(--red-soft)}
+.cursor{display:inline-block;width:7px;height:13px;background:var(--green);box-shadow:var(--glow-green);vertical-align:-2px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* awaiting approval gate */
+.gate{
+  margin-top:8px;padding:8px 9px;
+  border:1px solid var(--amber);border-radius:var(--radius);
+  background:rgba(255,176,0,.08);
+  box-shadow:inset 0 0 14px rgba(255,176,0,.07);
+}
+.gate .gtitle{display:flex;align-items:center;gap:6px;color:var(--amber);font-weight:700;font-size:11px;letter-spacing:.5px;margin-bottom:5px}
+.gate .gtitle svg{width:14px;height:14px}
+.gate .gdesc{color:var(--text-dim);font-size:11px;margin-bottom:7px}
+.gate .gactions{display:flex;gap:6px}
+.gbtn{padding:4px 12px;font-size:11px;font-weight:700;border-radius:2px;border:1px solid;transition:filter .15s ease, background .15s ease}
+.gbtn.ok{color:var(--bg-deep);background:var(--green);border-color:var(--green)}
+.gbtn.ok:hover{background:var(--green-soft)}
+.gbtn.no{color:var(--red-soft);background:rgba(255,90,82,.1);border-color:var(--red)}
+.gbtn.no:hover{background:rgba(255,90,82,.2)}
+
+/* spawn tile */
+.spawn{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--s3);
+  border:1px dashed var(--panel-line);
+  border-radius:var(--radius-lg);
+  background:rgba(14,26,46,.35);
+  color:var(--text-dim);
+  transition:border-color .18s ease,color .18s ease,background .18s ease;
+  cursor:pointer;
+}
+.spawn:hover{border-color:var(--green);color:var(--green);background:rgba(57,255,20,.05)}
+.spawn svg{width:34px;height:34px}
+.spawn .t{font-family:var(--display);font-size:22px;letter-spacing:1px}
+.spawn .sub{font-size:10.5px;color:var(--text-faint)}
+
+/* ============ RIGHT DOCK ============ */
+.dock{
+  grid-area:dock;
+  z-index:var(--z-dock);
+  display:flex;flex-direction:column;
+  background:linear-gradient(180deg,var(--surface),var(--bg));
+  border-left:1px solid var(--panel-line);
+  min-height:0;
+}
+.dock-tabs{display:flex;border-bottom:1px solid var(--panel-line);flex:none;background:var(--surface-2)}
+.tab{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:7px;
+  padding:9px;font-size:12px;font-weight:700;letter-spacing:.5px;
+  color:var(--text-faint);border-bottom:2px solid transparent;
+  transition:color .15s ease,border-color .15s ease,background .15s ease;
+}
+.tab svg{width:15px;height:15px}
+.tab:hover{color:var(--text-dim);background:var(--surface-3)}
+.tab.active{color:var(--green);border-bottom-color:var(--green);text-shadow:0 0 5px rgba(57,255,20,.4)}
+.tab .count{font-family:var(--display);font-size:15px;padding:0 5px;color:var(--cyan)}
+
+.dock-body{flex:1;overflow:auto;min-height:0}
+.panel{display:none;flex-direction:column;height:100%}
+.panel.active{display:flex}
+
+/* ---- Lead chat ---- */
+.chat{flex:1;overflow:auto;padding:var(--s3);display:flex;flex-direction:column;gap:var(--s3)}
+.msg{display:flex;flex-direction:column;gap:4px;max-width:96%}
+.msg .who{font-size:9.5px;letter-spacing:1px;text-transform:uppercase;display:flex;align-items:center;gap:5px}
+.msg .who .dot{width:6px;height:6px}
+.msg .bubble{
+  padding:7px 10px;border-radius:var(--radius);font-size:12px;line-height:1.5;
+}
+.msg.you{align-self:flex-end;align-items:flex-end}
+.msg.you .who{color:var(--cyan)}
+.msg.you .bubble{background:var(--surface-3);border:1px solid var(--cyan-dim);color:var(--text)}
+.msg.lead{align-self:flex-start}
+.msg.lead .who{color:var(--green-soft)}
+.msg.lead .bubble{background:var(--surface-2);border:1px solid var(--panel-line);color:var(--text)}
+
+.toolcalls{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
+.chip{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:10.5px;font-weight:600;
+  padding:3px 8px;border-radius:2px;
+  border:1px solid var(--panel-line);
+  background:var(--bg-deep);
+  color:var(--text-dim);
+  transition:border-color .15s ease,color .15s ease;
+}
+.chip:hover{border-color:var(--cyan-dim);color:var(--cyan)}
+.chip svg{width:12px;height:12px}
+.chip .fn{color:var(--green)}
+.chip.ok .fn{color:var(--green)}
+.chip.warn{border-color:rgba(255,176,0,.4)}
+.chip.warn .fn{color:var(--amber)}
+
+.chat-input{
+  flex:none;border-top:1px solid var(--panel-line);padding:var(--s3);
+  display:flex;gap:var(--s2);align-items:flex-end;background:var(--surface);
+}
+.chat-input textarea{
+  flex:1;resize:none;height:38px;
+  background:var(--bg-deep);border:1px solid var(--panel-line);border-radius:var(--radius);
+  color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 10px;
+}
+.chat-input textarea::placeholder{color:var(--text-faint)}
+.chat-input textarea:focus{border-color:var(--cyan-dim)}
+.send{
+  height:38px;width:40px;flex:none;display:grid;place-items:center;
+  background:var(--green);color:var(--bg-deep);border-radius:var(--radius);
+  transition:background .15s ease,box-shadow .15s ease;box-shadow:0 0 10px rgba(57,255,20,.25);
+}
+.send:hover{background:var(--green-soft)}
+.send svg{width:18px;height:18px}
+
+/* ---- Tasks kanban ---- */
+.tasks{padding:var(--s3);display:flex;flex-direction:column;gap:var(--s4)}
+.tcol{display:flex;flex-direction:column;gap:var(--s2)}
+.tcol > .ch{display:flex;align-items:center;gap:7px;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-faint);padding-bottom:3px;border-bottom:1px solid var(--panel-line-soft)}
+.tcol > .ch .n{font-family:var(--display);font-size:15px;color:var(--text-dim);margin-left:auto}
+.tcol .ch .sq{width:8px;height:8px;border-radius:1px}
+.sq.todo{background:var(--text-faint)}
+.sq.running{background:var(--green);box-shadow:var(--glow-green)}
+.sq.review{background:var(--amber);box-shadow:var(--glow-amber)}
+.sq.done{background:var(--cyan)}
+.task-card{
+  text-align:left;width:100%;
+  background:var(--surface-2);border:1px solid var(--panel-line);border-left-width:3px;
+  border-radius:var(--radius);padding:7px 9px;
+  display:flex;flex-direction:column;gap:5px;
+  transition:border-color .15s ease,background .15s ease,transform .15s ease;
+}
+.task-card:hover{background:var(--surface-3);border-color:var(--cyan-dim)}
+.task-card.s-todo{border-left-color:var(--text-faint)}
+.task-card.s-running{border-left-color:var(--green)}
+.task-card.s-review{border-left-color:var(--amber)}
+.task-card.s-done{border-left-color:var(--cyan);opacity:.78}
+.task-card .tt{font-size:12px;font-weight:600;color:var(--text);line-height:1.35}
+.task-card .tt.strike{text-decoration:line-through;color:var(--text-dim)}
+.task-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:10px;color:var(--text-faint)}
+.assignee{display:inline-flex;align-items:center;gap:4px;color:var(--text-dim)}
+.assignee .av{
+  width:15px;height:15px;border-radius:2px;display:grid;place-items:center;
+  font-size:8px;font-weight:700;color:var(--bg-deep);background:var(--green);
+}
+.av.b{background:var(--cyan)} .av.c{background:var(--amber)} .av.d{background:var(--magenta)}
+.dep{display:inline-flex;align-items:center;gap:3px;color:var(--text-faint)}
+.dep svg{width:11px;height:11px}
+.task-id{color:var(--green-dim);font-weight:600}
+
+/* ============ ACTIVITY STRIP ============ */
+.activity{
+  grid-area:activity;
+  z-index:var(--z-panel);
+  background:linear-gradient(180deg,var(--surface),var(--bg-deep));
+  border-top:1px solid var(--panel-line);
+  display:flex;flex-direction:column;
+  max-height:188px;
+  transition:max-height .22s ease;
+}
+.activity.collapsed{max-height:34px}
+.act-head{
+  display:flex;align-items:center;gap:var(--s3);
+  padding:6px var(--s4);flex:none;
+  border-bottom:1px solid var(--panel-line-soft);
+}
+.act-head .at{display:flex;align-items:center;gap:7px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);font-weight:700}
+.act-head .at svg{width:14px;height:14px;color:var(--cyan)}
+.collapse-btn{margin-left:auto;display:inline-flex;align-items:center;gap:5px;color:var(--text-faint);font-size:11px;padding:3px 7px;border-radius:2px;transition:color .15s ease,background .15s ease}
+.collapse-btn:hover{color:var(--text);background:var(--surface-3)}
+.collapse-btn svg{width:14px;height:14px;transition:transform .2s ease}
+.activity.collapsed .collapse-btn svg{transform:rotate(180deg)}
+
+.filters{display:flex;gap:5px}
+.filter-chip{
+  font-size:10px;letter-spacing:.5px;padding:2px 8px;border-radius:10px;
+  border:1px solid var(--panel-line);color:var(--text-faint);
+  transition:color .15s ease,border-color .15s ease,background .15s ease;
+}
+.filter-chip:hover{color:var(--text-dim);border-color:var(--cyan-dim)}
+.filter-chip.on{color:var(--green);border-color:var(--green-dim);background:rgba(57,255,20,.08)}
+
+.act-log{flex:1;overflow:auto;padding:5px var(--s4) var(--s3);font-size:11.5px}
+.act-line{display:flex;align-items:baseline;gap:8px;padding:2px 0;white-space:nowrap}
+.act-line .ts{color:var(--text-faint);font-variant-numeric:tabular-nums;flex:none}
+.act-line .from{color:var(--green-soft);font-weight:600}
+.act-line .arrow{color:var(--text-faint)}
+.act-line .to{color:var(--cyan);font-weight:600}
+.act-line .ev{color:var(--text-dim);overflow:hidden;text-overflow:ellipsis}
+.act-line .tag{font-size:9px;border:1px solid var(--panel-line);border-radius:2px;padding:0 5px;color:var(--text-faint);flex:none}
+.act-line .tag.merge{color:var(--magenta);border-color:rgba(255,95,210,.4)}
+.act-line .tag.gate{color:var(--amber);border-color:rgba(255,176,0,.4)}
+.act-line .tag.error{color:var(--red-soft);border-color:rgba(255,90,82,.4)}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation:none !important;transition:none !important}
+}
+</style>
+</head>
+<body>
+<div class="crt-overlay" aria-hidden="true"></div>
+
+<div class="app">
+
+  <!-- ===================== TOP COMMAND BAR ===================== -->
+  <header class="topbar">
+    <div class="wordmark">MAE<span>STRO</span></div>
+
+    <div class="proj">
+      <span class="pname">payments-core</span>
+      <span class="branch" title="git worktree / branch">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/><circle cx="18" cy="6" r="3"/></svg>
+        feat/ledger-refactor
+      </span>
+      <span class="worktree">wt: ../wt-ledger · 4 ahead</span>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="actions">
+      <button class="btn primary" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        New agent
+      </button>
+      <button class="btn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9V3z"/></svg>
+        Run template
+      </button>
+      <button class="btn icon-only" type="button" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+
+    <div class="readouts">
+      <div class="meter">
+        <span class="lbl">RAM</span>
+        <div class="row"><span class="lcd green" id="ramLcd">38.6</span><span class="unit">/64 GB</span></div>
+        <div class="bar"><i class="g" style="width:60%"></i></div>
+      </div>
+      <div class="meter">
+        <span class="lbl">CPU</span>
+        <div class="row"><span class="lcd cyan" id="cpuLcd">71</span><span class="unit">%</span></div>
+        <div class="bar"><i class="c" style="width:71%"></i></div>
+      </div>
+      <div class="meter">
+        <span class="lbl">GPU</span>
+        <div class="row"><span class="lcd amber" id="gpuLcd">44</span><span class="unit">%</span></div>
+        <div class="bar"><i class="a" style="width:44%"></i></div>
+      </div>
+      <div class="meter" style="min-width:78px">
+        <span class="lbl">Session cost</span>
+        <div class="row"><span class="unit" style="font-size:13px;color:var(--amber-soft)">$</span><span class="lcd amber" id="costLcd">14.82</span></div>
+        <div class="bar"><i class="a" style="width:33%"></i></div>
+      </div>
+    </div>
+
+    <div class="stat-pill">
+      <span class="lbl">Agents active</span>
+      <div class="agentline">
+        <span class="dot run pulse"></span>
+        <span class="lcd green" style="font-size:18px">07</span>
+        <span class="unit" style="color:var(--text-faint)">/ 11</span>
+        <span class="clock" id="clock" style="margin-left:10px">--:--:--</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================== MAIN PANE GRID ===================== -->
+  <main class="main">
+    <section class="grid">
+
+      <!-- FOCUSED pane -->
+      <article class="pane focused">
+        <div class="phead">
+          <span class="dot run pulse" title="running"></span>
+          <span class="name">orchestra-lead</span>
+          <span class="badge cc">Claude Code</span>
+          <span class="spacer"></span>
+          <span class="tok"><b>128.4k</b> tok · <span class="cost">$3.12</span></span>
+          <div class="pctrls">
+            <button class="pctrl" aria-label="Minimize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+            <button class="pctrl" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="1"/></svg></button>
+            <button class="pctrl close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="pbody" id="focusBody">
+          <div class="ln"><span class="prompt">lead@payments ~/wt-ledger</span> <span class="di">$ analyze ledger double-entry invariants</span></div>
+          <div class="ln gl">▸ reading src/ledger/posting.rs (412 lines)</div>
+          <div class="ln gl">▸ reading src/ledger/balance.rs (188 lines)</div>
+          <div class="ln di">  found 3 invariant checks, 1 missing on reversal path</div>
+          <div class="ln am">⚠ planning fix: guard reversal against negative epoch</div>
+          <div class="ln cy">→ delegating to <b>ledger-fixer</b> · submit_prompt(scope=reversal)</div>
+          <div class="ln di" id="focusType"></div>
+        </div>
+      </article>
+
+      <!-- AWAITING APPROVAL pane -->
+      <article class="pane await">
+        <div class="phead">
+          <span class="dot await pulse" title="awaiting approval"></span>
+          <span class="name">migration-runner</span>
+          <span class="badge codex">Codex</span>
+          <span class="spacer"></span>
+          <span class="tok"><b>61.2k</b> tok · <span class="cost">$1.04</span></span>
+          <div class="pctrls">
+            <button class="pctrl" aria-label="Minimize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+            <button class="pctrl close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="pbody">
+          <div class="ln di">$ generate migration 0042_split_ledger</div>
+          <div class="ln gl">▸ wrote migrations/0042_split_ledger.up.sql</div>
+          <div class="ln rd">! requests permission: run destructive SQL</div>
+          <div class="gate">
+            <div class="gtitle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg> Awaiting approval</div>
+            <div class="gdesc">Apply <b>DROP TABLE ledger_legacy</b> against <span class="cy">payments_dev</span>? 1.2M rows affected.</div>
+            <div class="gactions">
+              <button class="gbtn ok" type="button">Approve</button>
+              <button class="gbtn no" type="button">Deny</button>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- running -->
+      <article class="pane">
+        <div class="phead">
+          <span class="dot run" title="running"></span>
+          <span class="name">ledger-fixer</span>
+          <span class="badge cc">Claude Code</span>
+          <span class="spacer"></span>
+          <span class="tok"><b>44.9k</b> · <span class="cost">$0.81</span></span>
+          <div class="pctrls">
+            <button class="pctrl" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="1"/></svg></button>
+            <button class="pctrl close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="pbody">
+          <div class="ln di">editing src/ledger/posting.rs</div>
+          <div class="ln"><span class="diff-add">+  if epoch &lt; 0 { return Err(Reversal::Underflow); }</span></div>
+          <div class="ln"><span class="diff-del">-  // TODO: guard epoch</span></div>
+          <div class="ln gl">✓ cargo check — 0 errors</div>
+          <div class="ln am">▸ running tests… 2 / 14</div>
+          <div class="ln cy">tok +1.2k · ctx 41%</div>
+        </div>
+      </article>
+
+      <!-- idle -->
+      <article class="pane">
+        <div class="phead">
+          <span class="dot idle" title="idle"></span>
+          <span class="name">doc-writer</span>
+          <span class="badge gemini">Gemini</span>
+          <span class="spacer"></span>
+          <span class="tok"><b>12.0k</b> · <span class="cost">$0.09</span></span>
+          <div class="pctrls">
+            <button class="pctrl" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="1"/></svg></button>
+            <button class="pctrl close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="pbody">
+          <div class="ln gl">✓ generated CHANGELOG section</div>
+          <div class="ln di">idle — awaiting merge of feat/ledger-refactor</div>
+          <div class="ln fa">last activity 4m 12s ago</div>
+          <div class="ln fa">queued: 1 task · update API.md</div>
+        </div>
+      </article>
+
+      <!-- error -->
+      <article class="pane err">
+        <div class="phead">
+          <span class="dot err" title="error"></span>
+          <span class="name">test-sharder</span>
+          <span class="badge aider">Aider</span>
+          <span class="spacer"></span>
+          <span class="tok"><b>33.1k</b> · <span class="cost">$0.40</span></span>
+          <div class="pctrls">
+            <button class="pctrl" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="1"/></svg></button>
+            <button class="pctrl close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="pbody">
+          <div class="ln di">$ pytest -n 8 tests/ledger</div>
+          <div class="ln rd">✗ FAILED tests/ledger/test_reversal.py::test_underflow</div>
+          <div class="ln rd">  AssertionError: expected Underflow, got Ok(())</div>
+          <div class="ln am">↻ retry 2/3 · re-syncing worktree…</div>
+          <div class="ln fa">exit 1 · 13 passed, 1 failed</div>
+        </div>
+      </article>
+
+      <!-- running -->
+      <article class="pane">
+        <div class="phead">
+          <span class="dot run" title="running"></span>
+          <span class="name">perf-profiler</span>
+          <span class="badge opencode">OpenCode</span>
+          <span class="spacer"></span>
+          <span class="tok"><b>27.7k</b> · <span class="cost">$0.33</span></span>
+          <div class="pctrls">
+            <button class="pctrl" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="1"/></svg></button>
+            <button class="pctrl close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="pbody">
+          <div class="ln di">$ cargo bench posting_throughput</div>
+          <div class="ln gl">post_entry        128 ns/iter (±6)</div>
+          <div class="ln gl">reverse_entry     203 ns/iter (±11)</div>
+          <div class="ln am">⚠ regression vs main: +14% on reverse path</div>
+          <div class="ln cy">▸ flamegraph → target/perf/rev.svg</div>
+        </div>
+      </article>
+
+      <!-- running -->
+      <article class="pane">
+        <div class="phead">
+          <span class="dot run" title="running"></span>
+          <span class="name">schema-guard</span>
+          <span class="badge codex">Codex</span>
+          <span class="spacer"></span>
+          <span class="tok"><b>18.5k</b> · <span class="cost">$0.21</span></span>
+          <div class="pctrls">
+            <button class="pctrl" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="1"/></svg></button>
+            <button class="pctrl close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="pbody">
+          <div class="ln di">$ verify schema drift</div>
+          <div class="ln gl">▸ diffing models vs migrations</div>
+          <div class="ln gl">✓ 3 tests passed</div>
+          <div class="ln gl">✓ no drift detected on 24 tables</div>
+          <div class="ln fa">watching migrations/ …</div>
+        </div>
+      </article>
+
+      <!-- idle -->
+      <article class="pane">
+        <div class="phead">
+          <span class="dot idle" title="idle"></span>
+          <span class="name">security-auditor</span>
+          <span class="badge cc">Claude Code</span>
+          <span class="spacer"></span>
+          <span class="tok"><b>9.8k</b> · <span class="cost">$0.07</span></span>
+          <div class="pctrls">
+            <button class="pctrl" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="1"/></svg></button>
+            <button class="pctrl close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="pbody">
+          <div class="ln gl">✓ no hardcoded secrets found</div>
+          <div class="ln gl">✓ deps scan clean (0 advisories)</div>
+          <div class="ln di">idle — scheduled re-scan in 18m</div>
+          <div class="ln fa">hooked to pre-merge gate</div>
+        </div>
+      </article>
+
+      <!-- running -->
+      <article class="pane">
+        <div class="phead">
+          <span class="dot run" title="running"></span>
+          <span class="name">api-contract</span>
+          <span class="badge gemini">Gemini</span>
+          <span class="spacer"></span>
+          <span class="tok"><b>21.3k</b> · <span class="cost">$0.16</span></span>
+          <div class="pctrls">
+            <button class="pctrl" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="1"/></svg></button>
+            <button class="pctrl close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="pbody">
+          <div class="ln di">$ validate openapi/payments.yaml</div>
+          <div class="ln gl">▸ 41 paths · 96 schemas</div>
+          <div class="ln am">⚠ breaking: removed field `legacy_id`</div>
+          <div class="ln cy">→ broadcast to consumers (3)</div>
+          <div class="ln fa">generating client stubs…</div>
+        </div>
+      </article>
+
+      <!-- running -->
+      <article class="pane">
+        <div class="phead">
+          <span class="dot run" title="running"></span>
+          <span class="name">merge-sentinel</span>
+          <span class="badge opencode">OpenCode</span>
+          <span class="spacer"></span>
+          <span class="tok"><b>15.6k</b> · <span class="cost">$0.11</span></span>
+          <div class="pctrls">
+            <button class="pctrl" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="1"/></svg></button>
+            <button class="pctrl close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="pbody">
+          <div class="ln di">$ watch CI gates · feat/ledger-refactor</div>
+          <div class="ln gl">✓ lint  ✓ typecheck  ✓ unit</div>
+          <div class="ln am">○ e2e   ○ perf-gate (pending)</div>
+          <div class="ln fa">auto-merge armed · 2 gates remaining</div>
+        </div>
+      </article>
+
+      <!-- + spawn tile -->
+      <button class="spawn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+        <span class="t">spawn agent</span>
+        <span class="sub">pick adapter · attach worktree</span>
+      </button>
+
+    </section>
+  </main>
+
+  <!-- ===================== RIGHT DOCK ===================== -->
+  <aside class="dock">
+    <div class="dock-tabs" role="tablist">
+      <button class="tab active" role="tab" aria-selected="true" data-panel="lead">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Lead
+      </button>
+      <button class="tab" role="tab" aria-selected="false" data-panel="tasks">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Tasks <span class="count">9</span>
+      </button>
+    </div>
+
+    <div class="dock-body">
+      <!-- LEAD -->
+      <section class="panel active" id="panel-lead" role="tabpanel">
+        <div class="chat">
+          <div class="msg you">
+            <span class="who"><span class="dot idle"></span>you</span>
+            <div class="bubble">Refactor the ledger to use double-entry. Spin up specialists, run the full verification suite, and don't merge without my OK on destructive migrations.</div>
+          </div>
+
+          <div class="msg lead">
+            <span class="who"><span class="dot run"></span>orchestra-lead · Claude Code</span>
+            <div class="bubble">Understood. Decomposing into 9 tasks and assigning agents. I'll hold the migration behind an approval gate.</div>
+            <div class="toolcalls">
+              <span class="chip ok" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span class="fn">spawn_agent</span> ×4</span>
+              <span class="chip ok" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg><span class="fn">submit_prompt</span> ledger-fixer</span>
+            </div>
+          </div>
+
+          <div class="msg lead">
+            <span class="who"><span class="dot run"></span>orchestra-lead</span>
+            <div class="bubble">ledger-fixer patched the reversal underflow. Kicking off verification across unit + bench.</div>
+            <div class="toolcalls">
+              <span class="chip ok" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span class="fn">run_verification</span> suite=full</span>
+              <span class="chip ok" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16M5 19a1 1 0 1 0 0 .01"/></svg><span class="fn">broadcast</span> consumers ×3</span>
+            </div>
+          </div>
+
+          <div class="msg you">
+            <span class="who"><span class="dot idle"></span>you</span>
+            <div class="bubble">Why is the reverse path 14% slower? Investigate before we merge.</div>
+          </div>
+
+          <div class="msg lead">
+            <span class="who"><span class="dot await pulse"></span>orchestra-lead</span>
+            <div class="bubble">perf-profiler flagged it too — likely the extra epoch guard branch. Assigning a micro-optimization task and pausing auto-merge.</div>
+            <div class="toolcalls">
+              <span class="chip warn" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg><span class="fn">merge</span> blocked · gate</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-input">
+          <textarea placeholder="Message orchestra-lead…  (⌘↵ to send)" aria-label="Message the orchestrator"></textarea>
+          <button class="send" type="button" aria-label="Send message">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>
+          </button>
+        </div>
+      </section>
+
+      <!-- TASKS -->
+      <section class="panel" id="panel-tasks" role="tabpanel">
+        <div class="tasks">
+
+          <div class="tcol">
+            <div class="ch"><span class="sq running"></span> Running <span class="n">3</span></div>
+            <button class="task-card s-running" type="button">
+              <span class="tt">Patch reversal underflow guard</span>
+              <div class="task-meta">
+                <span class="task-id">T-204</span>
+                <span class="assignee"><span class="av">L</span> ledger-fixer</span>
+              </div>
+            </button>
+            <button class="task-card s-running" type="button">
+              <span class="tt">Profile reverse_entry regression</span>
+              <div class="task-meta">
+                <span class="task-id">T-207</span>
+                <span class="assignee"><span class="av c">P</span> perf-profiler</span>
+                <span class="dep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>T-204</span>
+              </div>
+            </button>
+            <button class="task-card s-running" type="button">
+              <span class="tt">Validate OpenAPI contract drift</span>
+              <div class="task-meta">
+                <span class="task-id">T-210</span>
+                <span class="assignee"><span class="av d">A</span> api-contract</span>
+              </div>
+            </button>
+          </div>
+
+          <div class="tcol">
+            <div class="ch"><span class="sq review"></span> Review <span class="n">2</span></div>
+            <button class="task-card s-review" type="button">
+              <span class="tt">Apply 0042 split-ledger migration</span>
+              <div class="task-meta">
+                <span class="task-id">T-205</span>
+                <span class="assignee"><span class="av b">M</span> migration-runner</span>
+                <span class="dep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>T-204</span>
+              </div>
+            </button>
+            <button class="task-card s-review" type="button">
+              <span class="tt">Fix failing test_underflow shard</span>
+              <div class="task-meta">
+                <span class="task-id">T-208</span>
+                <span class="assignee"><span class="av c">T</span> test-sharder</span>
+              </div>
+            </button>
+          </div>
+
+          <div class="tcol">
+            <div class="ch"><span class="sq todo"></span> Todo <span class="n">2</span></div>
+            <button class="task-card s-todo" type="button">
+              <span class="tt">Micro-optimize epoch guard branch</span>
+              <div class="task-meta">
+                <span class="task-id">T-211</span>
+                <span class="assignee"><span class="av">?</span> unassigned</span>
+                <span class="dep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>T-207</span>
+              </div>
+            </button>
+            <button class="task-card s-todo" type="button">
+              <span class="tt">Update API.md + CHANGELOG</span>
+              <div class="task-meta">
+                <span class="task-id">T-212</span>
+                <span class="assignee"><span class="av d">D</span> doc-writer</span>
+                <span class="dep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>T-210</span>
+              </div>
+            </button>
+          </div>
+
+          <div class="tcol">
+            <div class="ch"><span class="sq done"></span> Done <span class="n">2</span></div>
+            <button class="task-card s-done" type="button">
+              <span class="tt strike">Audit secrets + dependency CVEs</span>
+              <div class="task-meta">
+                <span class="task-id">T-201</span>
+                <span class="assignee"><span class="av">S</span> security-auditor</span>
+              </div>
+            </button>
+            <button class="task-card s-done" type="button">
+              <span class="tt strike">Verify schema drift on 24 tables</span>
+              <div class="task-meta">
+                <span class="task-id">T-202</span>
+                <span class="assignee"><span class="av b">G</span> schema-guard</span>
+              </div>
+            </button>
+          </div>
+
+        </div>
+      </section>
+    </div>
+  </aside>
+
+  <!-- ===================== ACTIVITY STRIP ===================== -->
+  <section class="activity" id="activity">
+    <div class="act-head">
+      <span class="at">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        Activity · inter-agent messages
+      </span>
+      <div class="filters">
+        <button class="filter-chip on" type="button">all</button>
+        <button class="filter-chip" type="button">delegations</button>
+        <button class="filter-chip" type="button">gates</button>
+        <button class="filter-chip" type="button">merges</button>
+        <button class="filter-chip" type="button">errors</button>
+      </div>
+      <button class="collapse-btn" id="collapseBtn" type="button" aria-expanded="true">
+        collapse
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+    </div>
+    <div class="act-log" id="actLog">
+      <div class="act-line"><span class="ts">14:32:07</span><span class="from">orchestra-lead</span><span class="arrow">→</span><span class="to">ledger-fixer</span><span class="ev">submit_prompt: guard reversal underflow on epoch &lt; 0</span><span class="tag">delegation</span></div>
+      <div class="act-line"><span class="ts">14:32:51</span><span class="from">ledger-fixer</span><span class="arrow">→</span><span class="to">schema-guard</span><span class="ev">request: confirm posting.rs column mapping unchanged</span></div>
+      <div class="act-line"><span class="ts">14:33:18</span><span class="from">schema-guard</span><span class="arrow">→</span><span class="to">ledger-fixer</span><span class="ev">ack: 24 tables clean, no drift</span></div>
+      <div class="act-line"><span class="ts">14:34:02</span><span class="from">api-contract</span><span class="arrow">→</span><span class="to">broadcast</span><span class="ev">breaking change: removed field legacy_id → 3 consumers notified</span></div>
+      <div class="act-line"><span class="ts">14:35:44</span><span class="from">migration-runner</span><span class="arrow">→</span><span class="to">you</span><span class="ev">awaiting approval: DROP TABLE ledger_legacy (1.2M rows)</span><span class="tag gate">gate</span></div>
+      <div class="act-line"><span class="ts">14:36:09</span><span class="from">test-sharder</span><span class="arrow">→</span><span class="to">orchestra-lead</span><span class="ev">test_underflow FAILED — expected Underflow, got Ok(())</span><span class="tag error">error</span></div>
+      <div class="act-line"><span class="ts">14:37:21</span><span class="from">perf-profiler</span><span class="arrow">→</span><span class="to">orchestra-lead</span><span class="ev">regression report: reverse_entry +14% (203ns/iter)</span></div>
+      <div class="act-line"><span class="ts">14:38:55</span><span class="from">merge-sentinel</span><span class="arrow">→</span><span class="to">orchestra-lead</span><span class="ev">auto-merge paused: 2 gates pending (e2e, perf-gate)</span><span class="tag merge">merge</span></div>
+      <div class="act-line"><span class="ts">14:39:40</span><span class="from">orchestra-lead</span><span class="arrow">→</span><span class="to">doc-writer</span><span class="ev">queued: update API.md after T-210 completes</span><span class="tag">delegation</span></div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function(){
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* live clock */
+  var clock = document.getElementById('clock');
+  function tick(){
+    var d = new Date();
+    var p = function(n){ return String(n).padStart(2,'0'); };
+    clock.textContent = p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+  }
+  tick(); setInterval(tick, 1000);
+
+  /* dock tabs */
+  var tabs = document.querySelectorAll('.tab');
+  tabs.forEach(function(t){
+    t.addEventListener('click', function(){
+      tabs.forEach(function(x){ x.classList.remove('active'); x.setAttribute('aria-selected','false'); });
+      t.classList.add('active'); t.setAttribute('aria-selected','true');
+      document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('active'); });
+      document.getElementById('panel-'+t.dataset.panel).classList.add('active');
+    });
+  });
+
+  /* collapse activity */
+  var act = document.getElementById('activity');
+  var cb = document.getElementById('collapseBtn');
+  cb.addEventListener('click', function(){
+    var collapsed = act.classList.toggle('collapsed');
+    cb.setAttribute('aria-expanded', String(!collapsed));
+    cb.childNodes[0].nodeValue = collapsed ? 'expand ' : 'collapse ';
+  });
+
+  /* fake terminal typing in focused pane */
+  var el = document.getElementById('focusType');
+  var body = document.getElementById('focusBody');
+  var lines = [
+    'ledger-fixer> applying patch to posting.rs…',
+    'ledger-fixer> + epoch guard added (3 call-sites)',
+    'ledger-fixer> running cargo test ledger::reversal',
+    '  ✓ test_basic_post … ok',
+    '  ✓ test_reverse … ok',
+    '  ✓ 3 tests passed · 0.41s',
+    'lead> verification green on unit; perf gate pending',
+    'lead> holding merge for your approval on T-205'
+  ];
+  var li = 0, ci = 0;
+  function type(){
+    if(reduce){ // render instantly, no animation
+      lines.forEach(function(l){ var d=document.createElement('div'); d.className='ln gl'; d.textContent=l; body.insertBefore(d, el); });
+      el.innerHTML = '<span class="prompt">lead@payments ~/wt-ledger</span> $ <span class="cursor"></span>';
+      return;
+    }
+    if(li >= lines.length){
+      el.innerHTML = '<span class="prompt">lead@payments ~/wt-ledger</span> $ <span class="cursor"></span>';
+      return;
+    }
+    var line = lines[li];
+    el.textContent = line.slice(0, ci);
+    ci++;
+    if(ci > line.length){
+      var done = document.createElement('div');
+      done.className = 'ln ' + (line.indexOf('✓') > -1 ? 'gl' : (line.indexOf('lead>') === 0 ? 'cy' : 'di'));
+      done.textContent = line;
+      body.insertBefore(done, el);
+      body.scrollTop = body.scrollHeight;
+      li++; ci = 0;
+      setTimeout(type, 360);
+    } else {
+      setTimeout(type, 16 + Math.random()*26);
+    }
+  }
+  setTimeout(type, 600);
+
+  /* subtle live readout jitter (LCD feel) */
+  if(!reduce){
+    var cpu = document.getElementById('cpuLcd');
+    var gpu = document.getElementById('gpuLcd');
+    var ram = document.getElementById('ramLcd');
+    var cost = document.getElementById('costLcd');
+    var c = 14.82;
+    setInterval(function(){
+      cpu.textContent = String(64 + Math.floor(Math.random()*14));
+      gpu.textContent = String(38 + Math.floor(Math.random()*16));
+      ram.textContent = (37 + Math.random()*4).toFixed(1);
+      c += Math.random()*0.04;
+      cost.textContent = c.toFixed(2);
+    }, 2200);
+  }
+})();
+</script>
+</body>
+</html>

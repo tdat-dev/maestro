@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MAESTRO // MISSION CONTROL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet" />
+<style>
+  /* ============================================================
+     MAESTRO — TACTICAL INDUSTRIAL OPS CONSOLE
+     Direction A: defense ops / flight telemetry aesthetic
+     ============================================================ */
+
+  :root {
+    /* --- palette --- */
+    --bg:            #0a0b0d;
+    --bg-grid:       rgba(255,255,255,0.022);
+    --surface-0:     #0d0f12;
+    --surface-1:     #101216;
+    --surface-2:     #15181d;
+    --surface-3:     #1b1f25;
+    --hairline:      #23272e;
+    --hairline-soft: #1a1d22;
+    --hairline-hot:  #34393f;
+
+    /* text — all >= 4.5:1 on their surfaces */
+    --text:          #e6e9ec;   /* primary body */
+    --text-dim:      #aab1ba;   /* secondary, still >=4.5 on surface-1 */
+    --text-faint:    #7e868f;   /* micro-labels, >=4.5 on surface-0/1 */
+
+    /* accents */
+    --amber:         #ffb000;   /* signal amber — primary */
+    --amber-dim:     #b87f10;
+    --amber-bg:      rgba(255,176,0,0.10);
+    --red:           #ff3b30;   /* hard alert */
+    --red-bg:        rgba(255,59,48,0.12);
+    --green:         #3ecf8e;   /* running */
+    --green-dim:     #2a8f63;
+    --cyan:          #45c7d8;   /* idle / info */
+    --cyan-dim:      #2d8895;
+    --violet:        #9b8cff;   /* lead / orchestrator */
+
+    /* status */
+    --st-running:    var(--green);
+    --st-idle:       var(--cyan);
+    --st-await:      var(--amber);
+    --st-error:      var(--red);
+
+    /* spacing scale */
+    --sp-1: 2px;
+    --sp-2: 4px;
+    --sp-3: 6px;
+    --sp-4: 8px;
+    --sp-5: 12px;
+    --sp-6: 16px;
+    --sp-7: 20px;
+    --sp-8: 28px;
+
+    /* radii — sharp */
+    --r-0: 0px;
+    --r-1: 1px;
+    --r-2: 2px;
+
+    /* type */
+    --mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', monospace;
+    --disp: 'Saira Condensed', 'JetBrains Mono', sans-serif;
+
+    /* z-index scale */
+    --z-base:    0;
+    --z-pane:    10;
+    --z-focus:   20;
+    --z-dock:    30;
+    --z-topbar:  40;
+    --z-overlay: 50;
+    --z-toast:   60;
+
+    --topbar-h: 52px;
+    --activity-h: 168px;
+    --dock-w: 360px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow: hidden;
+  }
+
+  /* graph-paper / dotted texture */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-base);
+    pointer-events: none;
+    background-image:
+      linear-gradient(var(--bg-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px),
+      radial-gradient(circle, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 64px 64px, 64px 64px, 16px 16px;
+    background-position: 0 0, 0 0, 0 0;
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--surface-0); }
+  ::-webkit-scrollbar-thumb { background: #2a2f36; border: 2px solid var(--surface-0); }
+  ::-webkit-scrollbar-thumb:hover { background: #3a4047; }
+
+  /* micro-label utility */
+  .ml {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  /* focus-visible rings everywhere */
+  a, button, input, [tabindex] { outline: none; }
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 1px;
+    z-index: var(--z-focus);
+  }
+
+  button { font-family: inherit; cursor: pointer; }
+
+  /* ================= APP SHELL ================= */
+  .app {
+    display: grid;
+    grid-template-rows: var(--topbar-h) 1fr;
+    height: 100vh;
+    position: relative;
+    z-index: var(--z-pane);
+  }
+
+  /* ================= TOP COMMAND BAR ================= */
+  .topbar {
+    grid-row: 1;
+    z-index: var(--z-topbar);
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    height: var(--topbar-h);
+    background: linear-gradient(180deg, #111418, #0c0e11);
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .topbar > section {
+    display: flex;
+    align-items: center;
+    border-right: 1px solid var(--hairline-soft);
+    padding: 0 var(--sp-5);
+    gap: var(--sp-5);
+  }
+  .topbar > section:last-child { border-right: none; }
+
+  .brand {
+    gap: var(--sp-4);
+    padding-left: var(--sp-6);
+    background:
+      linear-gradient(90deg, rgba(255,176,0,0.06), transparent);
+  }
+  .brand .logo {
+    width: 24px; height: 24px;
+    color: var(--amber);
+    flex: none;
+  }
+  .wordmark {
+    font-family: var(--disp);
+    font-weight: 700;
+    font-size: 23px;
+    letter-spacing: 0.16em;
+    line-height: 1;
+    color: var(--text);
+    text-transform: uppercase;
+  }
+  .wordmark b { color: var(--amber); }
+  .brand .build {
+    font-size: 9px; letter-spacing: 0.1em;
+    color: var(--text-faint);
+    border: 1px solid var(--hairline);
+    padding: 1px 4px;
+    border-radius: var(--r-1);
+  }
+
+  .ctx { gap: var(--sp-6); flex: none; }
+  .ctx .field { display: flex; flex-direction: column; gap: 1px; }
+  .ctx .field .val {
+    display: flex; align-items: center; gap: var(--sp-3);
+    font-size: 12.5px; font-weight: 500; color: var(--text);
+  }
+  .ctx svg { width: 14px; height: 14px; color: var(--text-dim); flex: none; }
+  .branch-chip {
+    display: inline-flex; align-items: center; gap: var(--sp-2);
+    font-size: 11.5px; color: var(--amber);
+    background: var(--amber-bg);
+    border: 1px solid rgba(255,176,0,0.28);
+    padding: 1px 6px; border-radius: var(--r-2);
+  }
+
+  .actions { gap: var(--sp-3); flex: none; }
+  .btn {
+    display: inline-flex; align-items: center; gap: var(--sp-3);
+    background: var(--surface-2);
+    border: 1px solid var(--hairline);
+    color: var(--text-dim);
+    padding: 6px 10px;
+    border-radius: var(--r-2);
+    font-size: 11px; font-weight: 500;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+  }
+  .btn svg { width: 15px; height: 15px; flex: none; }
+  .btn:hover { background: var(--surface-3); border-color: var(--hairline-hot); color: var(--text); }
+  .btn.primary {
+    background: var(--amber);
+    color: #1a1200;
+    border-color: var(--amber);
+    font-weight: 700;
+  }
+  .btn.primary:hover { background: #ffc233; }
+
+  .telemetry {
+    margin-left: auto;
+    gap: var(--sp-6);
+    flex: none;
+    border-left: 1px solid var(--hairline-soft);
+  }
+  .meter { display: flex; flex-direction: column; gap: 3px; min-width: 86px; }
+  .meter .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .meter .num { font-size: 12px; font-weight: 700; color: var(--text); }
+  .meter .num.warn { color: var(--amber); }
+  .meter .num.crit { color: var(--red); }
+  .bar {
+    height: 4px; background: var(--surface-3);
+    border: 1px solid var(--hairline-soft);
+    border-radius: var(--r-1); overflow: hidden;
+    position: relative;
+  }
+  .bar > span {
+    position: absolute; inset: 0 auto 0 0;
+    background: var(--cyan);
+  }
+  .bar.amber > span { background: var(--amber); }
+  .bar.red > span { background: var(--red); }
+  .bar.green > span { background: var(--green); }
+
+  .stat-pod {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
+    padding-left: var(--sp-5);
+    border-left: 1px solid var(--hairline-soft);
+  }
+  .stat-pod .big {
+    font-family: var(--disp);
+    font-size: 21px; font-weight: 700; line-height: 1;
+    letter-spacing: 0.02em;
+  }
+  .stat-pod .big.cost { color: var(--amber); }
+  .stat-pod .big.agents { color: var(--green); }
+
+  .clock { display:flex; flex-direction:column; align-items:flex-end; gap:1px; padding-left: var(--sp-5); border-left:1px solid var(--hairline-soft);}
+  .clock .t { font-size: 13px; font-weight: 700; color: var(--text); letter-spacing: 0.05em; }
+
+  /* ================= BODY GRID ================= */
+  .body {
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: 1fr var(--dock-w);
+    grid-template-rows: 1fr auto;
+    min-height: 0;
+  }
+
+  .stage {
+    grid-column: 1; grid-row: 1 / span 2;
+    display: grid;
+    grid-template-rows: 1fr var(--activity-h);
+    min-height: 0; min-width: 0;
+  }
+  .stage.activity-collapsed { grid-template-rows: 1fr 34px; }
+
+  /* ---- pane grid ---- */
+  .pane-grid {
+    padding: var(--sp-5);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: 1fr;
+    gap: var(--sp-5);
+    overflow: auto;
+    min-height: 0;
+  }
+
+  /* ---- terminal pane ---- */
+  .pane {
+    display: flex; flex-direction: column;
+    background: var(--surface-1);
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-2);
+    overflow: hidden;
+    min-height: 168px;
+    position: relative;
+    z-index: var(--z-pane);
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+  }
+  .pane::before {
+    /* top status accent line */
+    content:""; position:absolute; top:0; left:0; right:0; height:2px;
+    background: var(--cur-status, var(--hairline)); opacity:.55;
+  }
+  .pane:hover { border-color: var(--hairline-hot); }
+
+  .pane.focused {
+    z-index: var(--z-focus);
+    border-color: var(--amber);
+    box-shadow: 0 0 0 1px var(--amber), 0 8px 30px rgba(0,0,0,0.55);
+  }
+  .pane.focused::before { opacity: 1; }
+
+  .pane.s-running  { --cur-status: var(--st-running); }
+  .pane.s-idle     { --cur-status: var(--st-idle); }
+  .pane.s-await    { --cur-status: var(--st-await); }
+  .pane.s-error    { --cur-status: var(--st-error); }
+
+  .pane-head {
+    display: flex; align-items: center; gap: var(--sp-4);
+    padding: var(--sp-3) var(--sp-4);
+    background: linear-gradient(180deg, var(--surface-2), var(--surface-1));
+    border-bottom: 1px solid var(--hairline-soft);
+    flex: none;
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex: none; background: var(--cur-status);
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.4), 0 0 6px var(--cur-status);
+  }
+  .dot.pulse { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.35;} }
+
+  .pane-name {
+    font-size: 12px; font-weight: 700; color: var(--text);
+    letter-spacing: 0.03em; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; max-width: 130px;
+  }
+  .badge {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 5px; border-radius: var(--r-1);
+    border: 1px solid var(--hairline-hot);
+    color: var(--text-dim);
+    background: var(--surface-3);
+    flex: none;
+  }
+  .badge.cc   { color:#d9a441; border-color:#5c4a1e; background:rgba(217,164,65,0.08); }
+  .badge.codex{ color:#7fd4c0; border-color:#235048; background:rgba(127,212,192,0.08); }
+  .badge.gem  { color:#7fa8ff; border-color:#26365e; background:rgba(127,168,255,0.08); }
+  .badge.oc   { color:#c79bff; border-color:#3e2c5e; background:rgba(199,155,255,0.08); }
+  .badge.aider{ color:#e08fb0; border-color:#5a2c3e; background:rgba(224,143,176,0.08); }
+
+  .pane-meta {
+    margin-left: auto;
+    display: flex; align-items: center; gap: var(--sp-4);
+    flex: none;
+  }
+  .counter { display:flex; flex-direction:column; align-items:flex-end; line-height:1.1; }
+  .counter .tok { font-size: 10px; color: var(--text-dim); font-weight:500; }
+  .counter .cost { font-size: 10px; color: var(--amber); font-weight:700; }
+
+  .pane-ctrls { display:flex; gap:1px; flex:none; }
+  .icbtn {
+    width: 20px; height: 20px;
+    display:grid; place-items:center;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-faint);
+    border-radius: var(--r-1);
+    transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+  }
+  .icbtn svg, .icbtn svg { width:13px; height:13px; }
+  .icbtn { display:grid; }
+  .icbtn:hover { color: var(--text); background: var(--surface-3); border-color: var(--hairline); }
+  .icbtn.danger:hover { color: var(--red); border-color: rgba(255,59,48,0.4); background: var(--red-bg); }
+
+  .term {
+    flex: 1; min-height: 0;
+    padding: var(--sp-4);
+    font-size: 11.5px; line-height: 1.5;
+    overflow: auto;
+    background:
+      repeating-linear-gradient(180deg, transparent 0 21px, rgba(255,255,255,0.012) 21px 22px),
+      var(--surface-0);
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .term .pr  { color: var(--green); }
+  .term .pr.cyan { color: var(--cyan); }
+  .term .pr.viol { color: var(--violet); }
+  .term .dim { color: var(--text-faint); }
+  .term .ok  { color: var(--green); }
+  .term .err { color: var(--red); }
+  .term .warn{ color: var(--amber); }
+  .term .path{ color: var(--cyan); }
+  .term .add { color: var(--green); }
+  .term .del { color: var(--red); }
+  .term .num { color: var(--amber); }
+  .term .txt { color: var(--text-dim); }
+  .cursor {
+    display:inline-block; width:7px; height:13px;
+    background: var(--amber); vertical-align: text-bottom;
+    animation: blink 1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* awaiting-approval gate */
+  .gate {
+    margin-top: var(--sp-3);
+    border: 1px solid rgba(255,176,0,0.5);
+    background: linear-gradient(180deg, rgba(255,176,0,0.10), rgba(255,176,0,0.03));
+    border-radius: var(--r-2);
+    padding: var(--sp-4);
+  }
+  .gate .gh {
+    display:flex; align-items:center; gap: var(--sp-3);
+    font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--amber);
+    margin-bottom: var(--sp-3);
+  }
+  .gate .gh svg { width:13px; height:13px; }
+  .gate .gd { color: var(--text); font-size: 11px; margin-bottom: var(--sp-4); }
+  .gate .gd code { color: var(--cyan); }
+  .gate-acts { display:flex; gap: var(--sp-3); }
+  .gbtn {
+    flex:1; padding: 6px; border-radius: var(--r-2);
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    border: 1px solid;
+    transition: background 150ms ease, color 150ms ease;
+  }
+  .gbtn.approve { background: var(--amber); color:#1a1200; border-color: var(--amber); }
+  .gbtn.approve:hover { background:#ffc233; }
+  .gbtn.deny { background: transparent; color: var(--red); border-color: rgba(255,59,48,0.5); }
+  .gbtn.deny:hover { background: var(--red-bg); }
+
+  /* spawn tile */
+  .spawn-tile {
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap: var(--sp-4);
+    background:
+      repeating-linear-gradient(135deg, transparent 0 9px, rgba(255,255,255,0.015) 9px 10px),
+      var(--surface-0);
+    border: 1px dashed var(--hairline-hot);
+    border-radius: var(--r-2);
+    color: var(--text-faint);
+    min-height: 168px;
+    transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+  }
+  .spawn-tile:hover { border-color: var(--amber); color: var(--amber); }
+  .spawn-tile svg { width: 30px; height: 30px; }
+  .spawn-tile .lbl { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+  .spawn-tile .sub { font-size: 9.5px; letter-spacing: 0.08em; }
+
+  /* ================= RIGHT DOCK ================= */
+  .dock {
+    grid-column: 2; grid-row: 1 / span 2;
+    z-index: var(--z-dock);
+    display: flex; flex-direction: column;
+    background: var(--surface-1);
+    border-left: 1px solid var(--hairline);
+    min-height: 0;
+  }
+  .dock-tabs {
+    display: flex; flex: none;
+    border-bottom: 1px solid var(--hairline);
+    background: var(--surface-0);
+  }
+  .tab {
+    flex: 1;
+    display:flex; align-items:center; justify-content:center; gap: var(--sp-3);
+    padding: 10px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-faint);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    transition: color 150ms ease, background 150ms ease, border-color 150ms ease;
+  }
+  .tab svg { width: 14px; height: 14px; }
+  .tab:hover { color: var(--text-dim); background: var(--surface-1); }
+  .tab.active { color: var(--amber); border-bottom-color: var(--amber); background: var(--surface-1); }
+  .tab .cnt {
+    font-size: 9px; background: var(--surface-3); color: var(--text-dim);
+    border:1px solid var(--hairline); padding: 0 4px; border-radius: 6px;
+  }
+  .tab.active .cnt { background: var(--amber-bg); color: var(--amber); border-color: rgba(255,176,0,0.3); }
+
+  .dock-panel { flex:1; min-height:0; display:none; flex-direction:column; }
+  .dock-panel.active { display:flex; }
+
+  /* ---- LEAD chat ---- */
+  .lead-id {
+    display:flex; align-items:center; gap: var(--sp-4);
+    padding: var(--sp-4) var(--sp-5);
+    border-bottom: 1px solid var(--hairline-soft);
+    background: linear-gradient(90deg, rgba(155,140,255,0.06), transparent);
+    flex: none;
+  }
+  .lead-av {
+    width: 28px; height:28px; border-radius: var(--r-2);
+    display:grid; place-items:center;
+    background: rgba(155,140,255,0.12);
+    border: 1px solid rgba(155,140,255,0.4);
+    color: var(--violet); flex:none;
+  }
+  .lead-av svg { width:16px;height:16px; }
+  .lead-id .nm { font-size: 12.5px; font-weight: 700; color: var(--text); }
+  .lead-id .st { font-size: 10px; color: var(--green); display:flex;align-items:center;gap:4px;}
+
+  .chat {
+    flex:1; min-height:0; overflow:auto;
+    padding: var(--sp-5);
+    display:flex; flex-direction:column; gap: var(--sp-5);
+  }
+  .msg { display:flex; flex-direction:column; gap: var(--sp-2); max-width: 100%; }
+  .msg .who {
+    font-size: 9px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase;
+    color: var(--text-faint); display:flex; gap: var(--sp-3); align-items:center;
+  }
+  .msg .bubble {
+    padding: var(--sp-4) var(--sp-5);
+    border-radius: var(--r-2);
+    font-size: 12px; line-height: 1.5; color: var(--text);
+    border: 1px solid var(--hairline);
+  }
+  .msg.you { align-items: flex-end; }
+  .msg.you .bubble { background: var(--surface-3); border-color: var(--hairline-hot); }
+  .msg.lead .bubble { background: var(--surface-2); border-left: 2px solid var(--violet); }
+  .msg .bubble code { color: var(--cyan); }
+
+  .toolcalls { display:flex; flex-direction:column; gap: var(--sp-2); margin-top: var(--sp-2); }
+  .chip {
+    display:flex; align-items:center; gap: var(--sp-3);
+    font-size: 10.5px;
+    padding: 4px 7px;
+    background: var(--surface-0);
+    border: 1px solid var(--hairline);
+    border-left: 2px solid var(--cyan);
+    border-radius: var(--r-1);
+    color: var(--text-dim);
+  }
+  .chip svg { width:12px; height:12px; color: var(--cyan); flex:none; }
+  .chip b { color: var(--text); font-weight:700; }
+  .chip .arg { color: var(--amber); }
+  .chip .res { margin-left:auto; font-size:9px; letter-spacing:0.08em; text-transform:uppercase; }
+  .chip .res.ok { color: var(--green); }
+  .chip .res.run { color: var(--amber); }
+  .chip.spawn { border-left-color: var(--green); } .chip.spawn svg { color: var(--green); }
+  .chip.merge { border-left-color: var(--amber); } .chip.merge svg { color: var(--amber); }
+  .chip.bcast { border-left-color: var(--violet);} .chip.bcast svg { color: var(--violet); }
+
+  .composer {
+    flex:none; border-top: 1px solid var(--hairline);
+    padding: var(--sp-4);
+    background: var(--surface-0);
+    display:flex; gap: var(--sp-3); align-items: flex-end;
+  }
+  .composer .inwrap { flex:1; display:flex; flex-direction:column; gap: var(--sp-2); }
+  .composer textarea {
+    width:100%; resize:none; height: 38px;
+    background: var(--surface-2);
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-2);
+    color: var(--text); font-family: var(--mono); font-size: 12px;
+    padding: 8px 10px;
+    transition: border-color 150ms ease;
+  }
+  .composer textarea:focus { border-color: var(--amber); }
+  .composer textarea::placeholder { color: var(--text-faint); }
+  .send {
+    width: 38px; height: 38px; flex:none;
+    background: var(--amber); border: 1px solid var(--amber);
+    border-radius: var(--r-2); color:#1a1200;
+    display:grid; place-items:center;
+    transition: background 150ms ease;
+  }
+  .send svg { width:18px;height:18px; }
+  .send:hover { background:#ffc233; }
+  .composer .targ {
+    display:flex; align-items:center; gap: var(--sp-3); font-size: 9px;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint);
+  }
+  .composer .targ b { color: var(--violet); }
+
+  /* ---- TASKS panel ---- */
+  .tasks { flex:1; min-height:0; overflow:auto; padding: var(--sp-5); display:flex; flex-direction:column; gap: var(--sp-6); }
+  .col-head {
+    display:flex; align-items:center; gap: var(--sp-3);
+    margin-bottom: var(--sp-3);
+  }
+  .col-head .cdot { width:7px;height:7px;border-radius:50%; }
+  .col-head .cnt { margin-left:auto; font-size:10px; color: var(--text-faint); font-weight:700; }
+  .task {
+    background: var(--surface-2);
+    border: 1px solid var(--hairline);
+    border-left: 2px solid var(--hairline-hot);
+    border-radius: var(--r-2);
+    padding: var(--sp-4);
+    margin-bottom: var(--sp-3);
+    transition: border-color 150ms ease, background 150ms ease;
+  }
+  .task:hover { border-color: var(--hairline-hot); background: var(--surface-3); }
+  .task.t-running { border-left-color: var(--green); }
+  .task.t-review  { border-left-color: var(--amber); }
+  .task.t-done    { border-left-color: var(--cyan); opacity: 0.72; }
+  .task.t-todo    { border-left-color: var(--text-faint); }
+  .task .tt { display:flex; align-items:flex-start; gap: var(--sp-3); }
+  .task .tid { font-size: 9.5px; color: var(--text-faint); font-weight:700; flex:none; }
+  .task .ttitle { font-size: 12px; color: var(--text); line-height:1.35; }
+  .task .tmeta { display:flex; align-items:center; gap: var(--sp-4); margin-top: var(--sp-3); flex-wrap:wrap; }
+  .assignee {
+    display:flex; align-items:center; gap: var(--sp-2);
+    font-size: 10px; color: var(--text-dim);
+  }
+  .assignee .av {
+    width:16px;height:16px;border-radius: var(--r-1);
+    display:grid;place-items:center;font-size:8px;font-weight:700;
+    background: var(--surface-3); border:1px solid var(--hairline-hot); color: var(--amber);
+  }
+  .dep {
+    font-size: 9px; letter-spacing:0.06em; color: var(--text-faint);
+    display:flex; align-items:center; gap:3px;
+  }
+  .dep svg { width:11px;height:11px; }
+  .dep b { color: var(--cyan); }
+
+  /* ================= ACTIVITY STRIP ================= */
+  .activity {
+    grid-column: 1; grid-row: 2;
+    z-index: var(--z-pane);
+    border-top: 1px solid var(--hairline);
+    background: var(--surface-0);
+    display:flex; flex-direction:column; min-height:0;
+  }
+  .act-bar {
+    flex:none; display:flex; align-items:center; gap: var(--sp-5);
+    padding: var(--sp-3) var(--sp-5);
+    border-bottom: 1px solid var(--hairline-soft);
+    background: linear-gradient(180deg, var(--surface-1), var(--surface-0));
+  }
+  .act-bar .title { display:flex; align-items:center; gap: var(--sp-3); }
+  .act-bar .title svg { width:15px;height:15px; color: var(--amber); }
+  .act-bar .title .ml { color: var(--text); font-size: 10.5px; }
+  .act-filters { display:flex; gap: var(--sp-3); margin-left: var(--sp-4); }
+  .fchip {
+    font-size: 9.5px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;
+    padding: 3px 8px; border-radius: 9px;
+    background: var(--surface-2); border:1px solid var(--hairline);
+    color: var(--text-faint);
+    transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
+  }
+  .fchip:hover { color: var(--text-dim); border-color: var(--hairline-hot); }
+  .fchip.on { color: var(--amber); border-color: rgba(255,176,0,0.4); background: var(--amber-bg); }
+  .act-collapse {
+    margin-left: auto;
+    display:flex; align-items:center; gap: var(--sp-3);
+    background: transparent; border:1px solid var(--hairline);
+    color: var(--text-dim); padding: 4px 8px; border-radius: var(--r-2);
+    font-size:10px; letter-spacing:0.08em; text-transform:uppercase; font-weight:700;
+    transition: border-color 150ms ease, color 150ms ease;
+  }
+  .act-collapse svg { width:13px;height:13px; transition: transform 200ms ease; }
+  .act-collapse:hover { color: var(--text); border-color: var(--hairline-hot); }
+  .activity.collapsed .act-collapse svg { transform: rotate(180deg); }
+
+  .act-feed {
+    flex:1; min-height:0; overflow:auto;
+    padding: var(--sp-3) var(--sp-5);
+    font-size: 11px; line-height: 1.7;
+  }
+  .activity.collapsed .act-feed { display:none; }
+  .act-line { display:flex; align-items:baseline; gap: var(--sp-4); white-space:nowrap; }
+  .act-line .ts { color: var(--text-faint); font-size: 10px; flex:none; width: 64px; }
+  .act-line .from { color: var(--amber); font-weight:700; }
+  .act-line .arrow { color: var(--text-faint); }
+  .act-line .to { color: var(--cyan); font-weight:700; }
+  .act-line .tag {
+    font-size:8.5px; letter-spacing:0.08em; text-transform:uppercase; font-weight:700;
+    padding:0 4px; border-radius: var(--r-1); border:1px solid var(--hairline);
+    color: var(--text-faint);
+  }
+  .act-line .tag.merge { color: var(--amber); border-color: rgba(255,176,0,0.3);}
+  .act-line .tag.fail  { color: var(--red); border-color: rgba(255,59,48,0.3);}
+  .act-line .tag.ok    { color: var(--green); border-color: rgba(62,207,142,0.3);}
+  .act-line .body { color: var(--text-dim); overflow:hidden; text-overflow:ellipsis; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+    .cursor { opacity: 1; }
+  }
+
+  @media (max-width: 1500px) {
+    .pane-grid { grid-template-columns: repeat(3, 1fr); }
+    .telemetry { gap: var(--sp-5); }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ TOP COMMAND BAR ============ -->
+  <header class="topbar">
+    <section class="brand">
+      <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 18V7l5 4 4-6 4 6 5-4v11"/><path d="M3 21h18"/>
+      </svg>
+      <div class="wordmark">MAE<b>S</b>TRO</div>
+      <span class="build">v2.4.1</span>
+    </section>
+
+    <section class="ctx">
+      <div class="field">
+        <span class="ml">Project</span>
+        <span class="val">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg>
+          orbital-control-plane
+        </span>
+      </div>
+      <div class="field">
+        <span class="ml">Worktree / Branch</span>
+        <span class="val">
+          <span class="branch-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 3-4 3.5-9 4"/></svg>
+            wt/feat-telemetry-v3
+          </span>
+        </span>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button class="btn primary" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        New Agent
+      </button>
+      <button class="btn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4l14 8-14 8V4z"/></svg>
+        Run Template
+      </button>
+      <button class="btn" type="button" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 0 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 2.6 14H2.5a2 2 0 0 1 0-4h.1A1.7 1.7 0 0 0 4.6 8a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 2.6V2.5a2 2 0 0 1 4 0v.1A1.7 1.7 0 0 0 17 4.6a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.6 1h.1a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1z"/></svg>
+        Settings
+      </button>
+    </section>
+
+    <section class="telemetry">
+      <div class="meter">
+        <div class="top"><span class="ml">RAM</span><span class="num">41.2 GB</span></div>
+        <div class="bar amber"><span style="width:64%"></span></div>
+      </div>
+      <div class="meter">
+        <div class="top"><span class="ml">CPU</span><span class="num warn">78%</span></div>
+        <div class="bar amber"><span style="width:78%"></span></div>
+      </div>
+      <div class="meter">
+        <div class="top"><span class="ml">GPU</span><span class="num crit">94%</span></div>
+        <div class="bar red"><span style="width:94%"></span></div>
+      </div>
+      <div class="stat-pod">
+        <span class="ml">Session Cost</span>
+        <span class="big cost">$38.74</span>
+      </div>
+      <div class="stat-pod">
+        <span class="ml">Active Agents</span>
+        <span class="big agents">9</span>
+      </div>
+      <div class="clock">
+        <span class="ml">UTC</span>
+        <span class="t" id="clock">--:--:--</span>
+      </div>
+    </section>
+  </header>
+
+  <!-- ============ BODY ============ -->
+  <div class="body">
+
+    <!-- ===== STAGE (panes + activity) ===== -->
+    <main class="stage" id="stage">
+      <div class="pane-grid">
+
+        <!-- PANE 1 — FOCUSED, running -->
+        <section class="pane s-running focused" tabindex="0" aria-label="Agent api-architect, running, focused">
+          <div class="pane-head">
+            <span class="dot pulse"></span>
+            <span class="pane-name">api-architect</span>
+            <span class="badge cc">Claude Code</span>
+            <div class="pane-meta">
+              <div class="counter"><span class="tok">214.8k tok</span><span class="cost">$11.92</span></div>
+              <div class="pane-ctrls">
+                <button class="icbtn" type="button" aria-label="Minimize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+                <button class="icbtn" type="button" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
+                <button class="icbtn danger" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <div class="term" id="term-focus"></div>
+        </section>
+
+        <!-- PANE 2 — awaiting approval -->
+        <section class="pane s-await" tabindex="0" aria-label="Agent migrator-db, awaiting approval">
+          <div class="pane-head">
+            <span class="dot pulse"></span>
+            <span class="pane-name">migrator-db</span>
+            <span class="badge codex">Codex</span>
+            <div class="pane-meta">
+              <div class="counter"><span class="tok">96.1k tok</span><span class="cost">$4.18</span></div>
+              <div class="pane-ctrls">
+                <button class="icbtn" type="button" aria-label="Minimize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+                <button class="icbtn" type="button" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
+                <button class="icbtn danger" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <div class="term">
+<span class="pr cyan">codex&gt;</span> <span class="txt">planning schema migration 0042</span>
+<span class="dim">  reads users, sessions, audit_log</span>
+<span class="warn">  ! destructive op detected: DROP COLUMN</span>
+<span class="dim">  target </span><span class="path">db/migrations/0042_drop_legacy.sql</span>
+            <div class="gate">
+              <div class="gh">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+                Awaiting Approval
+              </div>
+              <div class="gd">Apply migration <code>0042_drop_legacy.sql</code> — drops 2 columns, irreversible on prod replica.</div>
+              <div class="gate-acts">
+                <button class="gbtn approve" type="button">Approve</button>
+                <button class="gbtn deny" type="button">Deny</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- PANE 3 — running -->
+        <section class="pane s-running" tabindex="0" aria-label="Agent test-runner, running">
+          <div class="pane-head">
+            <span class="dot pulse"></span>
+            <span class="pane-name">test-runner</span>
+            <span class="badge gem">Gemini</span>
+            <div class="pane-meta">
+              <div class="counter"><span class="tok">58.3k tok</span><span class="cost">$1.74</span></div>
+              <div class="pane-ctrls">
+                <button class="icbtn" type="button" aria-label="Minimize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+                <button class="icbtn" type="button" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
+                <button class="icbtn danger" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <div class="term">
+<span class="pr">gem&gt;</span> <span class="txt">vitest run --changed</span>
+<span class="dim"> RUN  v2.1.4  /orbital-control-plane</span>
+<span class="ok"> ✓ </span><span class="dim">core/telemetry.test.ts (12)</span>
+<span class="ok"> ✓ </span><span class="dim">core/aggregate.test.ts (8)</span>
+<span class="ok"> ✓ </span><span class="dim">api/ingest.test.ts (3)</span>
+<span class="ok"> ✓ 3 tests passed</span> <span class="dim">· 23 total</span>
+<span class="dim"> Duration </span><span class="num">1.84s</span>
+<span class="pr">gem&gt;</span> <span class="txt">watching for changes</span><span class="cursor"></span>
+          </div>
+        </section>
+
+        <!-- PANE 4 — error -->
+        <section class="pane s-error" tabindex="0" aria-label="Agent build-edge, error">
+          <div class="pane-head">
+            <span class="dot"></span>
+            <span class="pane-name">build-edge</span>
+            <span class="badge oc">OpenCode</span>
+            <div class="pane-meta">
+              <div class="counter"><span class="tok">31.0k tok</span><span class="cost">$0.92</span></div>
+              <div class="pane-ctrls">
+                <button class="icbtn" type="button" aria-label="Minimize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+                <button class="icbtn" type="button" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
+                <button class="icbtn danger" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <div class="term">
+<span class="pr">oc&gt;</span> <span class="txt">wrangler deploy --env edge</span>
+<span class="dim">  bundling worker.ts</span>
+<span class="err"> ✗ ERROR  esbuild: 2 errors</span>
+<span class="err">  worker.ts:88  Cannot find name 'KVNamespace'</span>
+<span class="err">  worker.ts:91  TS2304 'env.CACHE' is undefined</span>
+<span class="warn">  ⏻ exit code 1 · retry queued (2/3)</span>
+<span class="pr">oc&gt;</span> <span class="dim">halted — awaiting fix from</span> <span class="path">api-architect</span>
+          </div>
+        </section>
+
+        <!-- PANE 5 — running -->
+        <section class="pane s-running" tabindex="0" aria-label="Agent docs-writer, running">
+          <div class="pane-head">
+            <span class="dot pulse"></span>
+            <span class="pane-name">docs-writer</span>
+            <span class="badge aider">Aider</span>
+            <div class="pane-meta">
+              <div class="counter"><span class="tok">47.6k tok</span><span class="cost">$1.31</span></div>
+              <div class="pane-ctrls">
+                <button class="icbtn" type="button" aria-label="Minimize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+                <button class="icbtn" type="button" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
+                <button class="icbtn danger" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <div class="term">
+<span class="pr viol">aider&gt;</span> <span class="txt">edit docs/api/telemetry.md</span>
+<span class="path">docs/api/telemetry.md</span>
+<span class="add">+ ## POST /v1/ingest/batch</span>
+<span class="add">+ Accepts up to 500 samples per call.</span>
+<span class="del">- Legacy /ingest endpoint (removed)</span>
+<span class="dim"> diff </span><span class="add">+18</span> <span class="del">-4</span> <span class="dim">across 2 files</span>
+<span class="pr viol">aider&gt;</span> <span class="txt">committing</span><span class="cursor"></span>
+          </div>
+        </section>
+
+        <!-- PANE 6 — idle -->
+        <section class="pane s-idle" tabindex="0" aria-label="Agent perf-profiler, idle">
+          <div class="pane-head">
+            <span class="dot"></span>
+            <span class="pane-name">perf-profiler</span>
+            <span class="badge cc">Claude Code</span>
+            <div class="pane-meta">
+              <div class="counter"><span class="tok">12.4k tok</span><span class="cost">$0.61</span></div>
+              <div class="pane-ctrls">
+                <button class="icbtn" type="button" aria-label="Minimize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+                <button class="icbtn" type="button" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
+                <button class="icbtn danger" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <div class="term">
+<span class="pr">cc&gt;</span> <span class="txt">awaiting task assignment</span>
+<span class="dim"> last run flamegraph · p95 142ms</span>
+<span class="dim"> idle </span><span class="num">04:12</span><span class="dim"> · context cached</span>
+<span class="cyan"> ◦ standby</span>
+          </div>
+        </section>
+
+        <!-- PANE 7 — running -->
+        <section class="pane s-running" tabindex="0" aria-label="Agent ui-refactor, running">
+          <div class="pane-head">
+            <span class="dot pulse"></span>
+            <span class="pane-name">ui-refactor</span>
+            <span class="badge cc">Claude Code</span>
+            <div class="pane-meta">
+              <div class="counter"><span class="tok">88.9k tok</span><span class="cost">$3.07</span></div>
+              <div class="pane-ctrls">
+                <button class="icbtn" type="button" aria-label="Minimize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+                <button class="icbtn" type="button" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
+                <button class="icbtn danger" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <div class="term">
+<span class="pr">cc&gt;</span> <span class="txt">refactor Dashboard.tsx → hooks</span>
+<span class="dim"> extracting useTelemetryStream()</span>
+<span class="path"> src/components/Dashboard.tsx</span>
+<span class="add">+ 64</span> <span class="del">- 91</span> <span class="dim">net -27 lines</span>
+<span class="ok"> ✓ typecheck clean</span>
+<span class="pr">cc&gt;</span> <span class="txt">running eslint --fix</span><span class="cursor"></span>
+          </div>
+        </section>
+
+        <!-- PANE 8 — idle -->
+        <section class="pane s-idle" tabindex="0" aria-label="Agent sec-audit, idle">
+          <div class="pane-head">
+            <span class="dot"></span>
+            <span class="pane-name">sec-audit</span>
+            <span class="badge codex">Codex</span>
+            <div class="pane-meta">
+              <div class="counter"><span class="tok">22.7k tok</span><span class="cost">$0.84</span></div>
+              <div class="pane-ctrls">
+                <button class="icbtn" type="button" aria-label="Minimize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+                <button class="icbtn" type="button" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
+                <button class="icbtn danger" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <div class="term">
+<span class="pr cyan">codex&gt;</span> <span class="txt">audit complete · 0 critical</span>
+<span class="warn"> ⚠ 2 medium · 5 low</span>
+<span class="dim"> sarif → reports/sec-0611.sarif</span>
+<span class="cyan"> ◦ standby · monitoring deps</span>
+          </div>
+        </section>
+
+        <!-- PANE 9 — running -->
+        <section class="pane s-running" tabindex="0" aria-label="Agent data-seeder, running">
+          <div class="pane-head">
+            <span class="dot pulse"></span>
+            <span class="pane-name">data-seeder</span>
+            <span class="badge gem">Gemini</span>
+            <div class="pane-meta">
+              <div class="counter"><span class="tok">9.8k tok</span><span class="cost">$0.29</span></div>
+              <div class="pane-ctrls">
+                <button class="icbtn" type="button" aria-label="Minimize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+                <button class="icbtn" type="button" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
+                <button class="icbtn danger" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <div class="term">
+<span class="pr">gem&gt;</span> <span class="txt">seed --rows 50000 --table samples</span>
+<span class="dim"> batch 38/50</span> <span class="num">[76%]</span>
+<span class="dim"> ████████████████░░░░░</span>
+<span class="dim"> 38.0k rows · 4.1k rows/s</span><span class="cursor"></span>
+          </div>
+        </section>
+
+        <!-- PANE 10 — idle -->
+        <section class="pane s-idle" tabindex="0" aria-label="Agent release-mgr, idle">
+          <div class="pane-head">
+            <span class="dot"></span>
+            <span class="pane-name">release-mgr</span>
+            <span class="badge aider">Aider</span>
+            <div class="pane-meta">
+              <div class="counter"><span class="tok">5.2k tok</span><span class="cost">$0.18</span></div>
+              <div class="pane-ctrls">
+                <button class="icbtn" type="button" aria-label="Minimize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+                <button class="icbtn" type="button" aria-label="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
+                <button class="icbtn danger" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <div class="term">
+<span class="pr viol">aider&gt;</span> <span class="txt">awaiting all-green gate</span>
+<span class="dim"> 7/9 agents reporting healthy</span>
+<span class="warn"> blocked by: build-edge (error)</span>
+<span class="cyan"> ◦ standby</span>
+          </div>
+        </section>
+
+        <!-- SPAWN TILE -->
+        <button class="spawn-tile" type="button" aria-label="Spawn new agent">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="1" stroke-dasharray="3 3"/><path d="M12 8v8M8 12h8"/></svg>
+          <span class="lbl">Spawn Agent</span>
+          <span class="sub">⌘N · pick adapter</span>
+        </button>
+
+      </div>
+
+      <!-- ===== ACTIVITY STRIP ===== -->
+      <section class="activity" id="activity">
+        <div class="act-bar">
+          <div class="title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12h4l2 6 4-14 2 8h4"/></svg>
+            <span class="ml">Activity · Inter-Agent Messages</span>
+          </div>
+          <div class="act-filters">
+            <button class="fchip on" type="button">All</button>
+            <button class="fchip" type="button">Handoff</button>
+            <button class="fchip" type="button">Merge</button>
+            <button class="fchip" type="button">Verify</button>
+            <button class="fchip" type="button">Errors</button>
+          </div>
+          <button class="act-collapse" type="button" id="actToggle" aria-expanded="true">
+            <span>Collapse</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 15l6-6 6 6"/></svg>
+          </button>
+        </div>
+        <div class="act-feed" id="actFeed">
+          <div class="act-line"><span class="ts">11:42:08</span><span class="from">lead</span><span class="arrow">→</span><span class="to">api-architect</span><span class="tag">handoff</span><span class="body">resolve KVNamespace types blocking build-edge worker bundle</span></div>
+          <div class="act-line"><span class="ts">11:42:01</span><span class="from">build-edge</span><span class="arrow">→</span><span class="to">lead</span><span class="tag fail">error</span><span class="body">esbuild exit 1 · 2 TS errors in worker.ts · retry 2/3</span></div>
+          <div class="act-line"><span class="ts">11:41:47</span><span class="from">test-runner</span><span class="arrow">→</span><span class="to">lead</span><span class="tag ok">verify</span><span class="body">vitest --changed · 23 passed · 1.84s · coverage 91.2%</span></div>
+          <div class="act-line"><span class="ts">11:41:30</span><span class="from">migrator-db</span><span class="arrow">→</span><span class="to">lead</span><span class="tag">gate</span><span class="body">requesting approval: DROP COLUMN on users, sessions</span></div>
+          <div class="act-line"><span class="ts">11:41:12</span><span class="from">ui-refactor</span><span class="arrow">→</span><span class="to">docs-writer</span><span class="tag">handoff</span><span class="body">Dashboard API surface changed · update telemetry.md examples</span></div>
+          <div class="act-line"><span class="ts">11:40:55</span><span class="from">lead</span><span class="arrow">→</span><span class="to">all</span><span class="tag">broadcast</span><span class="body">freeze main · cutting rc-2 once build-edge is green</span></div>
+          <div class="act-line"><span class="ts">11:40:31</span><span class="from">docs-writer</span><span class="arrow">→</span><span class="to">lead</span><span class="tag merge">merge</span><span class="body">docs/telemetry.md ready for review · +18 -4</span></div>
+          <div class="act-line"><span class="ts">11:40:09</span><span class="from">perf-profiler</span><span class="arrow">→</span><span class="to">lead</span><span class="tag ok">verify</span><span class="body">p95 142ms (-18ms) after useTelemetryStream extraction</span></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ===== RIGHT DOCK ===== -->
+    <aside class="dock">
+      <div class="dock-tabs" role="tablist">
+        <button class="tab active" id="tabLead" role="tab" aria-selected="true" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Lead
+        </button>
+        <button class="tab" id="tabTasks" role="tab" aria-selected="false" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>
+          Tasks <span class="cnt">11</span>
+        </button>
+      </div>
+
+      <!-- LEAD PANEL -->
+      <div class="dock-panel active" id="panelLead" role="tabpanel">
+        <div class="lead-id">
+          <div class="lead-av">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+          </div>
+          <div>
+            <div class="nm">Orchestrator Lead</div>
+            <div class="st"><span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block"></span> coordinating · 9 agents</div>
+          </div>
+        </div>
+
+        <div class="chat" id="chat">
+          <div class="msg you">
+            <div class="who">You · 11:38</div>
+            <div class="bubble">Spin up the telemetry-v3 feature team. Need DB migration, API, tests, docs, and an edge deploy. Gate anything destructive.</div>
+          </div>
+
+          <div class="msg lead">
+            <div class="who">Lead · 11:38</div>
+            <div class="bubble">Understood. Spawning 5 specialists across adapters and wiring dependencies. Migration will pause for your approval before any destructive op.</div>
+            <div class="toolcalls">
+              <div class="chip spawn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg><b>spawn_agent</b> <span class="arg">migrator-db · codex</span><span class="res ok">ok</span></div>
+              <div class="chip spawn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg><b>spawn_agent</b> <span class="arg">api-architect · claude</span><span class="res ok">ok</span></div>
+              <div class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg><b>submit_prompt</b> <span class="arg">→ migrator-db</span><span class="res ok">ok</span></div>
+            </div>
+          </div>
+
+          <div class="msg you">
+            <div class="who">You · 11:41</div>
+            <div class="bubble">build-edge is red. Have api-architect fix the worker types, then re-verify before we cut rc-2.</div>
+          </div>
+
+          <div class="msg lead">
+            <div class="who">Lead · 11:42</div>
+            <div class="bubble">On it. Handing the type errors to <code>api-architect</code> and queuing a verification pass on the edge bundle. Broadcasting a main freeze until it's green.</div>
+            <div class="toolcalls">
+              <div class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg><b>submit_prompt</b> <span class="arg">→ api-architect</span><span class="res ok">ok</span></div>
+              <div class="chip bcast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l18-7-7 18-2.5-7.5z"/></svg><b>broadcast</b> <span class="arg">freeze main</span><span class="res ok">sent</span></div>
+              <div class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6L9 17l-5-5"/></svg><b>run_verification</b> <span class="arg">edge bundle</span><span class="res run">running</span></div>
+              <div class="chip merge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M18 11.5c0 4-12 2.5-12 6.5"/></svg><b>merge</b> <span class="arg">docs/telemetry.md</span><span class="res run">queued</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="composer">
+          <div class="inwrap">
+            <div class="targ">target <b>· Lead</b> · ⏎ send · ⇧⏎ newline</div>
+            <textarea placeholder="Direct the orchestrator…" aria-label="Message the orchestrator lead"></textarea>
+          </div>
+          <button class="send" type="button" aria-label="Send message">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- TASKS PANEL -->
+      <div class="dock-panel" id="panelTasks" role="tabpanel">
+        <div class="tasks">
+
+          <div>
+            <div class="col-head"><span class="cdot" style="background:var(--green)"></span><span class="ml" style="color:var(--text)">Running</span><span class="cnt">3</span></div>
+            <div class="task t-running">
+              <div class="tt"><span class="tid">T-104</span><span class="ttitle">Add /v1/ingest/batch endpoint + validation</span></div>
+              <div class="tmeta">
+                <span class="assignee"><span class="av">AA</span> api-architect</span>
+                <span class="dep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6M9 12l3-3M9 12l3 3"/></svg>blocks <b>T-108</b></span>
+              </div>
+            </div>
+            <div class="task t-running">
+              <div class="tt"><span class="tid">T-106</span><span class="ttitle">Refactor Dashboard.tsx into hooks</span></div>
+              <div class="tmeta"><span class="assignee"><span class="av">UR</span> ui-refactor</span></div>
+            </div>
+            <div class="task t-running">
+              <div class="tt"><span class="tid">T-109</span><span class="ttitle">Seed 50k sample rows for load test</span></div>
+              <div class="tmeta"><span class="assignee"><span class="av">DS</span> data-seeder</span></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="col-head"><span class="cdot" style="background:var(--amber)"></span><span class="ml" style="color:var(--text)">Review</span><span class="cnt">2</span></div>
+            <div class="task t-review">
+              <div class="tt"><span class="tid">T-102</span><span class="ttitle">Migration 0042 — drop legacy columns</span></div>
+              <div class="tmeta">
+                <span class="assignee"><span class="av">MD</span> migrator-db</span>
+                <span class="dep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9z"/></svg>gate: <b>approval</b></span>
+              </div>
+            </div>
+            <div class="task t-review">
+              <div class="tt"><span class="tid">T-107</span><span class="ttitle">Document telemetry API surface</span></div>
+              <div class="tmeta"><span class="assignee"><span class="av">DW</span> docs-writer</span><span class="dep">+18 -4</span></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="col-head"><span class="cdot" style="background:var(--red)"></span><span class="ml" style="color:var(--text)">Blocked</span><span class="cnt">1</span></div>
+            <div class="task t-todo" style="border-left-color:var(--red)">
+              <div class="tt"><span class="tid">T-108</span><span class="ttitle">Deploy edge worker to staging</span></div>
+              <div class="tmeta">
+                <span class="assignee"><span class="av">BE</span> build-edge</span>
+                <span class="dep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6M9 12l3-3M9 12l3 3"/></svg>needs <b>T-104</b></span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="col-head"><span class="cdot" style="background:var(--text-faint)"></span><span class="ml" style="color:var(--text)">Todo</span><span class="cnt">2</span></div>
+            <div class="task t-todo">
+              <div class="tt"><span class="tid">T-110</span><span class="ttitle">Wire SARIF results into PR checks</span></div>
+              <div class="tmeta"><span class="assignee"><span class="av">SA</span> sec-audit</span></div>
+            </div>
+            <div class="task t-todo">
+              <div class="tt"><span class="tid">T-111</span><span class="ttitle">Cut rc-2 + tag release</span></div>
+              <div class="tmeta"><span class="assignee"><span class="av">RM</span> release-mgr</span><span class="dep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6M9 12l3-3M9 12l3 3"/></svg>needs <b>all green</b></span></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="col-head"><span class="cdot" style="background:var(--cyan)"></span><span class="ml" style="color:var(--text)">Done</span><span class="cnt">3</span></div>
+            <div class="task t-done">
+              <div class="tt"><span class="tid">T-101</span><span class="ttitle">Scaffold telemetry-v3 worktree</span></div>
+              <div class="tmeta"><span class="assignee"><span class="av">LD</span> lead</span></div>
+            </div>
+            <div class="task t-done">
+              <div class="tt"><span class="tid">T-103</span><span class="ttitle">Add changed-files vitest harness</span></div>
+              <div class="tmeta"><span class="assignee"><span class="av">TR</span> test-runner</span></div>
+            </div>
+            <div class="task t-done">
+              <div class="tt"><span class="tid">T-105</span><span class="ttitle">Baseline flamegraph + p95 budget</span></div>
+              <div class="tmeta"><span class="assignee"><span class="av">PP</span> perf-profiler</span></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---- live UTC clock ---- */
+  var clockEl = document.getElementById("clock");
+  function pad(n){ return String(n).padStart(2,"0"); }
+  function tick(){
+    var d = new Date();
+    clockEl.textContent = pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes()) + ":" + pad(d.getUTCSeconds());
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  /* ---- dock tabs ---- */
+  var tabLead = document.getElementById("tabLead");
+  var tabTasks = document.getElementById("tabTasks");
+  var panelLead = document.getElementById("panelLead");
+  var panelTasks = document.getElementById("panelTasks");
+  function selectTab(which){
+    var lead = which === "lead";
+    tabLead.classList.toggle("active", lead);
+    tabTasks.classList.toggle("active", !lead);
+    tabLead.setAttribute("aria-selected", lead);
+    tabTasks.setAttribute("aria-selected", !lead);
+    panelLead.classList.toggle("active", lead);
+    panelTasks.classList.toggle("active", !lead);
+  }
+  tabLead.addEventListener("click", function(){ selectTab("lead"); });
+  tabTasks.addEventListener("click", function(){ selectTab("tasks"); });
+
+  /* ---- activity collapse ---- */
+  var activity = document.getElementById("activity");
+  var stage = document.getElementById("stage");
+  var actToggle = document.getElementById("actToggle");
+  actToggle.addEventListener("click", function(){
+    var collapsed = activity.classList.toggle("collapsed");
+    stage.classList.toggle("activity-collapsed", collapsed);
+    actToggle.setAttribute("aria-expanded", String(!collapsed));
+    actToggle.querySelector("span").textContent = collapsed ? "Expand" : "Collapse";
+  });
+
+  /* ---- focused-pane terminal typing animation ---- */
+  var prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var term = document.getElementById("term-focus");
+
+  // tokens: [className, text]; null className = raw text node
+  var lines = [
+    [["pr","cc&gt; "],["txt","read src/core/telemetry.ts"]],
+    [["dim"," scanning ingest pipeline · 412 LOC"]],
+    [["path"," src/core/telemetry.ts"]],
+    [["add","+ export async function ingestBatch(samples: Sample[]) {"]],
+    [["add","+   const valid = samples.filter(isWellFormed)"]],
+    [["add","+   return store.bulk(valid)"]],
+    [["add","+ }"]],
+    [["dim"," diff "],["add","+31"],["del"," -7"],["dim"," · 1 file"]],
+    [["pr","cc&gt; "],["txt","running typecheck"]],
+    [["ok"," ✓ tsc clean · 0 errors"]],
+    [["pr","cc&gt; "],["txt","fixing worker.ts types for build-edge"]],
+    [["path"," src/edge/worker.ts"]],
+    [["add","+ interface Env { CACHE: KVNamespace }"]],
+    [["ok"," ✓ 3 tests passed"],["dim"," · handing off to test-runner"]],
+    [["pr","cc&gt; "],["txt","standby for next directive"]]
+  ];
+
+  function tokenSpan(cls, text){
+    if (!cls) return document.createTextNode(text);
+    var s = document.createElement("span");
+    s.className = cls;
+    // text may contain &gt; entity — set via innerHTML safely (static, no user input)
+    s.innerHTML = text;
+    return s;
+  }
+
+  if (prefersReduced) {
+    // render everything instantly
+    lines.forEach(function(line){
+      line.forEach(function(tok){ term.appendChild(tokenSpan(tok[0], tok[1])); });
+      term.appendChild(document.createTextNode("\n"));
+    });
+    var cur = document.createElement("span");
+    cur.className = "cursor";
+    term.appendChild(cur);
+    return;
+  }
+
+  var li = 0, ti = 0, ci = 0;
+  var cursor = document.createElement("span");
+  cursor.className = "cursor";
+  term.appendChild(cursor);
+
+  var active = null;      // current span being typed into
+  var activeRaw = "";     // raw decoded text of current token
+  var activeHtmlMode = false;
+
+  function decode(html){
+    var d = document.createElement("textarea");
+    d.innerHTML = html;
+    return d.value;
+  }
+
+  function step(){
+    if (li >= lines.length){
+      // loop: clear and restart after a beat
+      setTimeout(function(){
+        // remove all but cursor
+        while (term.firstChild && term.firstChild !== cursor) term.removeChild(term.firstChild);
+        li = 0; ti = 0; ci = 0; active = null;
+        step();
+      }, 2600);
+      return;
+    }
+    var line = lines[li];
+    if (ti >= line.length){
+      term.insertBefore(document.createTextNode("\n"), cursor);
+      li++; ti = 0; ci = 0; active = null;
+      term.scrollTop = term.scrollHeight;
+      setTimeout(step, 140);
+      return;
+    }
+    var tok = line[ti];
+    if (!active){
+      active = tokenSpan(tok[0], "");
+      term.insertBefore(active, cursor);
+      activeRaw = decode(tok[1]);
+      ci = 0;
+    }
+    if (ci < activeRaw.length){
+      active.textContent += activeRaw.charAt(ci);
+      ci++;
+      term.scrollTop = term.scrollHeight;
+      setTimeout(step, 11 + Math.random()*22);
+    } else {
+      ti++; active = null;
+      setTimeout(step, 25);
+    }
+  }
+  setTimeout(step, 400);
+})();
+</script>
+</body>
+</html>

@@ -6,23 +6,35 @@ export interface CliPreset {
   args: string[];
   badge: string;
   shell?: boolean;
+  /** Flag(s) that make this CLI skip its permission/approval prompts (full
+   *  access). Omitted for CLIs that only configure this via a file/env. */
+  skipPermsArgs?: string[];
 }
 
 /** Built-in CLIs offered in the crew picker. Binary names assume the CLI is on
- *  PATH; use the Custom row for anything not listed or named differently. */
+ *  PATH; use the Custom row for anything not listed or named differently.
+ *  `skipPermsArgs` verified against each tool's docs (June 2026). */
 export const CLI_PRESETS: CliPreset[] = [
-  { id: "claude", label: "Claude Code", program: "claude", args: [], badge: "claude" },
-  { id: "codex", label: "Codex", program: "codex", args: [], badge: "codex" },
-  { id: "gemini", label: "Gemini", program: "gemini", args: [], badge: "gemini" },
-  { id: "aider", label: "Aider", program: "aider", args: [], badge: "aider" },
+  { id: "claude", label: "Claude Code", program: "claude", args: [], badge: "claude", skipPermsArgs: ["--dangerously-skip-permissions"] },
+  { id: "codex", label: "Codex", program: "codex", args: [], badge: "codex", skipPermsArgs: ["--yolo"] },
+  { id: "gemini", label: "Gemini", program: "gemini", args: [], badge: "gemini", skipPermsArgs: ["--yolo"] },
+  { id: "aider", label: "Aider", program: "aider", args: [], badge: "aider", skipPermsArgs: ["--yes-always"] },
   { id: "cursor", label: "Cursor Agent", program: "cursor-agent", args: [], badge: "cursor" },
   { id: "opencode", label: "opencode", program: "opencode", args: [], badge: "opencode" },
-  { id: "qwen", label: "Qwen Code", program: "qwen", args: [], badge: "qwen" },
-  { id: "copilot", label: "GitHub Copilot", program: "copilot", args: [], badge: "copilot" },
+  { id: "qwen", label: "Qwen Code", program: "qwen", args: [], badge: "qwen", skipPermsArgs: ["--yolo"] },
+  { id: "copilot", label: "GitHub Copilot", program: "copilot", args: [], badge: "copilot", skipPermsArgs: ["--allow-all-tools"] },
   { id: "goose", label: "Goose", program: "goose", args: [], badge: "goose" },
   { id: "powershell", label: "PowerShell", program: "powershell.exe", args: ["-NoLogo"], badge: "shell", shell: true },
   { id: "cmd", label: "CMD", program: "cmd.exe", args: [], badge: "cmd", shell: true },
 ];
+
+/** Args to launch a preset with, optionally appending its skip-permissions
+ *  flag. CLIs without such a flag are returned unchanged. */
+export function effectiveArgs(preset: CliPreset, skipPerms: boolean): string[] {
+  return skipPerms && preset.skipPermsArgs
+    ? [...preset.args, ...preset.skipPermsArgs]
+    : preset.args;
+}
 
 /** Crew the user has composed in the modal: per-preset counts + a custom row. */
 export interface CrewState {

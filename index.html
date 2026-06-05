@@ -183,6 +183,19 @@ svg{display:block;flex:none}
 .custom-row{display:flex;gap:6px;align-items:center}
 .custom-row .input{flex:1;min-width:0}
 .custom-row .stepper{padding:0 2px}
+/* full-access toggle */
+.perm-toggle{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--line);border-radius:var(--r2);background:var(--surface-2);cursor:pointer}
+.perm-toggle:hover{border-color:var(--line-strong)}
+.perm-toggle input{position:absolute;opacity:0;width:0;height:0}
+.perm-toggle .pt-sw{flex:none;width:34px;height:19px;border-radius:19px;background:var(--surface-3);border:1px solid var(--line-strong);position:relative;transition:background .16s,border-color .16s}
+.perm-toggle .pt-sw::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:var(--muted);transition:transform .16s,background .16s}
+.perm-toggle input:checked + .pt-sw{background:rgba(255,107,107,.25);border-color:var(--err)}
+.perm-toggle input:checked + .pt-sw::after{transform:translateX(15px);background:var(--err)}
+.perm-toggle input:focus-visible + .pt-sw{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent)}
+.perm-toggle .pt-text{display:flex;flex-direction:column;gap:2px;min-width:0}
+.perm-toggle .pt-text b{font-size:12px;font-weight:600}
+.perm-toggle .pt-text b em{font-style:normal;font-size:8.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--err);border:1px solid var(--err);border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle}
+.perm-toggle .pt-text span{font-size:10.5px;color:var(--muted-2);line-height:1.3}
 .modal-foot{display:flex;gap:8px;justify-content:flex-end;padding:13px 16px;border-top:1px solid var(--line);background:var(--surface-0)}
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 15px;border-radius:var(--r2);border:1px solid var(--accent-dim);background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:12.5px}
 .btn:hover{background:#d3fc4d}
@@ -280,6 +293,14 @@ svg{display:block;flex:none}
           </div>
         </div>
       </div>
+      <label class="perm-toggle" for="mSkipPerms">
+        <input type="checkbox" id="mSkipPerms">
+        <span class="pt-sw"></span>
+        <span class="pt-text">
+          <b>Bỏ qua hỏi quyền <em>full access</em></b>
+          <span>Tự gắn cờ skip-permission: Claude, Codex, Gemini, Qwen, Aider, Copilot</span>
+        </span>
+      </label>
       <div class="crew-total">Total: <b id="crewTotal">0</b> agents</div>
     </div>
     <div class="modal-foot">

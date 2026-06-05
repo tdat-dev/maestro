@@ -11,7 +11,7 @@ import {
   confirmDialog,
   destroyWindow,
 } from "./ipc";
-import { CLI_PRESETS, expandCrew, runLimited, launchSpec, type CrewState, type CliPreset } from "./crew";
+import { CLI_PRESETS, expandCrew, runLimited, launchSpec, effectiveArgs, type CrewState, type CliPreset } from "./crew";
 import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm } from "./workspaces";
 import { checkForUpdates } from "./updater";
 
@@ -383,9 +383,11 @@ const mCustom = document.getElementById("mCustom") as HTMLInputElement;
 const crewGrid = document.getElementById("crewGrid") as HTMLElement;
 const crewTotalEl = document.getElementById("crewTotal") as HTMLElement;
 const spawnLabel = document.getElementById("mSpawnLabel") as HTMLElement;
+const mSkipPerms = document.getElementById("mSkipPerms") as HTMLInputElement;
 
 interface SavedCrew extends CrewState {
   dir: string;
+  skipPerms: boolean;
 }
 
 let crew: CrewState = { counts: {}, custom: "", customCount: 0 };
@@ -398,9 +400,10 @@ function loadCrew(): SavedCrew {
       custom: typeof s.custom === "string" ? s.custom : "",
       customCount: Number.isFinite(s.customCount) ? s.customCount : 0,
       dir: typeof s.dir === "string" ? s.dir : "",
+      skipPerms: s.skipPerms === true,
     };
   } catch {
-    return { counts: {}, custom: "", customCount: 0, dir: "" };
+    return { counts: {}, custom: "", customCount: 0, dir: "", skipPerms: false };
   }
 }
 
@@ -457,6 +460,7 @@ function openModal(mode: "new" | "current" = "new") {
   crew = { counts: saved.counts, custom: saved.custom, customCount: saved.customCount };
   mDir.value = mode === "current" && activeWs ? activeWs.dir ?? "" : saved.dir;
   mCustom.value = crew.custom;
+  mSkipPerms.checked = saved.skipPerms;
   renderCrew();
   modal.classList.add("open");
   mDir.focus();
@@ -490,12 +494,19 @@ document.getElementById("mBrowse")?.addEventListener("click", async () => {
 async function spawnFromModal() {
   const dir = mDir.value.trim() || null;
   crew.custom = mCustom.value;
+  const skipPerms = mSkipPerms.checked;
   const fleet = expandCrew(crew);
   if (fleet.length === 0) return;
 
   localStorage.setItem(
     STORE_KEY,
-    JSON.stringify({ counts: crew.counts, custom: crew.custom, customCount: crew.customCount, dir: dir ?? "" }),
+    JSON.stringify({
+      counts: crew.counts,
+      custom: crew.custom,
+      customCount: crew.customCount,
+      dir: dir ?? "",
+      skipPerms,
+    }),
   );
   if (dir) addRecent(dir);
   closeModal();
@@ -515,7 +526,7 @@ async function spawnFromModal() {
     const name = totals[p.id] > 1 ? `${base} #${perId[p.id]}` : base;
     return createAgent(ws, {
       program: p.program,
-      args: p.args,
+      args: effectiveArgs(p, skipPerms),
       cwd: dir,
       name,
       badge: p.badge,

@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { CLI_PRESETS, parseCommand, expandCrew, runLimited, launchSpec, type CrewState } from "./crew";
+import {
+  CLI_PRESETS,
+  parseCommand,
+  expandCrew,
+  runLimited,
+  launchSpec,
+  effectiveArgs,
+  type CrewState,
+} from "./crew";
 
 function emptyCrew(): CrewState {
   return { counts: {}, custom: "", customCount: 0 };
@@ -48,6 +56,33 @@ describe("expandCrew", () => {
   });
   it("returns empty for an empty crew", () => {
     expect(expandCrew(emptyCrew())).toEqual([]);
+  });
+});
+
+describe("effectiveArgs (skip-permissions)", () => {
+  const find = (id: string) => CLI_PRESETS.find((p) => p.id === id)!;
+
+  it("appends the right full-access flag per CLI when enabled", () => {
+    expect(effectiveArgs(find("claude"), true)).toEqual(["--dangerously-skip-permissions"]);
+    expect(effectiveArgs(find("codex"), true)).toEqual(["--yolo"]);
+    expect(effectiveArgs(find("gemini"), true)).toEqual(["--yolo"]);
+    expect(effectiveArgs(find("qwen"), true)).toEqual(["--yolo"]);
+    expect(effectiveArgs(find("aider"), true)).toEqual(["--yes-always"]);
+    expect(effectiveArgs(find("copilot"), true)).toEqual(["--allow-all-tools"]);
+  });
+
+  it("keeps existing args and appends (PowerShell stays untouched — no flag)", () => {
+    expect(effectiveArgs(find("powershell"), true)).toEqual(["-NoLogo"]);
+  });
+
+  it("leaves config-only CLIs unchanged (cursor, opencode, goose)", () => {
+    expect(effectiveArgs(find("cursor"), true)).toEqual([]);
+    expect(effectiveArgs(find("opencode"), true)).toEqual([]);
+    expect(effectiveArgs(find("goose"), true)).toEqual([]);
+  });
+
+  it("appends nothing when the toggle is off", () => {
+    expect(effectiveArgs(find("claude"), false)).toEqual([]);
   });
 });
 

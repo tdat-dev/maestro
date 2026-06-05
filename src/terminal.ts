@@ -29,7 +29,8 @@ export function mountTerminal(
     convertEol: false, // ConPTY already emits \r\n
     cursorBlink: true,
     fontFamily: "Consolas, 'Cascadia Mono', monospace",
-    fontSize: 14,
+    fontSize: 15,
+    lineHeight: 1.15,
   });
   const fit = new FitAddon();
   term.loadAddon(fit);

@@ -55,6 +55,21 @@ export function expandCrew(state: CrewState): CliPreset[] {
   return out;
 }
 
+/** Resolve a preset's program/args into something Windows CreateProcessW can
+ *  actually launch. npm/script CLIs (claude, codex, gemini, …) install as
+ *  extension-less or `.cmd` shims that CreateProcessW rejects with "not a valid
+ *  Win32 application" (os error 193); only real `.exe`/`.com` binaries run
+ *  directly. Everything else is launched through `cmd.exe /c`, which resolves
+ *  the right shim via PATHEXT. */
+export function launchSpec(
+  program: string,
+  args: string[],
+): { program: string; args: string[] } {
+  const direct = /\.(exe|com)$/i.test(program.trim());
+  if (direct) return { program, args };
+  return { program: "cmd.exe", args: ["/c", program, ...args] };
+}
+
 /** Run async tasks with at most `limit` in flight; results keep input order. */
 export async function runLimited<T>(
   tasks: Array<() => Promise<T>>,

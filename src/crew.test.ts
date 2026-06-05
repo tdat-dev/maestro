@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CLI_PRESETS, parseCommand, expandCrew, runLimited, type CrewState } from "./crew";
+import { CLI_PRESETS, parseCommand, expandCrew, runLimited, launchSpec, type CrewState } from "./crew";
 
 function emptyCrew(): CrewState {
   return { counts: {}, custom: "", customCount: 0 };
@@ -48,6 +48,23 @@ describe("expandCrew", () => {
   });
   it("returns empty for an empty crew", () => {
     expect(expandCrew(emptyCrew())).toEqual([]);
+  });
+});
+
+describe("launchSpec", () => {
+  it("runs real .exe binaries directly (case-insensitive)", () => {
+    expect(launchSpec("powershell.exe", ["-NoLogo"])).toEqual({
+      program: "powershell.exe",
+      args: ["-NoLogo"],
+    });
+    expect(launchSpec("CMD.EXE", [])).toEqual({ program: "CMD.EXE", args: [] });
+  });
+  it("wraps npm/script CLIs through cmd.exe /c so PATHEXT resolves the shim", () => {
+    expect(launchSpec("codex", [])).toEqual({ program: "cmd.exe", args: ["/c", "codex"] });
+    expect(launchSpec("claude", ["--foo"])).toEqual({
+      program: "cmd.exe",
+      args: ["/c", "claude", "--foo"],
+    });
   });
 });
 

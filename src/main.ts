@@ -1,6 +1,6 @@
 import { mountTerminal, type TerminalHandle } from "./terminal";
 import { spawnPty, sendInput, resizePty, killPty, killAll, onExit, pickFolder } from "./ipc";
-import { CLI_PRESETS, expandCrew, runLimited, type CrewState, type CliPreset } from "./crew";
+import { CLI_PRESETS, expandCrew, runLimited, launchSpec, type CrewState, type CliPreset } from "./crew";
 
 /* Home launcher ⇄ Workspace grid.
  * Home is shown while there are 0 agents (the prominent "create" entry).
@@ -153,7 +153,10 @@ function createAgent(spec: AgentSpec): () => Promise<void> {
     if (!panes.has(id)) return; // killed before its turn to boot
     const { cols, rows } = term.fit();
     try {
-      await spawnPty(id, spec.program, spec.args, spec.cwd, cols, rows, (bytes) => term.write(bytes));
+      // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows
+      // can actually launch them — see launchSpec.
+      const launch = launchSpec(spec.program, spec.args);
+      await spawnPty(id, launch.program, launch.args, spec.cwd, cols, rows, (bytes) => term.write(bytes));
       pane.running = true;
       setStatus(pane, "running", "run");
       updateCount();

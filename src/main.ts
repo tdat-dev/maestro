@@ -1,9 +1,10 @@
 import { mountTerminal, type TerminalHandle } from "./terminal";
 import { spawnPty, sendInput, resizePty, killPty, onExit, pickFolder } from "./ipc";
 
-/* Multi-agent grid. "Spawn agents" opens a setup (working directory + count),
- * then spawns N agents — each its own real ConPTY process in that directory.
- * The last setup is remembered (localStorage) so you don't re-pick every time. */
+/* Home launcher ⇄ Workspace grid.
+ * Home is shown while there are 0 agents (the prominent "create" entry).
+ * Spawning agents switches to the Workspace; closing them all returns Home.
+ * Each agent = its own real ConPTY process; closing a pane tree-kills it. */
 
 interface Pane {
   id: string;
@@ -16,8 +17,16 @@ const panes = new Map<string, Pane>();
 let counter = 0;
 const enc = new TextEncoder();
 
+const homeEl = document.getElementById("home") as HTMLElement;
+const appEl = document.getElementById("app") as HTMLElement;
 const grid = document.getElementById("grid") as HTMLElement;
 const spawnTile = document.getElementById("btnSpawn") as HTMLElement;
+
+function showView() {
+  const inWorkspace = panes.size > 0;
+  homeEl.hidden = inWorkspace;
+  appEl.hidden = !inWorkspace;
+}
 
 const RESTART_SVG =
   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>';
@@ -74,6 +83,7 @@ async function createAgent(program: string, args: string[], cwd: string | null, 
   const id = newId();
   const el = buildPaneEl(id, name, cwd ?? program);
   grid.insertBefore(el, spawnTile);
+  showView();
 
   const host = el.querySelector<HTMLElement>("[data-host]")!;
   const term = mountTerminal(
@@ -122,6 +132,48 @@ async function removeAgent(id: string) {
   p.el.remove();
   panes.delete(id);
   updateCount();
+  showView();
+}
+
+/* ---------------- recent folders ---------------- */
+
+const RECENT_KEY = "maestro.recent";
+function getRecents(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+function addRecent(dir: string) {
+  if (!dir) return;
+  const list = [dir, ...getRecents().filter((d) => d !== dir)].slice(0, 6);
+  localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+  renderRecents();
+}
+function renderRecents() {
+  const wrap = document.getElementById("recents");
+  const list = document.getElementById("recentsList");
+  if (!wrap || !list) return;
+  const r = getRecents();
+  if (r.length === 0) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+  list.replaceChildren();
+  for (const dir of r) {
+    const b = document.createElement("button");
+    b.className = "recent-chip";
+    b.title = dir;
+    b.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>${dir}</span>`;
+    b.addEventListener("click", () => {
+      openModal();
+      mDir.value = dir;
+    });
+    list.appendChild(b);
+  }
 }
 
 /* ---------------- spawn-setup modal ---------------- */
@@ -146,12 +198,10 @@ function loadSaved(): Saved {
     return { dir: "", cmd: "powershell.exe -NoLogo", count: 1 };
   }
 }
-
 function syncChips() {
   const n = mCount.value;
   chips.forEach((c) => c.classList.toggle("on", c.dataset.n === n));
 }
-
 function openModal() {
   const s = loadSaved();
   mDir.value = s.dir;
@@ -193,6 +243,7 @@ async function spawnFromModal() {
   const base = dir ? basename(dir) : basename(program).replace(/\.exe$/i, "");
 
   localStorage.setItem(STORE_KEY, JSON.stringify({ dir: dir ?? "", cmd, count }));
+  if (dir) addRecent(dir);
   closeModal();
 
   for (let i = 1; i <= count; i++) {
@@ -211,8 +262,16 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && modal.classList.contains("open")) closeModal();
 });
 
+/* ---------------- home + workspace triggers ---------------- */
+
+document.getElementById("btnNewWorkspace")?.addEventListener("click", openModal);
 document.getElementById("btnNewAgent")?.addEventListener("click", openModal);
 spawnTile?.addEventListener("click", openModal);
+
+document.getElementById("btnQuick")?.addEventListener("click", () => {
+  const dir = getRecents()[0] ?? null;
+  void createAgent("powershell.exe", ["-NoLogo"], dir, dir ? basename(dir) : "powershell");
+});
 
 /* ---------------- clock ---------------- */
 const clk = document.getElementById("clock");
@@ -225,8 +284,11 @@ function tick() {
 tick();
 setInterval(tick, 1000);
 
-/* pty-exit listener registered LAST and guarded, so it can never block the UI
- * wiring above (e.g. when running outside the Tauri runtime). */
+/* ---------------- init ---------------- */
+renderRecents();
+showView();
+
+/* pty-exit listener LAST + guarded so it can never block the wiring above. */
 onExit((id, code) => {
   const p = panes.get(id);
   if (p) {

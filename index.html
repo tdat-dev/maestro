@@ -6,14 +6,14 @@
 <title>Maestro</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#0e1116; --surface-0:#11161d; --surface-1:#161b22; --surface-2:#1c232c; --surface-3:#232b35;
+  --bg:#0d1014; --surface-0:#11161d; --surface-1:#161b22; --surface-2:#1c232c; --surface-3:#232b35;
   --line:#2a323d; --line-strong:#3a4552;
   --text:#e8edf2; --text-2:#c2ccd6; --muted:#94a3b1; --muted-2:#7d8b99;
   --accent:#c6f135; --accent-dim:#9bbd2a; --accent-ink:#10160a; --accent-glow:rgba(198,241,53,.16);
-  --run:#3ad29f; --idle:#6b7785; --err:#ff6b6b;
+  --info:#5ec2f0; --run:#3ad29f; --idle:#6b7785; --err:#ff6b6b;
   --r2:6px; --r3:8px;
   --mono:'IBM Plex Mono', ui-monospace, monospace;
   --display:'Bricolage Grotesque', sans-serif;
@@ -23,37 +23,77 @@ html,body{height:100%}
 body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;overflow:hidden}
 button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer}
 svg{display:block;flex:none}
+[hidden]{display:none !important}
 :focus-visible{outline:none;box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent);border-radius:var(--r2)}
 *::-webkit-scrollbar{width:9px;height:9px}
 *::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:6px;border:2px solid transparent;background-clip:padding-box}
 
-.app{display:grid;grid-template-rows:46px 1fr;height:100vh;width:100vw}
+/* ========================= HOME / LAUNCHER ========================= */
+.home{position:fixed;inset:0;overflow:auto;display:grid;place-items:center;
+  background:
+    radial-gradient(820px 440px at 50% 20%, rgba(198,241,53,.10), transparent 62%),
+    radial-gradient(560px 560px at 86% 96%, rgba(94,194,240,.05), transparent 60%),
+    var(--bg);}
+.home-inner{width:min(660px,92vw);padding:44px 0 56px;display:flex;flex-direction:column;align-items:stretch}
+.hero{text-align:center;margin-bottom:34px}
+.logo-glow{width:70px;height:70px;margin:0 auto 18px;border-radius:18px;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--accent),var(--accent-dim));color:var(--accent-ink);
+  box-shadow:0 0 0 1px rgba(198,241,53,.3),0 14px 44px rgba(198,241,53,.22)}
+.hero h1{font-family:var(--display);font-style:italic;font-weight:800;font-size:52px;letter-spacing:-.03em;line-height:1}
+.hero p{margin:14px auto 0;color:var(--muted);font-size:13.5px;max-width:430px;line-height:1.65}
 
-/* topbar */
+.card-primary{display:flex;align-items:center;gap:16px;text-align:left;padding:21px 22px;border-radius:14px;
+  background:linear-gradient(180deg,rgba(198,241,53,.07),rgba(255,255,255,.012));
+  border:1px solid var(--accent-dim);box-shadow:0 0 0 4px var(--accent-glow),0 16px 44px rgba(0,0,0,.45);
+  transition:box-shadow .18s ease,border-color .18s ease}
+.card-primary:hover{box-shadow:0 0 0 5px var(--accent-glow),0 20px 56px rgba(0,0,0,.55);border-color:var(--accent)}
+.cp-ic{width:46px;height:46px;border-radius:12px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
+.cp-text{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
+.cp-text b{font-size:17px;font-weight:700}
+.cp-text span{font-size:12.5px;color:var(--muted)}
+.cp-arrow{color:var(--accent);flex:none}
+
+.card-row{display:flex;gap:13px;margin-top:13px}
+.card{flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:5px;text-align:left;padding:17px 17px 16px;border-radius:12px;
+  background:var(--surface-1);border:1px solid var(--line);transition:border-color .18s ease,background .18s ease}
+.card:not(.disabled):hover{border-color:var(--line-strong);background:var(--surface-2)}
+.card.disabled{opacity:.55;cursor:default}
+.card .c-ic{width:34px;height:34px;border-radius:9px;background:var(--surface-3);color:var(--text-2);display:grid;place-items:center;margin-bottom:5px}
+.card b{font-size:13.5px;font-weight:600}
+.card b em{font-style:normal;font-size:8.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent-dim);border:1px solid var(--accent-dim);border-radius:4px;padding:1px 5px;margin-left:7px;vertical-align:middle}
+.card>span{font-size:11.5px;color:var(--muted)}
+
+.recents{margin-top:26px;display:flex;flex-direction:column;gap:10px}
+.recents-label{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-2);font-weight:600}
+.recents-list{display:flex;flex-wrap:wrap;gap:8px}
+.recent-chip{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:8px;background:var(--surface-1);border:1px solid var(--line);color:var(--text-2);font-size:12px;max-width:100%}
+.recent-chip:hover{border-color:var(--accent-dim);color:var(--text)}
+.recent-chip svg{color:var(--muted-2)}
+.recent-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.home-foot{margin-top:30px;text-align:center;font-size:10.5px;color:var(--muted-2)}
+.home-foot b{color:var(--muted)}
+
+/* ========================= WORKSPACE ========================= */
+.app{display:grid;grid-template-rows:46px 1fr;height:100vh;width:100vw}
 .topbar{display:flex;align-items:center;gap:14px;padding:0 14px;background:#10151c;border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:center;gap:8px}
+.brand{display:flex;align-items:center;gap:8px;cursor:pointer}
 .brand .mark{width:24px;height:24px;border-radius:6px;background:linear-gradient(135deg,var(--accent),var(--accent-dim));display:grid;place-items:center;color:var(--accent-ink)}
 .wordmark{font-family:var(--display);font-weight:800;font-style:italic;font-size:18px;letter-spacing:-.02em}
-.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--r2);border:1px solid var(--accent-dim);background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:12.5px;transition:background .15s}
-.btn:hover{background:#d3fc4d}
+.tb-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--r2);border:1px solid var(--accent-dim);background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:12.5px;transition:background .15s}
+.tb-btn:hover{background:#d3fc4d}
 .spacer{flex:1}
 .count{font-size:12px;color:var(--muted)}
 .count b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
 .clock{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;border-left:1px solid var(--line);padding-left:14px}
-
-/* grid */
 .main{overflow:auto;padding:12px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));grid-auto-rows:280px;gap:12px;align-content:start}
-
-/* pane */
 .pane{display:flex;flex-direction:column;background:var(--surface-1);border:1px solid var(--line);border-radius:var(--r3);overflow:hidden;transition:border-color .15s}
 .pane:hover{border-color:var(--line-strong)}
 .pane.err{border-color:rgba(255,107,107,.45)}
 .pane-head{display:flex;align-items:center;gap:8px;padding:7px 9px;background:var(--surface-2);border-bottom:1px solid var(--line);flex:none}
 .dot{width:8px;height:8px;border-radius:50%;flex:none}
 .dot.run{background:var(--run);box-shadow:0 0 0 3px rgba(58,210,159,.16)}
-.dot.idle{background:var(--idle)}
-.dot.err{background:var(--err)}
+.dot.idle{background:var(--idle)}.dot.err{background:var(--err)}
 .pane-name{font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .badge{font-size:9.5px;font-weight:600;padding:2px 6px;border-radius:4px;background:var(--surface-3);color:var(--muted);border:1px solid var(--line-strong);flex:none}
 .pane-head .sp{flex:1}
@@ -65,16 +105,14 @@ svg{display:block;flex:none}
 .pctrl.danger:hover{background:rgba(255,107,107,.16);color:var(--err)}
 .term-host{flex:1;min-height:0;background:var(--surface-0);padding:6px 4px 4px;overflow:hidden}
 .term-host .xterm{height:100%}
-
-/* spawn tile */
 .tile-spawn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border:1.5px dashed var(--line-strong);border-radius:var(--r3);color:var(--muted);transition:border-color .18s,color .18s,background .18s}
 .tile-spawn:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--accent-glow)}
 .tile-spawn .ic{width:42px;height:42px;border-radius:50%;border:1.5px solid currentColor;display:grid;place-items:center}
 .tile-spawn .t{font-weight:600;font-size:13px}
 .tile-spawn .sub{font-size:10.5px;color:var(--muted-2)}
 
-/* spawn-setup modal */
-.backdrop{position:fixed;inset:0;background:rgba(6,9,13,.64);display:none;align-items:center;justify-content:center;z-index:100}
+/* ========================= MODAL ========================= */
+.backdrop{position:fixed;inset:0;background:rgba(6,9,13,.66);display:none;align-items:center;justify-content:center;z-index:100}
 .backdrop.open{display:flex}
 .modal{width:440px;max-width:calc(100vw - 32px);background:var(--surface-1);border:1px solid var(--line-strong);border-radius:12px;box-shadow:0 24px 70px rgba(0,0,0,.6);overflow:hidden}
 .modal-head{display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid var(--line)}
@@ -90,28 +128,69 @@ svg{display:block;flex:none}
 .input:focus{outline:none;border-color:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-glow)}
 .browse{flex:none;display:inline-flex;align-items:center;gap:6px;padding:0 12px;border:1px solid var(--line-strong);border-radius:var(--r2);background:var(--surface-3);color:var(--text-2);font-size:12px;font-weight:500}
 .browse:hover{border-color:var(--accent-dim);color:var(--text)}
-.chips{display:flex;gap:6px}
+.chips{display:flex;gap:6px;align-items:center}
 .chip{flex:1;padding:8px 0;border:1px solid var(--line);border-radius:var(--r2);background:var(--surface-2);color:var(--muted);font-weight:600;font-size:12.5px;font-variant-numeric:tabular-nums}
 .chip:hover{border-color:var(--line-strong);color:var(--text-2)}
 .chip.on{background:var(--accent-glow);border-color:var(--accent-dim);color:var(--accent)}
+.chips .or{font-size:10px;color:var(--muted-2)}
 .modal-foot{display:flex;gap:8px;justify-content:flex-end;padding:13px 16px;border-top:1px solid var(--line);background:var(--surface-0)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 15px;border-radius:var(--r2);border:1px solid var(--accent-dim);background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:12.5px}
+.btn:hover{background:#d3fc4d}
 .btn-ghost{padding:8px 15px;border:1px solid var(--line-strong);border-radius:var(--r2);background:transparent;color:var(--text-2);font-size:12.5px;font-weight:500}
 .btn-ghost:hover{background:var(--surface-3);color:var(--text)}
 </style>
 </head>
 <body>
-<div class="app">
+
+<!-- ===================== HOME ===================== -->
+<div class="home" id="home">
+  <div class="home-inner">
+    <div class="hero">
+      <div class="logo-glow"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18V8l5 4 3-6 3 6 5-4v10"/></svg></div>
+      <h1>Maestro</h1>
+      <p>Spawn &amp; orchestrate fleets of AI agent CLIs — real terminals, real tree-kill.</p>
+    </div>
+
+    <button class="card-primary" id="btnNewWorkspace">
+      <span class="cp-ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>
+      <span class="cp-text"><b>New workspace</b><span>Pick a folder · choose how many agents to spawn</span></span>
+      <span class="cp-arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+    </button>
+
+    <div class="card-row">
+      <button class="card" id="btnQuick">
+        <span class="c-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg></span>
+        <b>Quick terminal</b>
+        <span>One shell, right now</span>
+      </button>
+      <button class="card disabled" disabled>
+        <span class="c-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>
+        <b>Templates <em>soon</em></b>
+        <span>Saved agent crews &amp; workflows</span>
+      </button>
+    </div>
+
+    <div class="recents" id="recents" hidden>
+      <span class="recents-label">Recent folders</span>
+      <div class="recents-list" id="recentsList"></div>
+    </div>
+
+    <div class="home-foot"><b>Maestro</b> · M0 · multi-agent · native Windows</div>
+  </div>
+</div>
+
+<!-- ===================== WORKSPACE ===================== -->
+<div class="app" id="app" hidden>
   <header class="topbar">
-    <div class="brand">
-      <span class="mark" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18V8l5 4 3-6 3 6 5-4v10"/></svg></span>
+    <div class="brand" id="brandHome" title="Back to home">
+      <span class="mark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18V8l5 4 3-6 3 6 5-4v10"/></svg></span>
       <span class="wordmark">Maestro</span>
     </div>
-    <button class="btn" id="btnNewAgent"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> New agent</button>
+    <button class="tb-btn" id="btnNewAgent"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> New agent</button>
     <div class="spacer"></div>
     <span class="count"><b id="agentCount">0</b> agents</span>
     <span class="clock" id="clock">--:--:--</span>
   </header>
-
   <main class="main">
     <div class="grid" id="grid">
       <button class="tile-spawn" id="btnSpawn">
@@ -123,6 +202,7 @@ svg{display:block;flex:none}
   </main>
 </div>
 
+<!-- ===================== MODAL ===================== -->
 <div class="backdrop" id="spawnModal">
   <div class="modal" role="dialog" aria-modal="true" aria-label="Spawn agents">
     <div class="modal-head">
@@ -148,7 +228,8 @@ svg{display:block;flex:none}
           <button class="chip" data-n="2">2</button>
           <button class="chip" data-n="4">4</button>
           <button class="chip" data-n="8">8</button>
-          <input class="input" id="mCount" type="number" min="1" max="32" value="1" style="max-width:74px;text-align:center">
+          <span class="or">or</span>
+          <input class="input" id="mCount" type="number" min="1" max="32" value="1" style="max-width:70px;text-align:center">
         </div>
       </div>
     </div>

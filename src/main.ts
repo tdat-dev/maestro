@@ -22,10 +22,17 @@ const appEl = document.getElementById("app") as HTMLElement;
 const grid = document.getElementById("grid") as HTMLElement;
 const spawnTile = document.getElementById("btnSpawn") as HTMLElement;
 
+function showWorkspace() {
+  homeEl.hidden = true;
+  appEl.hidden = false;
+}
 function showView() {
-  const inWorkspace = panes.size > 0;
-  homeEl.hidden = inWorkspace;
-  appEl.hidden = !inWorkspace;
+  if (panes.size > 0) {
+    showWorkspace();
+  } else {
+    appEl.hidden = true;
+    homeEl.hidden = false;
+  }
 }
 
 const RESTART_SVG =
@@ -80,10 +87,13 @@ function updateCount() {
 }
 
 async function createAgent(program: string, args: string[], cwd: string | null, name: string) {
+  // Make the (sized) workspace grid visible BEFORE mounting xterm, otherwise
+  // fit() measures a display:none container as 0×0 and ConPTY paints the prompt
+  // at the wrong size (blank pane).
+  showWorkspace();
   const id = newId();
   const el = buildPaneEl(id, name, cwd ?? program);
   grid.insertBefore(el, spawnTile);
-  showView();
 
   const host = el.querySelector<HTMLElement>("[data-host]")!;
   const term = mountTerminal(
@@ -114,6 +124,11 @@ async function createAgent(program: string, args: string[], cwd: string | null, 
     pane.running = true;
     setStatus(pane, "running", "run");
     updateCount();
+    // Re-fit once the grid layout has settled; correct the PTY size if it moved.
+    requestAnimationFrame(() => {
+      const s = term.fit();
+      if (s.cols !== cols || s.rows !== rows) void resizePty(id, s.cols, s.rows);
+    });
   } catch (e) {
     setStatus(pane, "spawn failed", "err");
     term.write(enc.encode(`\r\n\x1b[31m[spawn failed: ${String(e)}]\x1b[0m\r\n`));

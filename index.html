@@ -14,22 +14,36 @@
 
 <!-- ===================== INTRO SPLASH ===================== -->
 <div class="intro" id="intro" aria-hidden="true">
+  <span class="intro-grid"></span>
+  <span class="intro-aurora"></span>
   <div class="intro-stage">
+    <span class="intro-burst"></span>
     <span class="intro-glow"></span>
-    <span class="intro-ring"></span>
+    <span class="ring r1"></span>
+    <span class="ring r2"></span>
+    <span class="ring r3"></span>
     <div class="intro-signals">
-      <span class="sig" style="--tx:0px;--ty:-92px;--d:.70s"></span>
-      <span class="sig" style="--tx:78px;--ty:-52px;--d:.78s"></span>
-      <span class="sig" style="--tx:96px;--ty:14px;--d:.74s"></span>
-      <span class="sig" style="--tx:58px;--ty:74px;--d:.86s"></span>
-      <span class="sig" style="--tx:-58px;--ty:74px;--d:.82s"></span>
-      <span class="sig" style="--tx:-96px;--ty:10px;--d:.76s"></span>
-      <span class="sig" style="--tx:-78px;--ty:-52px;--d:.80s"></span>
+      <span class="sig" style="--tx:0px;--ty:-94px;--d:.60s"></span>
+      <span class="sig" style="--tx:64px;--ty:-70px;--d:.66s"></span>
+      <span class="sig" style="--tx:92px;--ty:-20px;--d:.62s"></span>
+      <span class="sig" style="--tx:88px;--ty:40px;--d:.72s"></span>
+      <span class="sig" style="--tx:40px;--ty:84px;--d:.78s"></span>
+      <span class="sig" style="--tx:-40px;--ty:84px;--d:.74s"></span>
+      <span class="sig" style="--tx:-88px;--ty:40px;--d:.70s"></span>
+      <span class="sig" style="--tx:-92px;--ty:-20px;--d:.64s"></span>
+      <span class="sig" style="--tx:-64px;--ty:-70px;--d:.58s"></span>
     </div>
-    <svg class="intro-mark" viewBox="0 0 24 24" fill="none" stroke="url(#introGrad)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="miter">
-      <defs><linearGradient id="introGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c6f135"/><stop offset=".5" stop-color="#27b9a3"/><stop offset="1" stop-color="#0f7a3e"/></linearGradient></defs>
-      <path pathLength="1" d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5"/>
+    <svg class="intro-mark" viewBox="0 0 24 24" fill="none">
+      <defs>
+        <linearGradient id="introGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c6f135"/><stop offset=".5" stop-color="#27b9a3"/><stop offset="1" stop-color="#0f7a3e"/></linearGradient>
+        <filter id="introBlur" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="0.35"/></filter>
+      </defs>
+      <path id="mPath" pathLength="1" d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5" stroke="url(#introGrad)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="miter"/>
+      <circle class="comet" r="0.85" fill="#eaffb0" filter="url(#introBlur)">
+        <animateMotion dur="0.56s" begin="0.12s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.65 0 0.35 1"><mpath href="#mPath"/></animateMotion>
+      </circle>
     </svg>
+    <span class="intro-flash"></span>
   </div>
 </div>
 

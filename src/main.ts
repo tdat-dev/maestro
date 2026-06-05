@@ -127,6 +127,7 @@ function createWorkspace(dir: string | null): Workspace {
 
   workspaces.set(id, ws);
   activateWorkspace(ws);
+  layoutGrid(ws);
   return ws;
 }
 
@@ -138,6 +139,24 @@ function activateWorkspace(ws: Workspace) {
   }
   showWorkspace();
   updateBcast();
+}
+
+/** Tile a workspace's panes to fill the whole area (1→full, 2→split, 4→2×2, …).
+ *  The spawn tile only appears when the workspace is empty. */
+function layoutGrid(ws: Workspace) {
+  const n = ws.panes.size;
+  const tile = ws.gridEl.querySelector<HTMLElement>(".tile-spawn");
+  if (tile) tile.style.display = n > 0 ? "none" : "";
+  const cols = n <= 1 ? 1 : Math.ceil(Math.sqrt(n));
+  const rows = Math.max(1, Math.ceil(Math.max(n, 1) / cols));
+  ws.gridEl.style.setProperty("--cols", String(cols));
+  ws.gridEl.style.setProperty("--rows", String(rows));
+  // Stretch the last pane across any trailing empty cells so the grid fully fills.
+  const panes = [...ws.panes.values()];
+  panes.forEach((p) => (p.el.style.gridColumn = ""));
+  if (n > 0 && n % cols !== 0) {
+    panes[panes.length - 1].el.style.gridColumn = `span ${cols - (n % cols) + 1}`;
+  }
 }
 
 async function removeWorkspace(ws: Workspace) {
@@ -291,6 +310,7 @@ function createAgent(ws: Workspace, spec: AgentSpec): () => Promise<void> {
 
   const pane: Pane = { id, el, term, running: false, spawnedAt: null, color: spec.color };
   ws.panes.set(id, pane);
+  layoutGrid(ws);
   updateCount();
 
   el.querySelector("[data-kill]")?.addEventListener("click", () => void removeAgent(ws, id));
@@ -334,6 +354,7 @@ async function removeAgent(ws: Workspace, id: string) {
   p.term.dispose();
   p.el.remove();
   ws.panes.delete(id);
+  layoutGrid(ws);
   updateCount();
 }
 
@@ -673,17 +694,16 @@ renderRecents();
 showView();
 
 /* Intro splash: plays once on first paint (CSS-driven), then we retire the
- * overlay and drop the `boot` gate so Home is fully interactive. Reduced-motion
- * users skip straight to the final state. Guarded so it can never trap input. */
+ * overlay and drop the `boot` gate so Home is fully interactive. Always plays
+ * (the splash ignores the OS reduce-motion setting by design). Guarded with a
+ * timeout so it can never trap input. */
 {
   const intro = document.getElementById("intro");
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const clearIntro = () => {
     document.body.classList.remove("boot");
     intro?.remove();
   };
-  if (reduce) clearIntro();
-  else window.setTimeout(clearIntro, 1700);
+  window.setTimeout(clearIntro, 1850);
 }
 
 // Silently check GitHub Releases for a newer signed build; prompts only if one

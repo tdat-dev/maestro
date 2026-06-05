@@ -12,6 +12,33 @@ interface Pane {
   el: HTMLElement;
   term: TerminalHandle;
   running: boolean;
+  spawnedAt: number | null;
+}
+
+// Per-CLI identity color for the monogram tile (brand-adjacent, distinct on dark).
+const CLI_COLORS: Record<string, string> = {
+  claude: "#d97757",
+  codex: "#10a37f",
+  gemini: "#4f8cf7",
+  aider: "#c6f135",
+  cursor: "#e8edf2",
+  opencode: "#f0883e",
+  qwen: "#a855f7",
+  copilot: "#9aa4b2",
+  goose: "#f6c453",
+  shell: "#5ec2f0",
+  cmd: "#94a3b1",
+  custom: "#c6f135",
+};
+function cliLook(badge: string, label: string): { color: string; mono: string } {
+  return { color: CLI_COLORS[badge] ?? "#c6f135", mono: (label.trim()[0] ?? "?").toUpperCase() };
+}
+function fmtUptime(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  const p = (n: number) => (n < 10 ? "0" : "") + n;
+  return h > 0 ? `${h}:${p(m % 60)}:${p(s % 60)}` : `${m}:${p(s % 60)}`;
 }
 
 const panes = new Map<string, Pane>();
@@ -68,16 +95,26 @@ function basename(p: string): string {
   return parts[parts.length - 1] || p;
 }
 
-function buildPaneEl(id: string, name: string, sub: string, badge: string): HTMLElement {
+function buildPaneEl(
+  id: string,
+  name: string,
+  sub: string,
+  badge: string,
+  color: string,
+  mono: string,
+): HTMLElement {
   const el = document.createElement("section");
   el.className = "pane";
   el.dataset.id = id;
   el.innerHTML = `
     <div class="pane-head">
+      <span class="mono" style="--c:${color}">${mono}</span>
+      <span class="pane-id">
+        <span class="pane-name" title="${name}">${name}</span>
+        <span class="pane-sub" title="${sub ? badge + " · " + sub : badge}">${sub ? badge + " · " + sub : badge}</span>
+      </span>
+      <span class="uptime" data-uptime></span>
       <span class="dot idle" data-dot></span>
-      <span class="pane-name" title="${sub}">${name}</span>
-      <span class="badge">${badge}</span>
-      <span class="sp"></span>
       <span class="status" data-status>queued…</span>
       <div class="ctrls">
         <button class="pctrl" data-restart aria-label="Restart agent">${RESTART_SVG}</button>
@@ -97,11 +134,15 @@ function setStatus(p: Pane, text: string, cls: "" | "run" | "err") {
   const d = p.el.querySelector<HTMLElement>("[data-dot]");
   if (d) d.className = "dot " + (cls === "run" ? "run" : cls === "err" ? "err" : "idle");
   p.el.classList.toggle("err", cls === "err");
+  p.el.classList.toggle("run", cls === "run");
 }
 
 function updateCount() {
-  const c = document.getElementById("agentCount");
-  if (c) c.textContent = String([...panes.values()].filter((p) => p.running).length);
+  const all = [...panes.values()];
+  const run = document.getElementById("runCount");
+  if (run) run.textContent = String(all.filter((p) => p.running).length);
+  const total = document.getElementById("agentCount");
+  if (total) total.textContent = String(all.length);
 }
 
 interface AgentSpec {
@@ -110,6 +151,8 @@ interface AgentSpec {
   cwd: string | null;
   name: string;
   badge: string;
+  color: string;
+  mono: string;
 }
 
 // Mount a pane immediately (status "queued…"); return a thunk that boots the
@@ -121,7 +164,8 @@ function createAgent(spec: AgentSpec): () => Promise<void> {
   // at the wrong size (blank pane).
   showWorkspace();
   const id = newId();
-  const el = buildPaneEl(id, spec.name, spec.cwd ?? spec.program, spec.badge);
+  const sub = spec.cwd ? basename(spec.cwd) : "";
+  const el = buildPaneEl(id, spec.name, sub, spec.badge, spec.color, spec.mono);
   grid.insertBefore(el, spawnTile);
 
   const host = el.querySelector<HTMLElement>("[data-host]")!;
@@ -139,7 +183,7 @@ function createAgent(spec: AgentSpec): () => Promise<void> {
     },
   );
 
-  const pane: Pane = { id, el, term, running: false };
+  const pane: Pane = { id, el, term, running: false, spawnedAt: null };
   panes.set(id, pane);
   updateCount();
 
@@ -158,6 +202,7 @@ function createAgent(spec: AgentSpec): () => Promise<void> {
       const launch = launchSpec(spec.program, spec.args);
       await spawnPty(id, launch.program, launch.args, spec.cwd, cols, rows, (bytes) => term.write(bytes));
       pane.running = true;
+      pane.spawnedAt = Date.now();
       setStatus(pane, "running", "run");
       updateCount();
       // Re-fit once the grid layout has settled; correct the PTY size if it moved.
@@ -361,7 +406,14 @@ async function spawnFromModal() {
     perId[p.id] = (perId[p.id] ?? 0) + 1;
     const base = p.shell && dir ? basename(dir) : p.label;
     const name = totals[p.id] > 1 ? `${base} #${perId[p.id]}` : base;
-    return createAgent({ program: p.program, args: p.args, cwd: dir, name, badge: p.badge });
+    return createAgent({
+      program: p.program,
+      args: p.args,
+      cwd: dir,
+      name,
+      badge: p.badge,
+      ...cliLook(p.badge, p.label),
+    });
   });
 
   // Boot through a concurrency-limited queue so many heavy CLIs don't all start
@@ -396,16 +448,24 @@ document.getElementById("btnQuick")?.addEventListener("click", () => {
     cwd: dir,
     name: dir ? basename(dir) : "powershell",
     badge: ps.badge,
+    ...cliLook(ps.badge, ps.label),
   })();
 });
 
 /* ---------------- clock ---------------- */
 const clk = document.getElementById("clock");
 function tick() {
-  if (!clk) return;
   const d = new Date();
   const p = (n: number) => (n < 10 ? "0" : "") + n;
-  clk.textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  if (clk) clk.textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  // Live uptime on every running pane.
+  const now = Date.now();
+  for (const pane of panes.values()) {
+    if (pane.running && pane.spawnedAt != null) {
+      const u = pane.el.querySelector<HTMLElement>("[data-uptime]");
+      if (u) u.textContent = fmtUptime(now - pane.spawnedAt);
+    }
+  }
 }
 tick();
 setInterval(tick, 1000);
@@ -422,6 +482,7 @@ onExit((id, code) => {
   const p = panes.get(id);
   if (p) {
     p.running = false;
+    p.spawnedAt = null;
     setStatus(p, `exited (${code})`, "");
     updateCount();
   }

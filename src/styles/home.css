@@ -1,0 +1,43 @@
+/* Home / launcher screen. */
+.home{position:fixed;inset:0;overflow:auto;display:grid;place-items:center;
+  background:
+    radial-gradient(820px 440px at 50% 20%, rgba(198,241,53,.10), transparent 62%),
+    radial-gradient(560px 560px at 86% 96%, rgba(94,194,240,.05), transparent 60%),
+    var(--bg);}
+.home-inner{width:min(660px,92vw);padding:44px 0 56px;display:flex;flex-direction:column;align-items:stretch}
+.hero{text-align:center;margin-bottom:34px}
+.logo-glow{width:104px;height:104px;margin:0 auto 16px;display:grid;place-items:center}
+.logo-glow svg{filter:drop-shadow(0 0 22px rgba(39,185,163,.45)) drop-shadow(0 0 8px rgba(198,241,53,.3))}
+.hero h1{font-family:var(--display);font-style:italic;font-weight:800;font-size:52px;letter-spacing:-.03em;line-height:1}
+.hero p{margin:14px auto 0;color:var(--muted);font-size:13.5px;max-width:430px;line-height:1.65}
+
+.card-primary{display:flex;align-items:center;gap:16px;text-align:left;padding:21px 22px;border-radius:14px;
+  background:linear-gradient(180deg,rgba(198,241,53,.07),rgba(255,255,255,.012));
+  border:1px solid var(--accent-dim);box-shadow:0 0 0 4px var(--accent-glow),0 16px 44px rgba(0,0,0,.45);
+  transition:box-shadow .18s ease,border-color .18s ease}
+.card-primary:hover{box-shadow:0 0 0 5px var(--accent-glow),0 20px 56px rgba(0,0,0,.55);border-color:var(--accent)}
+.cp-ic{width:46px;height:46px;border-radius:12px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
+.cp-text{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
+.cp-text b{font-size:17px;font-weight:700}
+.cp-text span{font-size:12.5px;color:var(--muted)}
+.cp-arrow{color:var(--accent);flex:none}
+
+.card-row{display:flex;gap:13px;margin-top:13px}
+.card{flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:5px;text-align:left;padding:17px 17px 16px;border-radius:12px;
+  background:var(--surface-1);border:1px solid var(--line);transition:border-color .18s ease,background .18s ease}
+.card:not(.disabled):hover{border-color:var(--line-strong);background:var(--surface-2)}
+.card.disabled{opacity:.55;cursor:default}
+.card .c-ic{width:34px;height:34px;border-radius:9px;background:var(--surface-3);color:var(--text-2);display:grid;place-items:center;margin-bottom:5px}
+.card b{font-size:13.5px;font-weight:600}
+.card b em{font-style:normal;font-size:8.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent-dim);border:1px solid var(--accent-dim);border-radius:4px;padding:1px 5px;margin-left:7px;vertical-align:middle}
+.card>span{font-size:11.5px;color:var(--muted)}
+
+.recents{margin-top:26px;display:flex;flex-direction:column;gap:10px}
+.recents-label{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-2);font-weight:600}
+.recents-list{display:flex;flex-wrap:wrap;gap:8px}
+.recent-chip{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:8px;background:var(--surface-1);border:1px solid var(--line);color:var(--text-2);font-size:12px;max-width:100%}
+.recent-chip:hover{border-color:var(--accent-dim);color:var(--text)}
+.recent-chip svg{color:var(--muted-2)}
+.recent-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.home-foot{margin-top:30px;text-align:center;font-size:10.5px;color:var(--muted-2)}
+.home-foot b{color:var(--muted)}

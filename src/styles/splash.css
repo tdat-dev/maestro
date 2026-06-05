@@ -1,0 +1,53 @@
+/* Intro splash — plays once per launch (~1.6s): the M draws itself, a glow
+   blooms, a signal field radiates, then the splash fades while Home rises in. */
+.intro{position:fixed;inset:0;z-index:200;display:grid;place-items:center;pointer-events:none;
+  background:
+    radial-gradient(820px 440px at 50% 42%, rgba(198,241,53,.10), transparent 62%),
+    radial-gradient(560px 560px at 50% 100%, rgba(94,194,240,.05), transparent 60%),
+    var(--bg);
+  animation:introOut .5s ease 1.18s forwards}
+@keyframes introOut{to{opacity:0;visibility:hidden}}
+.intro-stage{position:relative;width:240px;height:240px;display:grid;place-items:center}
+/* glow bloom behind the mark — the "coming alive" moment */
+.intro-glow{position:absolute;width:200px;height:200px;border-radius:50%;
+  background:radial-gradient(circle, rgba(39,185,163,.55), rgba(198,241,53,.18) 38%, transparent 68%);
+  filter:blur(6px);opacity:0;transform:scale(.4);
+  animation:introGlow 1.1s cubic-bezier(.2,.7,.2,1) .42s forwards}
+@keyframes introGlow{0%{opacity:0;transform:scale(.4)}45%{opacity:.95;transform:scale(1.18)}100%{opacity:.5;transform:scale(1)}}
+/* the M mark draws its stroke (pathLength=1 normalizes the dash math) */
+.intro-mark{position:relative;width:120px;height:120px;
+  filter:drop-shadow(0 0 22px rgba(39,185,163,.45)) drop-shadow(0 0 8px rgba(198,241,53,.3))}
+.intro-mark path{stroke-dasharray:1;stroke-dashoffset:1;animation:introDraw .62s cubic-bezier(.65,0,.35,1) forwards}
+@keyframes introDraw{to{stroke-dashoffset:0}}
+/* signal field — nodes radiate from the mark like an orchestrated fleet */
+.intro-signals{position:absolute;inset:0;display:grid;place-items:center}
+.intro-signals .sig{position:absolute;width:7px;height:7px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 8px var(--accent);opacity:0;transform:translate(0,0) scale(0);
+  animation:introSig .9s ease-out var(--d,.7s) forwards}
+@keyframes introSig{
+  0%{opacity:0;transform:translate(0,0) scale(0)}
+  22%{opacity:1;transform:translate(calc(var(--tx)*.3),calc(var(--ty)*.3)) scale(1)}
+  100%{opacity:0;transform:translate(var(--tx),var(--ty)) scale(.4)}}
+/* expanding ripple ring */
+.intro-ring{position:absolute;width:80px;height:80px;border-radius:50%;border:1.5px solid rgba(198,241,53,.6);
+  opacity:0;transform:scale(.2);animation:introRing 1s ease-out .66s forwards}
+@keyframes introRing{0%{opacity:.7;transform:scale(.2)}100%{opacity:0;transform:scale(3.4)}}
+
+/* Home rises in beneath the fading splash, staggered for a composed reveal. */
+.boot .hero .logo-glow,.boot .hero h1,.boot .hero p,
+.boot .card-primary,.boot .card-row,.boot .recents,.boot .home-foot{opacity:0}
+.boot .hero .logo-glow{animation:riseIn .52s cubic-bezier(.2,.7,.2,1) 1.00s forwards}
+.boot .hero h1{animation:riseIn .52s cubic-bezier(.2,.7,.2,1) 1.08s forwards}
+.boot .hero p{animation:riseIn .52s cubic-bezier(.2,.7,.2,1) 1.16s forwards}
+.boot .card-primary{animation:riseIn .52s cubic-bezier(.2,.7,.2,1) 1.24s forwards}
+.boot .card-row{animation:riseIn .52s cubic-bezier(.2,.7,.2,1) 1.32s forwards}
+.boot .recents{animation:riseIn .52s cubic-bezier(.2,.7,.2,1) 1.40s forwards}
+.boot .home-foot{animation:riseIn .52s cubic-bezier(.2,.7,.2,1) 1.44s forwards}
+@keyframes riseIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+
+/* Honor reduced-motion: no splash, Home shown instantly at final state. */
+@media (prefers-reduced-motion:reduce){
+  .intro{display:none!important}
+  .boot .hero .logo-glow,.boot .hero h1,.boot .hero p,
+  .boot .card-primary,.boot .card-row,.boot .recents,.boot .home-foot{opacity:1;animation:none;transform:none}
+}

@@ -1,0 +1,36 @@
+/* Broadcast console — type once, signal every agent in the active tab. */
+.bcast{position:relative;display:flex;align-items:center;gap:12px;padding:10px 12px 10px 14px;
+  background:linear-gradient(180deg,#0e131a,#0b0f14);border-top:1px solid var(--line);overflow:hidden}
+.bcast::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:0;transition:opacity .28s ease}
+.bcast:focus-within::before{opacity:.75}
+.bcast:focus-within{background:linear-gradient(180deg,#11171f,#0b0f14)}
+/* pulsing emitter */
+.bcast-emitter{position:relative;width:24px;height:24px;flex:none;display:grid;place-items:center}
+.be-core{width:8px;height:8px;border-radius:50%;background:var(--idle);transition:background .25s}
+.bcast-emitter.live .be-core{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.bcast-emitter.live::before,.bcast-emitter.live::after{content:"";position:absolute;inset:0;margin:auto;
+  width:8px;height:8px;border-radius:50%;border:1.5px solid var(--accent);animation:emit 2.4s ease-out infinite}
+.bcast-emitter.live::after{animation-delay:1.2s}
+@keyframes emit{0%{width:8px;height:8px;opacity:.6}100%{width:26px;height:26px;opacity:0}}
+.bcast-caret{color:var(--accent);font-weight:700;font-size:14px;flex:none;margin:0 -4px 0 -2px;text-shadow:0 0 8px var(--accent-glow)}
+.bcast-input{flex:1;background:transparent;border:none;outline:none;color:var(--text);
+  font-family:var(--mono);font-size:13.5px;min-width:0;caret-color:var(--accent);letter-spacing:.01em}
+.bcast-input::placeholder{color:var(--muted-2)}
+/* live target dots — one per agent, in its identity color */
+.bcast-targets{display:flex;align-items:center;flex:none}
+.bcast-targets .t{width:9px;height:9px;border-radius:50%;margin-left:-3px;border:1.5px solid #0b0f14}
+.bcast-count{font-size:10.5px;color:var(--muted-2);font-variant-numeric:tabular-nums;flex:none;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.bcast-send{flex:none;display:inline-flex;align-items:center;gap:8px;padding:8px 11px 8px 13px;border-radius:8px;
+  border:1px solid var(--accent-dim);background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:12px;
+  transition:background .15s,box-shadow .15s,opacity .15s,filter .15s}
+.bcast-send:hover:not(:disabled){background:#d3fc4d;box-shadow:0 0 0 4px var(--accent-glow)}
+.bcast-send:disabled{opacity:.4;cursor:default;filter:grayscale(.35)}
+.bcast-send kbd{font-family:var(--mono);font-size:10px;line-height:1;background:rgba(16,22,10,.22);
+  border:1px solid rgba(16,22,10,.28);border-radius:4px;padding:2px 5px;font-weight:700}
+/* ripple when a broadcast fires */
+.bcast.sent::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(160px 80px at 18% 50%,var(--accent-glow),transparent 70%);animation:sentRipple .55s ease-out}
+@keyframes sentRipple{from{opacity:.9}to{opacity:0}}
+.pane.recv{animation:recvFlash .5s ease}
+@keyframes recvFlash{0%{box-shadow:0 0 0 0 var(--accent-glow)}40%{box-shadow:0 0 0 3px var(--accent-glow)}100%{box-shadow:0 0 0 0 transparent}}

@@ -1,3 +1,4 @@
+import "./styles/index.css";
 import { mountTerminal, type TerminalHandle } from "./terminal";
 import {
   spawnPty,
@@ -696,6 +697,20 @@ setInterval(tick, 1000);
 void killAll().catch(() => {});
 renderRecents();
 showView();
+
+/* Intro splash: plays once on first paint (CSS-driven), then we retire the
+ * overlay and drop the `boot` gate so Home is fully interactive. Reduced-motion
+ * users skip straight to the final state. Guarded so it can never trap input. */
+{
+  const intro = document.getElementById("intro");
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const clearIntro = () => {
+    document.body.classList.remove("boot");
+    intro?.remove();
+  };
+  if (reduce) clearIntro();
+  else window.setTimeout(clearIntro, 1700);
+}
 
 // Silently check GitHub Releases for a newer signed build; prompts only if one
 // exists. No-op in dev / when offline.

@@ -1,0 +1,20 @@
+/* Design tokens + global reset/base. Loaded first. */
+:root{
+  --bg:#0d1014; --surface-0:#11161d; --surface-1:#161b22; --surface-2:#1c232c; --surface-3:#232b35;
+  --line:#2a323d; --line-strong:#3a4552;
+  --text:#e8edf2; --text-2:#c2ccd6; --muted:#94a3b1; --muted-2:#7d8b99;
+  --accent:#c6f135; --accent-dim:#9bbd2a; --accent-ink:#10160a; --accent-glow:rgba(198,241,53,.16);
+  --info:#5ec2f0; --run:#3ad29f; --idle:#6b7785; --err:#ff6b6b;
+  --r2:6px; --r3:8px;
+  --mono:'IBM Plex Mono', ui-monospace, monospace;
+  --display:'Bricolage Grotesque', sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;overflow:hidden}
+button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer}
+svg{display:block;flex:none}
+[hidden]{display:none !important}
+:focus-visible{outline:none;box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent);border-radius:var(--r2)}
+*::-webkit-scrollbar{width:9px;height:9px}
+*::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:6px;border:2px solid transparent;background-clip:padding-box}

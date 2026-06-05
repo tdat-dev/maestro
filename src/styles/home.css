@@ -6,8 +6,20 @@
     var(--bg);}
 .home-inner{width:min(660px,92vw);padding:44px 0 56px;display:flex;flex-direction:column;align-items:stretch}
 .hero{text-align:center;margin-bottom:34px}
-.logo-glow{width:104px;height:104px;margin:0 auto 16px;display:grid;place-items:center}
+.logo-glow{width:104px;height:104px;margin:0 auto 16px;display:grid;place-items:center;position:relative;isolation:isolate}
 .logo-glow svg{filter:drop-shadow(0 0 22px rgba(39,185,163,.45)) drop-shadow(0 0 8px rgba(198,241,53,.3))}
+/* Living logo — perpetual gentle breathe + glow pulse. transform/opacity only,
+   GPU-composited (will-change caches the drop-shadow layer), so it's negligible
+   on CPU/battery. The logo is display:none off-screen, so it costs nothing then. */
+.logo-glow::before{content:"";position:absolute;top:50%;left:50%;width:150px;height:150px;
+  transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;z-index:-1;
+  background:radial-gradient(circle, rgba(39,185,163,.30), rgba(198,241,53,.10) 45%, transparent 70%);
+  opacity:.4;animation:logoGlowPulse 4.2s ease-in-out infinite}
+.logo-glow svg{will-change:transform;animation:logoBreathe 4.2s ease-in-out infinite}
+@keyframes logoBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
+@keyframes logoGlowPulse{
+  0%,100%{opacity:.30;transform:translate(-50%,-50%) scale(.95)}
+  50%{opacity:.62;transform:translate(-50%,-50%) scale(1.06)}}
 .hero h1{font-family:var(--display);font-style:italic;font-weight:800;font-size:52px;letter-spacing:-.03em;line-height:1}
 .hero p{margin:14px auto 0;color:var(--muted);font-size:13.5px;max-width:430px;line-height:1.65}
 

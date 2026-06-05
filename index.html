@@ -7,7 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23c6f135'/%3E%3Cstop offset='.5' stop-color='%2327b9a3'/%3E%3Cstop offset='1' stop-color='%230f7a3e'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='24' height='24' rx='5' fill='%2311161d'/%3E%3Cpath d='M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5' fill='none' stroke='url(%23g)' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='miter'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Geist:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
 </head>
 <body class="boot">
@@ -95,17 +95,17 @@
 <!-- ===================== WORKSPACE ===================== -->
 <div class="app" id="app" hidden>
   <header class="topbar" data-tauri-drag-region>
-    <button class="tb-btn" id="btnNewAgent"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> New agent</button>
+    <nav class="tabstrip" id="tabstrip">
+      <button class="tab-add" id="tabAdd" aria-label="New workspace"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
+    </nav>
     <div class="spacer" data-tauri-drag-region></div>
+    <button class="tb-btn" id="btnNewAgent"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Agent</button>
     <div class="stats" data-tauri-drag-region>
       <span class="stat live"><span class="pip"></span><b id="runCount">0</b> live</span>
-      <span class="stat"><b id="agentCount">0</b> agents</span>
+      <span class="stat"><b id="agentCount">0</b> total</span>
     </div>
     <span class="clock" id="clock" data-tauri-drag-region>--:--:--</span>
   </header>
-  <nav class="tabstrip" id="tabstrip">
-    <button class="tab-add" id="tabAdd" aria-label="New workspace"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
-  </nav>
   <main class="main" id="workspaces"></main>
   <div class="bcast" id="bcast">
     <span class="bcast-emitter" id="bcastEmitter" title="Broadcast"><span class="be-core"></span></span>

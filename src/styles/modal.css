@@ -27,7 +27,7 @@
 .crew-card .cc-meta{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0}
 .crew-card .cc-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .crew-card.on .cc-name{color:var(--accent)}
-.crew-card .cc-badge{font-size:8px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crew-card .cc-badge{font-family:var(--mono);font-size:8.5px;color:var(--muted-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stepper{display:flex;align-items:center;gap:2px;flex:none}
 .stepper button{width:21px;height:21px;border-radius:5px;background:var(--surface-3);color:var(--text-2);display:grid;place-items:center;font-size:15px;line-height:1;transition:background .12s,color .12s}
 .stepper button:hover{background:var(--line-strong);color:var(--text)}

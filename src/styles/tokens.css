@@ -5,13 +5,15 @@
   --text:#e8edf2; --text-2:#c2ccd6; --muted:#94a3b1; --muted-2:#7d8b99;
   --accent:#c6f135; --accent-dim:#9bbd2a; --accent-ink:#10160a; --accent-glow:rgba(198,241,53,.16);
   --info:#5ec2f0; --run:#3ad29f; --idle:#6b7785; --err:#ff6b6b;
-  --r2:6px; --r3:8px;
-  --mono:'IBM Plex Mono', ui-monospace, monospace;
+  --r1:5px; --r2:7px; --r3:9px; --r4:12px;
+  /* type system: sans for UI chrome, mono for technical values, display for the wordmark */
+  --sans:'Geist', system-ui, -apple-system, sans-serif;
+  --mono:'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
   --display:'Bricolage Grotesque', sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
-body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;font-feature-settings:"cv01","ss01";-webkit-font-smoothing:antialiased;overflow:hidden}
 button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer}
 svg{display:block;flex:none}
 [hidden]{display:none !important}

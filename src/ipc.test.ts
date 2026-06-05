@@ -12,6 +12,9 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: vi.fn().mockResolvedValue("D:\\projects\\demo"),
+}));
 
 import { spawnPty, sendInput, resizePty, killPty } from "./ipc";
 
@@ -21,14 +24,15 @@ beforeEach(() => {
 });
 
 describe("ipc", () => {
-  it("spawnPty passes agentId + camelCase args including the channel", async () => {
-    await spawnPty("agent-1", "powershell.exe", ["-NoLogo"], 80, 24, () => {});
+  it("spawnPty passes agentId, cwd + camelCase args including the channel", async () => {
+    await spawnPty("agent-1", "powershell.exe", ["-NoLogo"], "D:\\projects\\demo", 80, 24, () => {});
     expect(invoke).toHaveBeenCalledWith(
       "pty_spawn",
       expect.objectContaining({
         agentId: "agent-1",
         program: "powershell.exe",
         args: ["-NoLogo"],
+        cwd: "D:\\projects\\demo",
         cols: 80,
         rows: 24,
         onBytes: expect.anything(),

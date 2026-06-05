@@ -1,9 +1,9 @@
 import { mountTerminal, type TerminalHandle } from "./terminal";
-import { spawnPty, sendInput, resizePty, killPty, onExit } from "./ipc";
+import { spawnPty, sendInput, resizePty, killPty, onExit, pickFolder } from "./ipc";
 
-/* Multi-agent grid: each "Spawn agent" = a new pane backed by its own real
- * ConPTY process. They run concurrently; closing a pane kills that agent's
- * whole process tree (Win32 Job Object), independently. */
+/* Multi-agent grid. "Spawn agents" opens a setup (working directory + count),
+ * then spawns N agents — each its own real ConPTY process in that directory.
+ * The last setup is remembered (localStorage) so you don't re-pick every time. */
 
 interface Pane {
   id: string;
@@ -29,14 +29,19 @@ function newId(): string {
   return "agent-" + counter;
 }
 
-function buildPaneEl(id: string, name: string): HTMLElement {
+function basename(p: string): string {
+  const parts = p.replace(/[/\\]+$/, "").split(/[/\\]/);
+  return parts[parts.length - 1] || p;
+}
+
+function buildPaneEl(id: string, name: string, sub: string): HTMLElement {
   const el = document.createElement("section");
   el.className = "pane";
   el.dataset.id = id;
   el.innerHTML = `
     <div class="pane-head">
       <span class="dot idle" data-dot></span>
-      <span class="pane-name">${name}</span>
+      <span class="pane-name" title="${sub}">${name}</span>
       <span class="badge">shell</span>
       <span class="sp"></span>
       <span class="status" data-status>spawning…</span>
@@ -65,9 +70,9 @@ function updateCount() {
   if (c) c.textContent = String([...panes.values()].filter((p) => p.running).length);
 }
 
-async function createAgent(program = "powershell.exe", args = ["-NoLogo"], name = "powershell") {
+async function createAgent(program: string, args: string[], cwd: string | null, name: string) {
   const id = newId();
-  const el = buildPaneEl(id, name);
+  const el = buildPaneEl(id, name, cwd ?? program);
   grid.insertBefore(el, spawnTile);
 
   const host = el.querySelector<HTMLElement>("[data-host]")!;
@@ -90,12 +95,12 @@ async function createAgent(program = "powershell.exe", args = ["-NoLogo"], name 
   el.querySelector("[data-kill]")?.addEventListener("click", () => void removeAgent(id));
   el.querySelector("[data-restart]")?.addEventListener("click", async () => {
     await removeAgent(id);
-    await createAgent(program, args, name);
+    await createAgent(program, args, cwd, name);
   });
 
   const { cols, rows } = term.fit();
   try {
-    await spawnPty(id, program, args, cols, rows, (bytes) => term.write(bytes));
+    await spawnPty(id, program, args, cwd, cols, rows, (bytes) => term.write(bytes));
     pane.running = true;
     setStatus(pane, "running", "run");
     updateCount();
@@ -119,20 +124,97 @@ async function removeAgent(id: string) {
   updateCount();
 }
 
-// Route pty-exit events to the matching pane.
-void onExit((id, code) => {
-  const p = panes.get(id);
-  if (p) {
-    p.running = false;
-    setStatus(p, `exited (${code})`, "");
-    updateCount();
+/* ---------------- spawn-setup modal ---------------- */
+
+const STORE_KEY = "maestro.spawn";
+const modal = document.getElementById("spawnModal") as HTMLElement;
+const mDir = document.getElementById("mDir") as HTMLInputElement;
+const mProg = document.getElementById("mProg") as HTMLInputElement;
+const mCount = document.getElementById("mCount") as HTMLInputElement;
+const chips = Array.from(document.querySelectorAll<HTMLElement>(".chip"));
+
+interface Saved {
+  dir: string;
+  cmd: string;
+  count: number;
+}
+function loadSaved(): Saved {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+    return { dir: s.dir ?? "", cmd: s.cmd || "powershell.exe -NoLogo", count: s.count || 1 };
+  } catch {
+    return { dir: "", cmd: "powershell.exe -NoLogo", count: 1 };
+  }
+}
+
+function syncChips() {
+  const n = mCount.value;
+  chips.forEach((c) => c.classList.toggle("on", c.dataset.n === n));
+}
+
+function openModal() {
+  const s = loadSaved();
+  mDir.value = s.dir;
+  mProg.value = s.cmd;
+  mCount.value = String(s.count);
+  syncChips();
+  modal.classList.add("open");
+  mDir.focus();
+  mDir.select();
+}
+function closeModal() {
+  modal.classList.remove("open");
+}
+
+chips.forEach((c) => {
+  c.addEventListener("click", () => {
+    mCount.value = c.dataset.n || "1";
+    syncChips();
+  });
+});
+mCount.addEventListener("input", syncChips);
+
+document.getElementById("mBrowse")?.addEventListener("click", async () => {
+  const picked = await pickFolder(mDir.value || undefined);
+  if (picked) {
+    mDir.value = picked;
+    mDir.focus();
   }
 });
 
-document.getElementById("btnNewAgent")?.addEventListener("click", () => void createAgent());
-spawnTile?.addEventListener("click", () => void createAgent());
+async function spawnFromModal() {
+  const dir = mDir.value.trim() || null;
+  const cmd = mProg.value.trim() || "powershell.exe";
+  const count = Math.min(32, Math.max(1, parseInt(mCount.value, 10) || 1));
 
-// live clock
+  const tokens = cmd.split(/\s+/);
+  const program = tokens[0];
+  const args = tokens.slice(1);
+  const base = dir ? basename(dir) : basename(program).replace(/\.exe$/i, "");
+
+  localStorage.setItem(STORE_KEY, JSON.stringify({ dir: dir ?? "", cmd, count }));
+  closeModal();
+
+  for (let i = 1; i <= count; i++) {
+    const name = count > 1 ? `${base} #${i}` : base;
+    await createAgent(program, args, dir, name);
+  }
+}
+
+document.getElementById("mSpawn")?.addEventListener("click", () => void spawnFromModal());
+document.getElementById("mCancel")?.addEventListener("click", closeModal);
+document.getElementById("mClose")?.addEventListener("click", closeModal);
+modal.addEventListener("mousedown", (e) => {
+  if (e.target === modal) closeModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && modal.classList.contains("open")) closeModal();
+});
+
+document.getElementById("btnNewAgent")?.addEventListener("click", openModal);
+spawnTile?.addEventListener("click", openModal);
+
+/* ---------------- clock ---------------- */
 const clk = document.getElementById("clock");
 function tick() {
   if (!clk) return;
@@ -142,3 +224,14 @@ function tick() {
 }
 tick();
 setInterval(tick, 1000);
+
+/* pty-exit listener registered LAST and guarded, so it can never block the UI
+ * wiring above (e.g. when running outside the Tauri runtime). */
+onExit((id, code) => {
+  const p = panes.get(id);
+  if (p) {
+    p.running = false;
+    setStatus(p, `exited (${code})`, "");
+    updateCount();
+  }
+}).catch((e) => console.warn("pty-exit listener unavailable:", e));

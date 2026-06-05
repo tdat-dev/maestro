@@ -20,6 +20,7 @@ pub fn pty_spawn(
     agent_id: String,
     program: String,
     args: Vec<String>,
+    cwd: Option<String>,
     cols: u16,
     rows: u16,
     on_bytes: Channel<Vec<u8>>,
@@ -28,6 +29,7 @@ pub fn pty_spawn(
     for a in args {
         spec = spec.arg(a);
     }
+    spec.cwd = cwd.filter(|s| !s.is_empty());
     let size = PtySize {
         rows,
         cols,

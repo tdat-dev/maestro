@@ -72,6 +72,31 @@ svg{display:block;flex:none}
 .tile-spawn .ic{width:42px;height:42px;border-radius:50%;border:1.5px solid currentColor;display:grid;place-items:center}
 .tile-spawn .t{font-weight:600;font-size:13px}
 .tile-spawn .sub{font-size:10.5px;color:var(--muted-2)}
+
+/* spawn-setup modal */
+.backdrop{position:fixed;inset:0;background:rgba(6,9,13,.64);display:none;align-items:center;justify-content:center;z-index:100}
+.backdrop.open{display:flex}
+.modal{width:440px;max-width:calc(100vw - 32px);background:var(--surface-1);border:1px solid var(--line-strong);border-radius:12px;box-shadow:0 24px 70px rgba(0,0,0,.6);overflow:hidden}
+.modal-head{display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid var(--line)}
+.modal-head .t{font-family:var(--display);font-style:italic;font-weight:800;font-size:16px}
+.modal-head .x{margin-left:auto;width:24px;height:24px;border-radius:5px;display:grid;place-items:center;color:var(--muted)}
+.modal-head .x:hover{background:var(--surface-3);color:var(--text)}
+.modal-body{padding:16px;display:flex;flex-direction:column;gap:15px}
+.field{display:flex;flex-direction:column;gap:7px}
+.field>label{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.input-row{display:flex;gap:6px}
+.input{flex:1;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r2);padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:12.5px;min-width:0}
+.input::placeholder{color:var(--muted-2)}
+.input:focus{outline:none;border-color:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-glow)}
+.browse{flex:none;display:inline-flex;align-items:center;gap:6px;padding:0 12px;border:1px solid var(--line-strong);border-radius:var(--r2);background:var(--surface-3);color:var(--text-2);font-size:12px;font-weight:500}
+.browse:hover{border-color:var(--accent-dim);color:var(--text)}
+.chips{display:flex;gap:6px}
+.chip{flex:1;padding:8px 0;border:1px solid var(--line);border-radius:var(--r2);background:var(--surface-2);color:var(--muted);font-weight:600;font-size:12.5px;font-variant-numeric:tabular-nums}
+.chip:hover{border-color:var(--line-strong);color:var(--text-2)}
+.chip.on{background:var(--accent-glow);border-color:var(--accent-dim);color:var(--accent)}
+.modal-foot{display:flex;gap:8px;justify-content:flex-end;padding:13px 16px;border-top:1px solid var(--line);background:var(--surface-0)}
+.btn-ghost{padding:8px 15px;border:1px solid var(--line-strong);border-radius:var(--r2);background:transparent;color:var(--text-2);font-size:12.5px;font-weight:500}
+.btn-ghost:hover{background:var(--surface-3);color:var(--text)}
 </style>
 </head>
 <body>
@@ -97,6 +122,43 @@ svg{display:block;flex:none}
     </div>
   </main>
 </div>
+
+<div class="backdrop" id="spawnModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Spawn agents">
+    <div class="modal-head">
+      <span class="t">Spawn agents</span>
+      <button class="x" id="mClose" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label for="mDir">Working directory</label>
+        <div class="input-row">
+          <input class="input" id="mDir" placeholder="e.g. D:\projects\app" spellcheck="false" autocapitalize="off" autocomplete="off">
+          <button class="browse" id="mBrowse"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg> Browse…</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="mProg">Shell / command</label>
+        <input class="input" id="mProg" value="powershell.exe -NoLogo" spellcheck="false" autocapitalize="off" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>How many agents</label>
+        <div class="chips">
+          <button class="chip" data-n="1">1</button>
+          <button class="chip" data-n="2">2</button>
+          <button class="chip" data-n="4">4</button>
+          <button class="chip" data-n="8">8</button>
+          <input class="input" id="mCount" type="number" min="1" max="32" value="1" style="max-width:74px;text-align:center">
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" id="mCancel">Cancel</button>
+      <button class="btn" id="mSpawn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Spawn</button>
+    </div>
+  </div>
+</div>
+
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

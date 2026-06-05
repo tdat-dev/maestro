@@ -17,6 +17,7 @@
 .bcast-input{flex:1;background:transparent;border:none;outline:none;color:var(--text);
   font-family:var(--mono);font-size:13.5px;min-width:0;caret-color:var(--accent);letter-spacing:.01em}
 .bcast-input::placeholder{color:var(--muted-2)}
+.bcast-input:focus,.bcast-input:focus-visible{outline:none;box-shadow:none}
 /* live target dots — one per agent, in its identity color */
 .bcast-targets{display:flex;align-items:center;flex:none}
 .bcast-targets .t{width:9px;height:9px;border-radius:50%;margin-left:-3px;border:1.5px solid #0b0f14}

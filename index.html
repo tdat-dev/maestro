@@ -80,10 +80,10 @@
         <b>Quick terminal</b>
         <span>One shell, right now</span>
       </button>
-      <button class="card disabled" disabled>
+      <button class="card" id="btnTemplates">
         <span class="c-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>
-        <b>Templates <em>soon</em></b>
-        <span>Saved agent crews &amp; workflows</span>
+        <b>Templates</b>
+        <span>Spawn a saved crew in one click</span>
       </button>
     </div>
 
@@ -163,6 +163,7 @@
       <div class="crew-total">Total: <b id="crewTotal">0</b> agents</div>
     </div>
     <div class="modal-foot">
+      <button class="btn-ghost" id="mSaveTpl">Save template</button>
       <button class="btn-ghost" id="mCancel">Cancel</button>
       <button class="btn" id="mSpawn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> <span id="mSpawnLabel">Spawn</span></button>
     </div>
@@ -175,6 +176,9 @@
     <div class="modal-head"><span class="t" id="cfTitle">Confirm</span></div>
     <div class="modal-body">
       <p class="cf-msg" id="cfMsg"></p>
+      <div class="cf-input-row" id="cfInputRow" hidden>
+        <input class="input" id="cfInput" spellcheck="false" autocapitalize="off" autocomplete="off">
+      </div>
       <label class="cf-dontask" id="cfDontaskRow" hidden>
         <input type="checkbox" id="cfDontask">
         <span class="cf-box"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.2 5 8.6 9.5 3.6"/></svg></span>
@@ -184,6 +188,22 @@
     <div class="modal-foot">
       <button class="btn-ghost" id="cfCancel">Cancel</button>
       <button class="btn danger" id="cfOk">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== TEMPLATES ===================== -->
+<div class="backdrop" id="tplModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Templates">
+    <div class="modal-head">
+      <span class="t">Templates</span>
+      <button class="x" id="tplClose" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div class="tpl-list" id="tplList"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" id="tplCloseBtn">Close</button>
     </div>
   </div>
 </div>

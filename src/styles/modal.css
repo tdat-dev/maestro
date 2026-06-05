@@ -69,3 +69,18 @@
 .cf-dontask .cf-box svg{width:11px;height:11px}
 .cf-dontask input:checked + .cf-box{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .cf-dontask input:focus-visible + .cf-box{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent)}
+.cf-input-row{display:flex}
+.cf-input-row .input{flex:1}
+
+/* crew templates */
+.tpl-list{display:flex;flex-direction:column;gap:7px}
+.tpl-empty{font-size:12.5px;color:var(--muted-2);line-height:1.5;padding:8px 2px}
+.tpl-row{display:flex;align-items:center;gap:10px;padding:9px 10px 9px 12px;border:1px solid var(--line);border-radius:var(--r2);background:var(--surface-2);transition:border-color .14s}
+.tpl-row:hover{border-color:var(--line-strong)}
+.tpl-meta{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.tpl-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tpl-sum{font-family:var(--mono);font-size:9.5px;color:var(--muted-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tpl-actions{display:flex;align-items:center;gap:6px;flex:none}
+.tpl-spawn{padding:6px 11px;font-size:12px}
+.tpl-del{width:26px;height:26px;border-radius:var(--r2);display:grid;place-items:center;color:var(--muted);background:var(--surface-3);transition:background .12s,color .12s}
+.tpl-del:hover{background:var(--err);color:#fff}

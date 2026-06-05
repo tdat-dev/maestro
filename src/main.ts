@@ -194,18 +194,31 @@ function confirmModal(opts: {
   message: string;
   okLabel?: string;
   dontAsk?: boolean;
-}): Promise<{ ok: boolean; dontAsk: boolean }> {
+  input?: { placeholder?: string; value?: string };
+}): Promise<{ ok: boolean; dontAsk: boolean; value: string }> {
   const m = document.getElementById("confirmModal") as HTMLElement;
   const okBtn = document.getElementById("cfOk") as HTMLButtonElement;
   const cancelBtn = document.getElementById("cfCancel") as HTMLButtonElement;
   const dontChk = document.getElementById("cfDontask") as HTMLInputElement;
+  const inputRow = document.getElementById("cfInputRow") as HTMLElement;
+  const inputEl = document.getElementById("cfInput") as HTMLInputElement;
   document.getElementById("cfTitle")!.textContent = opts.title;
   document.getElementById("cfMsg")!.textContent = opts.message;
   okBtn.textContent = opts.okLabel ?? "Confirm";
   (document.getElementById("cfDontaskRow") as HTMLElement).hidden = !opts.dontAsk;
   dontChk.checked = false;
+  inputRow.hidden = !opts.input;
+  if (opts.input) {
+    inputEl.placeholder = opts.input.placeholder ?? "";
+    inputEl.value = opts.input.value ?? "";
+  }
   m.classList.add("open");
-  okBtn.focus();
+  if (opts.input) {
+    inputEl.focus();
+    inputEl.select();
+  } else {
+    okBtn.focus();
+  }
   return new Promise((resolve) => {
     const done = (ok: boolean) => {
       m.classList.remove("open");
@@ -213,7 +226,7 @@ function confirmModal(opts: {
       cancelBtn.removeEventListener("click", onCancel);
       m.removeEventListener("mousedown", onBackdrop);
       document.removeEventListener("keydown", onKey);
-      resolve({ ok, dontAsk: dontChk.checked });
+      resolve({ ok, dontAsk: dontChk.checked, value: inputEl.value });
     };
     const onOk = () => done(true);
     const onCancel = () => done(false);
@@ -649,25 +662,16 @@ document.getElementById("mBrowse")?.addEventListener("click", async () => {
   }
 });
 
-async function spawnFromModal() {
-  const dir = mDir.value.trim() || null;
-  crew.custom = mCustom.value;
-  const skipPerms = mSkipPerms.checked;
-  const fleet = expandCrew(crew);
+/** Core spawn: expand a crew → choose/create a workspace → mount & boot the
+ *  fleet (concurrency-limited). Shared by the spawn modal and saved templates. */
+async function spawnCrew(
+  crewState: CrewState,
+  dir: string | null,
+  skipPerms: boolean,
+  mode: "new" | "current",
+): Promise<void> {
+  const fleet = expandCrew(crewState);
   if (fleet.length === 0) return;
-
-  localStorage.setItem(
-    STORE_KEY,
-    JSON.stringify({
-      counts: crew.counts,
-      custom: crew.custom,
-      customCount: crew.customCount,
-      dir: dir ?? "",
-      skipPerms,
-    }),
-  );
-  if (dir) addRecent(dir);
-  closeModal();
 
   // Name agents per CLI: "Claude Code #1", "Claude Code #2"; plain label when one.
   const perId: Record<string, number> = {};
@@ -675,8 +679,8 @@ async function spawnFromModal() {
   for (const p of fleet) totals[p.id] = (totals[p.id] ?? 0) + 1;
 
   // Spawn into the active workspace, or a brand-new tab.
-  const ws = modalTarget === "current" && activeWs ? activeWs : createWorkspace(dir);
-  if (modalTarget === "current" && activeWs && !activeWs.dir && dir) activeWs.dir = dir;
+  const ws = mode === "current" && activeWs ? activeWs : createWorkspace(dir);
+  if (mode === "current" && activeWs && !activeWs.dir && dir) activeWs.dir = dir;
 
   const boots = fleet.map((p: CliPreset) => {
     perId[p.id] = (perId[p.id] ?? 0) + 1;
@@ -697,6 +701,28 @@ async function spawnFromModal() {
   await runLimited(boots, MAX_CONCURRENT_BOOT);
 }
 
+async function spawnFromModal() {
+  const dir = mDir.value.trim() || null;
+  crew.custom = mCustom.value;
+  const skipPerms = mSkipPerms.checked;
+  if (expandCrew(crew).length === 0) return;
+
+  localStorage.setItem(
+    STORE_KEY,
+    JSON.stringify({
+      counts: crew.counts,
+      custom: crew.custom,
+      customCount: crew.customCount,
+      dir: dir ?? "",
+      skipPerms,
+    }),
+  );
+  if (dir) addRecent(dir);
+  closeModal();
+
+  await spawnCrew(crew, dir, skipPerms, modalTarget);
+}
+
 buildCrewGrid();
 
 document.getElementById("mSpawn")?.addEventListener("click", () => void spawnFromModal());
@@ -707,6 +733,138 @@ modal.addEventListener("mousedown", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && modal.classList.contains("open")) closeModal();
+});
+
+/* ---------------- crew templates ---------------- */
+
+interface Template {
+  id: string;
+  name: string;
+  counts: Record<string, number>;
+  custom: string;
+  customCount: number;
+  dir: string;
+  skipPerms: boolean;
+}
+
+const TEMPLATES_KEY = "maestro.templates";
+
+function loadTemplates(): Template[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(TEMPLATES_KEY) || "[]");
+    return Array.isArray(v) ? (v as Template[]) : [];
+  } catch {
+    return [];
+  }
+}
+function saveTemplates(list: Template[]) {
+  try {
+    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(list));
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Human-readable summary of a template's crew, e.g.
+ *  "2× Claude Code · 1× Codex · my-app". */
+function templateSummary(t: Template): string {
+  const parts: string[] = [];
+  for (const p of CLI_PRESETS) {
+    const n = t.counts[p.id] ?? 0;
+    if (n > 0) parts.push(`${n}× ${p.label}`);
+  }
+  const custom = (t.custom ?? "").trim();
+  if (custom && t.customCount > 0) parts.push(`${t.customCount}× ${custom}`);
+  if (t.dir) parts.push(basename(t.dir) || t.dir);
+  return parts.join(" · ");
+}
+
+const tplModal = document.getElementById("tplModal") as HTMLElement;
+const tplListEl = document.getElementById("tplList") as HTMLElement;
+
+function renderTemplates() {
+  const list = loadTemplates();
+  tplListEl.replaceChildren();
+  if (list.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "tpl-empty";
+    empty.textContent = "No templates yet — save one from the New workspace dialog.";
+    tplListEl.appendChild(empty);
+    return;
+  }
+  for (const t of list) {
+    const row = document.createElement("div");
+    row.className = "tpl-row";
+    row.innerHTML =
+      `<div class="tpl-meta"><span class="tpl-name"></span><span class="tpl-sum"></span></div>` +
+      `<div class="tpl-actions">` +
+      `<button class="btn tpl-spawn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Spawn</button>` +
+      `<button class="tpl-del" aria-label="Delete template">${KILL_SVG}</button>` +
+      `</div>`;
+    row.querySelector(".tpl-name")!.textContent = t.name;
+    const sumEl = row.querySelector<HTMLElement>(".tpl-sum")!;
+    const sum = templateSummary(t);
+    sumEl.textContent = sum;
+    sumEl.title = sum;
+    row.querySelector(".tpl-spawn")!.addEventListener("click", async () => {
+      closeTplModal();
+      await spawnCrew(
+        { counts: t.counts, custom: t.custom, customCount: t.customCount },
+        t.dir || null,
+        t.skipPerms,
+        "new",
+      );
+    });
+    row.querySelector(".tpl-del")!.addEventListener("click", () => {
+      saveTemplates(loadTemplates().filter((x) => x.id !== t.id));
+      renderTemplates();
+    });
+    tplListEl.appendChild(row);
+  }
+}
+
+function openTplModal() {
+  renderTemplates();
+  tplModal.classList.add("open");
+}
+function closeTplModal() {
+  tplModal.classList.remove("open");
+}
+
+document.getElementById("btnTemplates")?.addEventListener("click", openTplModal);
+document.getElementById("tplClose")?.addEventListener("click", closeTplModal);
+document.getElementById("tplCloseBtn")?.addEventListener("click", closeTplModal);
+tplModal.addEventListener("mousedown", (e) => {
+  if (e.target === tplModal) closeTplModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && tplModal.classList.contains("open")) closeTplModal();
+});
+
+document.getElementById("mSaveTpl")?.addEventListener("click", async () => {
+  const dir = mDir.value.trim();
+  crew.custom = mCustom.value;
+  const skipPerms = mSkipPerms.checked;
+  if (expandCrew(crew).length === 0) return;
+  const defName = (dir ? basename(dir) : "") || "Crew template";
+  const { ok, value } = await confirmModal({
+    title: "Save template",
+    message: "Name this crew template so you can spawn it again later.",
+    okLabel: "Save",
+    input: { placeholder: "Template name", value: defName },
+  });
+  if (!ok) return;
+  const name = value.trim() || defName;
+  const tpl: Template = {
+    id: "tpl-" + Math.random().toString(36).slice(2, 9),
+    name,
+    counts: { ...crew.counts },
+    custom: crew.custom,
+    customCount: crew.customCount,
+    dir,
+    skipPerms,
+  };
+  saveTemplates([...loadTemplates(), tpl]);
 });
 
 /* ---------------- home + workspace triggers ---------------- */

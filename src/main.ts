@@ -184,13 +184,61 @@ function layoutGrid(ws: Workspace) {
   }
 }
 
+/** In-app confirm modal (unlike the native dialog, it can carry a "Don't ask
+ *  again" checkbox). Resolves { ok, dontAsk }. */
+function confirmModal(opts: {
+  title: string;
+  message: string;
+  okLabel?: string;
+  dontAsk?: boolean;
+}): Promise<{ ok: boolean; dontAsk: boolean }> {
+  const m = document.getElementById("confirmModal") as HTMLElement;
+  const okBtn = document.getElementById("cfOk") as HTMLButtonElement;
+  const cancelBtn = document.getElementById("cfCancel") as HTMLButtonElement;
+  const dontChk = document.getElementById("cfDontask") as HTMLInputElement;
+  document.getElementById("cfTitle")!.textContent = opts.title;
+  document.getElementById("cfMsg")!.textContent = opts.message;
+  okBtn.textContent = opts.okLabel ?? "Confirm";
+  (document.getElementById("cfDontaskRow") as HTMLElement).hidden = !opts.dontAsk;
+  dontChk.checked = false;
+  m.classList.add("open");
+  okBtn.focus();
+  return new Promise((resolve) => {
+    const done = (ok: boolean) => {
+      m.classList.remove("open");
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      m.removeEventListener("mousedown", onBackdrop);
+      document.removeEventListener("keydown", onKey);
+      resolve({ ok, dontAsk: dontChk.checked });
+    };
+    const onOk = () => done(true);
+    const onCancel = () => done(false);
+    const onBackdrop = (e: MouseEvent) => {
+      if (e.target === m) done(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") done(false);
+      else if (e.key === "Enter") done(true);
+    };
+    okBtn.addEventListener("click", onOk);
+    cancelBtn.addEventListener("click", onCancel);
+    m.addEventListener("mousedown", onBackdrop);
+    document.addEventListener("keydown", onKey);
+  });
+}
+
+const SKIP_WS_CLOSE = "maestro.skipWsCloseConfirm";
 async function removeWorkspace(ws: Workspace) {
-  if (ws.panes.size > 0) {
-    const ok = await confirmDialog(
-      `Close workspace "${ws.name}"? Its ${ws.panes.size} terminal(s) will be killed.`,
-      "Close workspace",
-    );
+  if (ws.panes.size > 0 && localStorage.getItem(SKIP_WS_CLOSE) !== "1") {
+    const { ok, dontAsk } = await confirmModal({
+      title: "Close workspace",
+      message: `Close "${ws.name}"? Its ${ws.panes.size} terminal(s) will be killed.`,
+      okLabel: "Close workspace",
+      dontAsk: true,
+    });
     if (!ok) return;
+    if (dontAsk) localStorage.setItem(SKIP_WS_CLOSE, "1");
   }
   for (const id of [...ws.panes.keys()]) await removeAgent(ws, id);
   const nextId = pickNextActive([...workspaces.keys()], ws.id);

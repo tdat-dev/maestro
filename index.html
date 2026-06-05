@@ -169,6 +169,25 @@
   </div>
 </div>
 
+<!-- ===================== CONFIRM ===================== -->
+<div class="backdrop" id="confirmModal">
+  <div class="modal confirm" role="alertdialog" aria-modal="true">
+    <div class="modal-head"><span class="t" id="cfTitle">Confirm</span></div>
+    <div class="modal-body">
+      <p class="cf-msg" id="cfMsg"></p>
+      <label class="cf-dontask" id="cfDontaskRow" hidden>
+        <input type="checkbox" id="cfDontask">
+        <span class="cf-box"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.2 5 8.6 9.5 3.6"/></svg></span>
+        <span>Don't ask again</span>
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" id="cfCancel">Cancel</button>
+      <button class="btn danger" id="cfOk">Confirm</button>
+    </div>
+  </div>
+</div>
+
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

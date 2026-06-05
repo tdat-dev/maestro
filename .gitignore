@@ -7,3 +7,11 @@ src-tauri/gen/
 
 # updater signing key (SECRET — never commit)
 .tauri/
+
+# hook logs / local agent data
+logs/
+.claude/
+# stray installer artifacts
+/maestro.exe
+/uninstall.exe
+*.lnk

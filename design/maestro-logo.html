@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maestro animated logo — reusable component</title>
+<style>
+/* =========================================================================
+   MAESTRO ANIMATED LOGO — drop-in, framework-agnostic component
+   -------------------------------------------------------------------------
+   Pure SVG + CSS. No JS, no dependencies, no images. Crisp at any size & DPR.
+
+   HOW TO USE
+   1. Copy the `.maestro-logo { ... }` CSS block below into your stylesheet.
+   2. Copy the <div class="maestro-logo"> ... </div> markup wherever you want it.
+   3. Size / colour / speed are all CSS variables — override them per instance:
+
+        <div class="maestro-logo" style="--ml-size:200px; --ml-breathe:6s"></div>
+
+   React/Vue/Svelte: paste the markup into a component, the CSS into a global
+   stylesheet (or a CSS module / <style scoped>). The id `ml-grad` is fine for a
+   single logo per page; if you render several, give each a unique gradient id.
+   ========================================================================= */
+
+.maestro-logo{
+  /* ---- knobs ---- */
+  --ml-size: 120px;            /* logo box size */
+  --ml-c1: #c6f135;            /* gradient: lime  */
+  --ml-c2: #27b9a3;            /* gradient: teal  */
+  --ml-c3: #0f7a3e;            /* gradient: green */
+  --ml-flow: #eaffb0;          /* running highlight colour */
+  --ml-breathe: 4.2s;          /* breathe + glow period */
+  --ml-flow-speed: 3.2s;       /* how fast the highlight runs the M */
+
+  position:relative;isolation:isolate;
+  width:var(--ml-size);height:var(--ml-size);
+  display:grid;place-items:center;
+}
+/* soft glow halo that pulses (opacity/transform only → GPU, ~free) */
+.maestro-logo::before{
+  content:"";position:absolute;top:50%;left:50%;width:145%;height:145%;
+  transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;z-index:-1;
+  background:radial-gradient(circle,
+    color-mix(in srgb, var(--ml-c2) 32%, transparent),
+    color-mix(in srgb, var(--ml-c1) 12%, transparent) 45%, transparent 70%);
+  opacity:.4;animation:ml-glow var(--ml-breathe) ease-in-out infinite;
+}
+.maestro-logo svg{
+  width:78%;height:78%;
+  filter:drop-shadow(0 0 calc(var(--ml-size)*.19) color-mix(in srgb, var(--ml-c2) 45%, transparent))
+         drop-shadow(0 0 calc(var(--ml-size)*.07) color-mix(in srgb, var(--ml-c1) 30%, transparent));
+  will-change:transform;animation:ml-breathe var(--ml-breathe) ease-in-out infinite;
+}
+/* gradient stops themed via CSS variables (stop-color is CSS-settable) */
+.maestro-logo .s0{stop-color:var(--ml-c1)}
+.maestro-logo .s1{stop-color:var(--ml-c2)}
+.maestro-logo .s2{stop-color:var(--ml-c3)}
+/* a bright dash runs continuously along the M outline */
+.maestro-logo .ml-flow{
+  stroke:var(--ml-flow);stroke-dasharray:.16 .84;stroke-dashoffset:1;opacity:.85;
+  animation:ml-flow var(--ml-flow-speed) linear infinite;
+}
+
+@keyframes ml-breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
+@keyframes ml-glow{
+  0%,100%{opacity:.30;transform:translate(-50%,-50%) scale(.95)}
+  50%{opacity:.62;transform:translate(-50%,-50%) scale(1.06)}}
+@keyframes ml-flow{to{stroke-dashoffset:0}}
+
+/* Best practice on a PUBLIC site: respect users who ask for less motion.
+   (In the Maestro app we intentionally force it; for a landing page, keep this.) */
+@media (prefers-reduced-motion:reduce){
+  .maestro-logo::before,.maestro-logo svg,.maestro-logo .ml-flow{animation:none}
+  .maestro-logo .ml-flow{opacity:0}
+}
+
+/* ---- demo page chrome (NOT part of the component) ---- */
+:root{--bg:#0d1014}
+*{margin:0;box-sizing:border-box}
+body{min-height:100vh;background:
+  radial-gradient(820px 440px at 50% 20%, rgba(198,241,53,.08), transparent 62%), var(--bg);
+  color:#e8edf2;font-family:system-ui,sans-serif;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:40px;padding:48px}
+.row{display:flex;align-items:center;gap:48px;flex-wrap:wrap;justify-content:center}
+.swatch{display:flex;flex-direction:column;align-items:center;gap:12px}
+.swatch span{font-size:12px;color:#94a3b1;font-family:ui-monospace,monospace}
+h1{font-size:14px;color:#7d8b99;font-weight:500;letter-spacing:.04em}
+.light{background:#f4f6f8;border-radius:16px;padding:28px}
+</style>
+</head>
+<body>
+<h1>Maestro logo — same SVG component, themed &amp; sized via CSS variables</h1>
+
+<div class="row">
+  <div class="swatch">
+    <!-- ===== THE COMPONENT (copy this block) ===== -->
+    <div class="maestro-logo" role="img" aria-label="Maestro" style="--ml-size:160px">
+      <svg viewBox="0 0 24 24" fill="none">
+        <defs>
+          <linearGradient id="ml-grad" x1="0" y1="0" x2="1" y2="1">
+            <stop class="s0" offset="0"/><stop class="s1" offset=".5"/><stop class="s2" offset="1"/>
+          </linearGradient>
+        </defs>
+        <path d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5"
+              stroke="url(#ml-grad)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="miter"/>
+        <path class="ml-flow" pathLength="1" d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5"
+              stroke-width="2.2" stroke-linecap="round" stroke-linejoin="miter"/>
+      </svg>
+    </div>
+    <!-- ===== /component ===== -->
+    <span>default · 160px</span>
+  </div>
+
+  <div class="swatch">
+    <div class="maestro-logo" role="img" aria-label="Maestro" style="--ml-size:96px;--ml-flow-speed:2.2s">
+      <svg viewBox="0 0 24 24" fill="none">
+        <defs><linearGradient id="ml-grad" x1="0" y1="0" x2="1" y2="1">
+          <stop class="s0" offset="0"/><stop class="s1" offset=".5"/><stop class="s2" offset="1"/></linearGradient></defs>
+        <path d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5" stroke="url(#ml-grad)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="miter"/>
+        <path class="ml-flow" pathLength="1" d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="miter"/>
+      </svg>
+    </div>
+    <span>96px · faster flow</span>
+  </div>
+
+  <div class="swatch">
+    <div class="maestro-logo" role="img" aria-label="Maestro"
+         style="--ml-size:120px;--ml-c1:#7dd3fc;--ml-c2:#a855f7;--ml-c3:#4f46e5;--ml-flow:#e9d5ff">
+      <svg viewBox="0 0 24 24" fill="none">
+        <defs><linearGradient id="ml-grad" x1="0" y1="0" x2="1" y2="1">
+          <stop class="s0" offset="0"/><stop class="s1" offset=".5"/><stop class="s2" offset="1"/></linearGradient></defs>
+        <path d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5" stroke="url(#ml-grad)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="miter"/>
+        <path class="ml-flow" pathLength="1" d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="miter"/>
+      </svg>
+    </div>
+    <span>re-themed via vars</span>
+  </div>
+</div>
+</body>
+</html>

@@ -87,7 +87,19 @@ svg{display:block;flex:none}
 .home-foot b{color:var(--muted)}
 
 /* ========================= WORKSPACE ========================= */
-.app{display:grid;grid-template-rows:50px 40px 1fr;height:100vh;width:100vw}
+.app{display:grid;grid-template-rows:50px 40px 1fr auto;height:100vh;width:100vw}
+/* broadcast bar — type once, send to every agent in the active tab */
+.bcast{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#10151c;border-top:1px solid var(--line)}
+.bcast-ic{color:var(--accent-dim);flex:none;display:grid;place-items:center}
+.bcast-input{flex:1;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r2);padding:8px 11px;color:var(--text);font-family:var(--mono);font-size:12.5px;min-width:0}
+.bcast-input:focus{outline:none;border-color:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-glow)}
+.bcast-input::placeholder{color:var(--muted-2)}
+.bcast-count{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;flex:none;white-space:nowrap}
+.bcast-send{flex:none;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:var(--r2);border:1px solid var(--accent-dim);background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:12px}
+.bcast-send:hover:not(:disabled){background:#d3fc4d}
+.bcast-send:disabled{opacity:.45;cursor:default}
+.pane.recv{animation:recvFlash .5s ease}
+@keyframes recvFlash{0%{box-shadow:0 0 0 0 var(--accent-glow)}40%{box-shadow:0 0 0 3px var(--accent-glow)}100%{box-shadow:0 0 0 0 transparent}}
 .topbar{display:flex;align-items:center;gap:14px;padding:0 150px 0 16px;background:linear-gradient(180deg,#121821,#0f141b);border-bottom:1px solid var(--line);box-shadow:0 1px 0 rgba(0,0,0,.4)}
 .brand{display:flex;align-items:center;gap:9px;cursor:pointer}
 .brand .mark{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--accent-dim));display:grid;place-items:center;color:var(--accent-ink);box-shadow:0 0 0 1px rgba(198,241,53,.3),0 4px 14px rgba(198,241,53,.18)}
@@ -278,6 +290,12 @@ svg{display:block;flex:none}
     <button class="tab-add" id="tabAdd" aria-label="New workspace"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
   </nav>
   <main class="main" id="workspaces"></main>
+  <div class="bcast" id="bcast">
+    <span class="bcast-ic" title="Broadcast"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.48M7.76 16.24a6 6 0 0 1 0-8.48M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/></svg></span>
+    <input class="bcast-input" id="bcastInput" placeholder="Broadcast to every agent in this tab…  (Enter to send)" spellcheck="false" autocapitalize="off" autocomplete="off">
+    <span class="bcast-count" id="bcastCount">→ 0 agents</span>
+    <button class="bcast-send" id="bcastSend" disabled><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg> Send</button>
+  </div>
 </div>
 
 <!-- ===================== MODAL ===================== -->

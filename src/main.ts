@@ -139,6 +139,7 @@ function activateWorkspace(ws: Workspace) {
     w.tabEl.classList.toggle("active", w === ws);
   }
   showWorkspace();
+  updateBcast();
 }
 
 async function removeWorkspace(ws: Workspace) {
@@ -249,6 +250,7 @@ function updateCount() {
   if (run) run.textContent = String(totalRun);
   const tot = document.getElementById("agentCount");
   if (tot) tot.textContent = String(total);
+  updateBcast();
 }
 
 interface AgentSpec {
@@ -600,6 +602,46 @@ wcMaxBtn?.addEventListener("click", async () => {
 document.getElementById("wcClose")?.addEventListener("click", () => void requestCloseWindow());
 void refreshMaxIcon();
 void onWindowResized(refreshMaxIcon).catch(() => {});
+
+/* ---------------- broadcast input (type once → whole tab) ---------------- */
+const bcastInput = document.getElementById("bcastInput") as HTMLInputElement;
+const bcastSend = document.getElementById("bcastSend") as HTMLButtonElement;
+const bcastCountEl = document.getElementById("bcastCount");
+
+function activeRunning(): Pane[] {
+  return activeWs ? [...activeWs.panes.values()].filter((p) => p.running) : [];
+}
+function updateBcast() {
+  const n = activeRunning().length;
+  if (bcastCountEl) bcastCountEl.textContent = `→ ${n} agent${n === 1 ? "" : "s"}`;
+  bcastSend.disabled = n === 0 || bcastInput.value.length === 0;
+}
+function flashPane(p: Pane) {
+  p.el.classList.remove("recv");
+  void p.el.offsetWidth; // restart the animation
+  p.el.classList.add("recv");
+  setTimeout(() => p.el.classList.remove("recv"), 520);
+}
+function broadcast() {
+  const text = bcastInput.value;
+  const targets = activeRunning();
+  if (!text || targets.length === 0) return;
+  for (const p of targets) {
+    void sendInput(p.id, text + "\r").catch(() => {});
+    flashPane(p);
+  }
+  bcastInput.value = "";
+  updateBcast();
+  bcastInput.focus();
+}
+bcastInput.addEventListener("input", updateBcast);
+bcastInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    broadcast();
+  }
+});
+bcastSend.addEventListener("click", broadcast);
 
 /* ---------------- clock ---------------- */
 const clk = document.getElementById("clock");

@@ -77,3 +77,10 @@ export async function toggleMaximizeWindow(): Promise<void> {
 export async function requestCloseWindow(): Promise<void> {
   await getCurrentWindow().close();
 }
+export async function isWindowMaximized(): Promise<boolean> {
+  return getCurrentWindow().isMaximized();
+}
+/** Run `cb` whenever the window is resized (incl. maximize/restore). */
+export async function onWindowResized(cb: () => void): Promise<void> {
+  await getCurrentWindow().onResized(() => cb());
+}

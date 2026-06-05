@@ -1,4 +1,11 @@
 /* Home / launcher screen. */
+/* "Back to workspace" pill — only on Home when tabs are still alive. */
+.home-resume{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:6;
+  display:inline-flex;align-items:center;gap:8px;padding:8px 13px;border-radius:9px;
+  border:1px solid var(--line-strong);background:rgba(22,27,34,.8);backdrop-filter:blur(8px);
+  color:var(--text-2);font-size:12.5px;font-weight:500;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+.home-resume:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--surface-2)}
+.home-resume .hr-count{font-family:var(--mono);font-size:11px;color:var(--muted-2)}
 .home{position:fixed;inset:0;overflow:auto;display:grid;place-items:center;
   background:
     radial-gradient(820px 440px at 50% 20%, rgba(198,241,53,.10), transparent 62%),
@@ -20,6 +27,11 @@
 @keyframes logoGlowPulse{
   0%,100%{opacity:.30;transform:translate(-50%,-50%) scale(.95)}
   50%{opacity:.62;transform:translate(-50%,-50%) scale(1.06)}}
+/* a bright highlight runs continuously along the M stroke (a short bright dash
+   travels the path). This is paint-based, but the logo is tiny so it's light;
+   it costs nothing while Home is off-screen (display:none). */
+.logo-glow .mFlow{stroke-dasharray:.16 .84;stroke-dashoffset:1;opacity:.85;animation:mFlow 3.2s linear infinite}
+@keyframes mFlow{to{stroke-dashoffset:0}}
 .hero h1{font-family:var(--display);font-style:italic;font-weight:800;font-size:52px;letter-spacing:-.03em;line-height:1}
 .hero p{margin:14px auto 0;color:var(--muted);font-size:13.5px;max-width:430px;line-height:1.65}
 

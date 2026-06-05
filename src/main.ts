@@ -88,6 +88,27 @@ function showView() {
     appEl.hidden = true;
     homeEl.hidden = false;
   }
+  syncResume();
+}
+/** Sync the "Back to workspace" affordance shown on Home when tabs are alive. */
+function syncResume() {
+  const bar = document.getElementById("homeResume");
+  if (!bar) return;
+  bar.hidden = workspaces.size === 0;
+  const c = document.getElementById("homeResumeCount");
+  if (c) c.textContent = workspaces.size ? `${workspaces.size} workspace${workspaces.size > 1 ? "s" : ""}` : "";
+}
+/** Go to the launcher without killing any tabs (agents keep running). */
+function goHome() {
+  homeEl.hidden = false;
+  appEl.hidden = true;
+  syncResume();
+}
+function resumeWorkspace() {
+  if (workspaces.size > 0) {
+    homeEl.hidden = true;
+    appEl.hidden = false;
+  }
 }
 
 const SPAWN_TILE_SVG =
@@ -579,6 +600,8 @@ document.addEventListener("keydown", (e) => {
 document.getElementById("btnNewWorkspace")?.addEventListener("click", () => openModal("new"));
 document.getElementById("btnNewAgent")?.addEventListener("click", () => openModal("current"));
 tabAdd?.addEventListener("click", () => openModal("new"));
+document.getElementById("btnHome")?.addEventListener("click", goHome);
+document.getElementById("homeResume")?.addEventListener("click", resumeWorkspace);
 
 document.getElementById("btnQuick")?.addEventListener("click", () => {
   const dir = getRecents()[0] ?? null;

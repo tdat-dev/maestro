@@ -30,6 +30,7 @@ interface Pane {
   spawnedAt: number | null;
   lastOutputAt: number; // ms of the last PTY output — drives the active/idle status
   color: string;
+  spec: AgentSpec; // the launch recipe — kept so the session can be serialized + re-booted
 }
 
 // No PTY output for this long while alive ⇒ the agent is idle (waiting at a prompt).
@@ -118,10 +119,11 @@ function resumeWorkspace() {
 const SPAWN_TILE_SVG =
   '<span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span><span class="t">Spawn agent</span><span class="sub">real ConPTY · type · tree-kill</span>';
 
-function createWorkspace(dir: string | null): Workspace {
+function createWorkspace(dir: string | null, name?: string): Workspace {
   wsCounter += 1;
   const id = `ws-${wsCounter}`;
-  const name = nextWorkspaceName(dir, [...workspaces.values()].map((w) => w.name));
+  // A restored tab passes its original name; otherwise auto-name it.
+  const wsName = name ?? nextWorkspaceName(dir, [...workspaces.values()].map((w) => w.name));
 
   const gridEl = document.createElement("div");
   gridEl.className = "grid";
@@ -137,10 +139,10 @@ function createWorkspace(dir: string | null): Workspace {
   tabEl.innerHTML =
     `<span class="tdot"></span><span class="tname"></span><span class="tcount"></span>` +
     `<button class="tclose" aria-label="Close workspace">${KILL_SVG}</button>`;
-  tabEl.querySelector(".tname")!.textContent = name;
+  tabEl.querySelector(".tname")!.textContent = wsName;
   tabstrip.insertBefore(tabEl, tabAdd);
 
-  const ws: Workspace = { id, name, dir, gridEl, tabEl, panes: new Map() };
+  const ws: Workspace = { id, name: wsName, dir, gridEl, tabEl, panes: new Map() };
   tabEl.addEventListener("click", (e) => {
     if ((e.target as HTMLElement).closest(".tclose")) return;
     activateWorkspace(ws);
@@ -153,6 +155,7 @@ function createWorkspace(dir: string | null): Workspace {
   workspaces.set(id, ws);
   activateWorkspace(ws);
   layoutGrid(ws);
+  saveSession();
   return ws;
 }
 
@@ -254,6 +257,7 @@ async function removeWorkspace(ws: Workspace) {
     }
   }
   updateCount();
+  saveSession();
 }
 
 const RESTART_SVG =
@@ -353,7 +357,9 @@ interface AgentSpec {
 // Mount a pane immediately (status "queued…"); return a thunk that boots the
 // real process. Splitting mount from boot lets the caller throttle booting so a
 // big fleet doesn't spike the CPU all at once.
-function createAgent(ws: Workspace, spec: AgentSpec): () => Promise<void> {
+// When `restore` is true the pane is mounted in a STOPPED state (no PTY spawn) —
+// session restore uses this so reopening doesn't auto-launch a heavy fleet.
+function createAgent(ws: Workspace, spec: AgentSpec, restore = false): () => Promise<void> {
   // Make the (sized) workspace grid visible BEFORE mounting xterm, otherwise
   // fit() measures a display:none container as 0×0 and ConPTY paints the prompt
   // at the wrong size (blank pane).
@@ -378,16 +384,26 @@ function createAgent(ws: Workspace, spec: AgentSpec): () => Promise<void> {
     },
   );
 
-  const pane: Pane = { id, el, term, running: false, spawnedAt: null, lastOutputAt: 0, color: spec.color };
+  const pane: Pane = { id, el, term, running: false, spawnedAt: null, lastOutputAt: 0, color: spec.color, spec };
   ws.panes.set(id, pane);
   layoutGrid(ws);
   updateCount();
+
+  // A restored pane is parked as "stopped" — no PTY is spawned until the user
+  // hits ⟳ (which recreates the pane with restore=false → boots normally).
+  if (restore) {
+    setStatus(pane, "stopped", "");
+    el.classList.add("stopped"); // dims the parked pane (cleared on boot)
+    term.write(enc.encode("\r\n\x1b[90m  [stopped — click ⟳ to resume]\x1b[0m\r\n"));
+  }
 
   el.querySelector("[data-kill]")?.addEventListener("click", () => void removeAgent(ws, id));
   el.querySelector("[data-restart]")?.addEventListener("click", async () => {
     await removeAgent(ws, id);
     await createAgent(ws, spec)();
   });
+
+  saveSession();
 
   return async () => {
     if (!ws.panes.has(id)) return; // killed before its turn to boot
@@ -430,6 +446,48 @@ async function removeAgent(ws: Workspace, id: string) {
   ws.panes.delete(id);
   layoutGrid(ws);
   updateCount();
+  saveSession();
+}
+
+/* ---------------- session persistence (restore tabs) ---------------- */
+
+// Serialize every workspace + its agents' launch specs so the next launch can
+// restore the same tabs (as STOPPED panes). Cheap, called on any set change.
+const SESSION_KEY = "maestro.session";
+function saveSession() {
+  try {
+    const data = [...workspaces.values()].map((w) => ({
+      name: w.name,
+      dir: w.dir,
+      agents: [...w.panes.values()].map((p) => p.spec),
+    }));
+    localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+  } catch {
+    /* storage may be full/unavailable — best-effort only */
+  }
+}
+
+// Recreate the previous session's tabs + panes as STOPPED (no PTY spawn). The
+// user resumes any pane via its ⟳ button. No-op when there's nothing saved.
+function restoreSession() {
+  let data: unknown;
+  try {
+    data = JSON.parse(localStorage.getItem(SESSION_KEY) || "[]");
+  } catch {
+    return; // invalid JSON — ignore
+  }
+  if (!Array.isArray(data) || data.length === 0) return;
+  for (const saved of data) {
+    if (!saved || typeof saved !== "object") continue;
+    const w = saved as { name?: unknown; dir?: unknown; agents?: unknown };
+    const dir = typeof w.dir === "string" ? w.dir : null;
+    const name = typeof w.name === "string" ? w.name : undefined;
+    const agents = Array.isArray(w.agents) ? (w.agents as AgentSpec[]) : [];
+    const ws = createWorkspace(dir, name);
+    for (const spec of agents) {
+      if (spec && typeof spec.program === "string") createAgent(ws, spec, true); // stopped — don't boot
+    }
+  }
 }
 
 /* ---------------- recent folders ---------------- */
@@ -794,6 +852,9 @@ setInterval(tick, 1000);
 // HMR reload), so clear them to avoid orphans + id collisions.
 void killAll().catch(() => {});
 renderRecents();
+// Recreate last session's tabs as STOPPED panes (no PTY spawn) before showing
+// the view, so reopening the app doesn't auto-launch a heavy fleet.
+restoreSession();
 showView();
 
 /* Intro splash: plays once on first paint (CSS-driven), then we retire the

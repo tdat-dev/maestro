@@ -54,6 +54,8 @@
 .pane.run{border-color:rgba(58,210,159,.26)}
 .pane.run::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:linear-gradient(90deg,transparent,var(--run),transparent);opacity:.55}
 .pane.err{border-color:rgba(255,107,107,.4)}
+.pane.stopped{opacity:.66;transition:opacity .15s,border-color .15s,box-shadow .15s}
+.pane.stopped:hover{opacity:1}
 .pane-head{display:flex;align-items:center;gap:9px;padding:7px 8px 7px 9px;background:var(--surface-2);border-bottom:1px solid var(--line);flex:none}
 .mono{width:24px;height:24px;border-radius:6px;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:12.5px;color:#0d1014;background:var(--c,#c6f135);box-shadow:0 0 0 1px rgba(0,0,0,.25)}
 .pane-id{display:flex;flex-direction:column;gap:0;min-width:0;flex:1}

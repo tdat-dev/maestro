@@ -2,7 +2,14 @@
 .app{display:grid;grid-template-rows:50px 40px 1fr auto;height:100vh;width:100vw}
 .topbar{display:flex;align-items:center;gap:14px;padding:0 150px 0 16px;background:linear-gradient(180deg,#121821,#0f141b);border-bottom:1px solid var(--line);box-shadow:0 1px 0 rgba(0,0,0,.4)}
 .brand{display:flex;align-items:center;gap:9px;cursor:pointer}
-.brand .mark{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--accent-dim));display:grid;place-items:center;color:var(--accent-ink);box-shadow:0 0 0 1px rgba(198,241,53,.3),0 4px 14px rgba(198,241,53,.18)}
+.brand .mark{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--accent-dim));display:grid;place-items:center;color:var(--accent-ink);box-shadow:0 0 0 1px rgba(198,241,53,.3),0 4px 14px rgba(198,241,53,.18);
+  position:relative;isolation:isolate;will-change:transform;animation:logoBreathe 4.2s ease-in-out infinite}
+/* glow pulse behind the topbar mark (opacity only — free). breathe reuses the
+   shared logoBreathe keyframe defined in home.css. */
+.brand .mark::after{content:"";position:absolute;inset:-9px;border-radius:50%;pointer-events:none;z-index:-1;
+  background:radial-gradient(circle, rgba(198,241,53,.40), transparent 66%);
+  opacity:.4;animation:logoGlowPulseSm 4.2s ease-in-out infinite}
+@keyframes logoGlowPulseSm{0%,100%{opacity:.28}50%{opacity:.6}}
 .wordmark{font-family:var(--display);font-weight:800;font-style:italic;font-size:19px;letter-spacing:-.02em}
 .tb-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:var(--r2);border:1px solid var(--accent-dim);background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:12.5px;transition:background .15s,box-shadow .15s;box-shadow:0 0 0 0 var(--accent-glow)}
 .tb-btn:hover{background:#d3fc4d;box-shadow:0 0 0 4px var(--accent-glow)}
@@ -48,11 +55,9 @@
 .pane-name{font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pane-sub{font-size:9.5px;color:var(--muted-2);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .uptime{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums;letter-spacing:.03em;flex:none}
-.dot{width:8px;height:8px;border-radius:50%;flex:none}
-.dot.run{background:var(--run);box-shadow:0 0 0 0 rgba(58,210,159,.5);animation:pulse 2.2s infinite}
-.dot.idle{background:var(--idle)}.dot.err{background:var(--err)}
-.status{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums;flex:none}
-.status.run{color:var(--run)}.status.err{color:var(--err)}
+.pane-stat{flex:none;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:2.5px 7px;border-radius:5px;background:var(--surface-3);color:var(--muted-2);white-space:nowrap}
+.pane-stat.run{background:rgba(58,210,159,.13);color:var(--run)}
+.pane-stat.err{background:rgba(255,107,107,.13);color:var(--err)}
 .ctrls{display:flex;gap:2px;flex:none}
 .pctrl{width:21px;height:21px;border-radius:5px;display:grid;place-items:center;color:var(--muted-2);transition:background .14s,color .14s}
 .pctrl:hover{background:var(--surface-3);color:var(--text)}

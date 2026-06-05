@@ -229,8 +229,7 @@ function buildPaneEl(
         <span class="pane-sub" title="${sub ? badge + " · " + sub : badge}">${sub ? badge + " · " + sub : badge}</span>
       </span>
       <span class="uptime" data-uptime></span>
-      <span class="dot idle" data-dot></span>
-      <span class="status" data-status>queued…</span>
+      <span class="pane-stat" data-status>queued</span>
       <div class="ctrls">
         <button class="pctrl" data-restart aria-label="Restart agent">${RESTART_SVG}</button>
         <button class="pctrl danger" data-kill aria-label="Kill agent (tree)">${KILL_SVG}</button>
@@ -244,10 +243,8 @@ function setStatus(p: Pane, text: string, cls: "" | "run" | "err") {
   const s = p.el.querySelector<HTMLElement>("[data-status]");
   if (s) {
     s.textContent = text;
-    s.className = "status" + (cls ? " " + cls : "");
+    s.className = "pane-stat" + (cls ? " " + cls : "");
   }
-  const d = p.el.querySelector<HTMLElement>("[data-dot]");
-  if (d) d.className = "dot " + (cls === "run" ? "run" : cls === "err" ? "err" : "idle");
   p.el.classList.toggle("err", cls === "err");
   p.el.classList.toggle("run", cls === "run");
 }
@@ -642,6 +639,9 @@ function flashPane(p: Pane) {
   p.el.classList.add("recv");
   setTimeout(() => p.el.classList.remove("recv"), 520);
 }
+const bcastHistory: string[] = [];
+let bcastHistIdx = 0; // points one past the newest entry
+
 function broadcast() {
   const text = bcastInput.value;
   const targets = activeRunning();
@@ -650,6 +650,8 @@ function broadcast() {
     void sendInput(p.id, text + "\r").catch(() => {});
     flashPane(p);
   }
+  if (bcastHistory[bcastHistory.length - 1] !== text) bcastHistory.push(text);
+  bcastHistIdx = bcastHistory.length;
   bcastInput.value = "";
   updateBcast();
   bcastInput.focus();
@@ -658,11 +660,24 @@ function broadcast() {
   bcast.classList.add("sent");
   setTimeout(() => bcast.classList.remove("sent"), 560);
 }
-bcastInput.addEventListener("input", updateBcast);
+bcastInput.addEventListener("input", () => {
+  bcastHistIdx = bcastHistory.length; // typing leaves history navigation
+  updateBcast();
+});
 bcastInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     e.preventDefault();
     broadcast();
+  } else if (e.key === "ArrowUp" && bcastHistory.length) {
+    e.preventDefault();
+    bcastHistIdx = Math.max(0, bcastHistIdx - 1);
+    bcastInput.value = bcastHistory[bcastHistIdx] ?? "";
+    updateBcast();
+  } else if (e.key === "ArrowDown" && bcastHistory.length) {
+    e.preventDefault();
+    bcastHistIdx = Math.min(bcastHistory.length, bcastHistIdx + 1);
+    bcastInput.value = bcastHistory[bcastHistIdx] ?? "";
+    updateBcast();
   }
 });
 bcastSend.addEventListener("click", broadcast);

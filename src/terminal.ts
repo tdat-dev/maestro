@@ -9,6 +9,12 @@ export interface TerminalHandle {
   dispose(): void;
 }
 
+// Browsers cap live WebGL contexts (~16) and thrash past that, which is what
+// makes a big fleet of panes lag. Only the first N panes get the GPU renderer;
+// the rest fall back to the default DOM renderer.
+const WEBGL_BUDGET = 8;
+let liveWebgl = 0;
+
 /**
  * Mount an xterm.js terminal into `container`. Transport-agnostic: input and
  * resize are reported via callbacks, so it can be wired to Tauri (or anything).
@@ -17,6 +23,7 @@ export function mountTerminal(
   container: HTMLElement,
   onInput: (data: string) => void,
   onResize: (cols: number, rows: number) => void,
+  opts: { webgl?: boolean } = {},
 ): TerminalHandle {
   const term = new Terminal({
     convertEol: false, // ConPTY already emits \r\n
@@ -29,17 +36,23 @@ export function mountTerminal(
   term.open(container);
   fit.fit();
 
-  // Optional GPU renderer with graceful fallback to the default DOM renderer.
-  void (async () => {
-    try {
-      const { WebglAddon } = await import("@xterm/addon-webgl");
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose());
-      term.loadAddon(webgl);
-    } catch {
-      /* DOM renderer (default) is fine */
-    }
-  })();
+  // GPU renderer, but only while under the context budget — past it we keep the
+  // default DOM renderer so a big fleet doesn't thrash the GPU.
+  let usedWebgl = false;
+  if (opts.webgl !== false && liveWebgl < WEBGL_BUDGET) {
+    usedWebgl = true;
+    liveWebgl++;
+    void (async () => {
+      try {
+        const { WebglAddon } = await import("@xterm/addon-webgl");
+        const webgl = new WebglAddon();
+        webgl.onContextLoss(() => webgl.dispose());
+        term.loadAddon(webgl);
+      } catch {
+        /* DOM renderer (default) is fine */
+      }
+    })();
+  }
 
   term.onData((data) => onInput(data));
 
@@ -59,6 +72,7 @@ export function mountTerminal(
     dispose: () => {
       ro.disconnect();
       term.dispose();
+      if (usedWebgl) liveWebgl--;
     },
   };
 }

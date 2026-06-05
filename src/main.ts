@@ -13,6 +13,7 @@ import {
 } from "./ipc";
 import { CLI_PRESETS, expandCrew, runLimited, launchSpec, type CrewState, type CliPreset } from "./crew";
 import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm } from "./workspaces";
+import { checkForUpdates } from "./updater";
 
 /* Home launcher ⇄ Workspace grid.
  * Home is shown while there are 0 agents (the prominent "create" entry).
@@ -584,6 +585,10 @@ setInterval(tick, 1000);
 void killAll().catch(() => {});
 renderRecents();
 showView();
+
+// Silently check GitHub Releases for a newer signed build; prompts only if one
+// exists. No-op in dev / when offline.
+void checkForUpdates(true);
 
 /* pty-exit listener LAST + guarded so it can never block the wiring above. */
 onExit((id, code) => {

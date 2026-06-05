@@ -1,11 +1,9 @@
 import { mountTerminal, type TerminalHandle } from "./terminal";
 import { spawnPty, sendInput, resizePty, killPty, onExit } from "./ipc";
 
-/* ====================================================================
- * Multi-agent grid. Each "Spawn agent" creates a NEW pane backed by its
- * own real ConPTY process. They run concurrently; closing a pane kills
- * that agent's whole process tree (Win32 Job Object) — independently.
- * ==================================================================== */
+/* Multi-agent grid: each "Spawn agent" = a new pane backed by its own real
+ * ConPTY process. They run concurrently; closing a pane kills that agent's
+ * whole process tree (Win32 Job Object), independently. */
 
 interface Pane {
   id: string;
@@ -37,12 +35,12 @@ function buildPaneEl(id: string, name: string): HTMLElement {
   el.dataset.id = id;
   el.innerHTML = `
     <div class="pane-head">
-      <span class="dot idle" data-dot title="status"></span>
+      <span class="dot idle" data-dot></span>
       <span class="pane-name">${name}</span>
-      <span class="badge shell">shell</span>
-      <span class="spacer"></span>
-      <span class="agent-status" data-status>spawning…</span>
-      <div class="pane-ctrls">
+      <span class="badge">shell</span>
+      <span class="sp"></span>
+      <span class="status" data-status>spawning…</span>
+      <div class="ctrls">
         <button class="pctrl" data-restart aria-label="Restart agent">${RESTART_SVG}</button>
         <button class="pctrl danger" data-kill aria-label="Kill agent (tree)">${KILL_SVG}</button>
       </div>
@@ -55,10 +53,11 @@ function setStatus(p: Pane, text: string, cls: "" | "run" | "err") {
   const s = p.el.querySelector<HTMLElement>("[data-status]");
   if (s) {
     s.textContent = text;
-    s.className = "agent-status" + (cls ? " " + cls : "");
+    s.className = "status" + (cls ? " " + cls : "");
   }
   const d = p.el.querySelector<HTMLElement>("[data-dot]");
   if (d) d.className = "dot " + (cls === "run" ? "run" : cls === "err" ? "err" : "idle");
+  p.el.classList.toggle("err", cls === "err");
 }
 
 function updateCount() {
@@ -120,7 +119,7 @@ async function removeAgent(id: string) {
   updateCount();
 }
 
-// One global exit listener routes pty-exit events to the right pane.
+// Route pty-exit events to the matching pane.
 void onExit((id, code) => {
   const p = panes.get(id);
   if (p) {
@@ -131,22 +130,10 @@ void onExit((id, code) => {
 });
 
 document.getElementById("btnNewAgent")?.addEventListener("click", () => void createAgent());
-document.getElementById("btnSpawn")?.addEventListener("click", () => void createAgent());
+spawnTile?.addEventListener("click", () => void createAgent());
 
-/* ====================================================================
- * Mission-control shell interactions (Direction B).
- * ==================================================================== */
-
+// live clock
 const clk = document.getElementById("clock");
-const zone = document.getElementById("clockzone");
-try {
-  if (zone) {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
-    zone.textContent = tz.split("/").pop()!.replace("_", " ").toLowerCase();
-  }
-} catch {
-  /* keep default */
-}
 function tick() {
   if (!clk) return;
   const d = new Date();
@@ -155,38 +142,3 @@ function tick() {
 }
 tick();
 setInterval(tick, 1000);
-
-const tabs = Array.from(document.querySelectorAll<HTMLElement>(".tab"));
-tabs.forEach((t) => {
-  t.addEventListener("click", () => {
-    tabs.forEach((x) => {
-      x.classList.remove("active");
-      x.setAttribute("aria-selected", "false");
-    });
-    t.classList.add("active");
-    t.setAttribute("aria-selected", "true");
-    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
-    document.getElementById("panel-" + t.dataset.panel)?.classList.add("active");
-  });
-});
-
-document.querySelectorAll<HTMLElement>(".fchip").forEach((c) => {
-  c.addEventListener("click", () => {
-    document.querySelectorAll(".fchip").forEach((x) => x.classList.remove("on"));
-    c.classList.add("on");
-  });
-});
-
-const act = document.getElementById("activity");
-const cb = document.getElementById("collapseBtn");
-cb?.addEventListener("click", () => {
-  const collapsed = act?.classList.toggle("collapsed");
-  cb.setAttribute("aria-expanded", String(!collapsed));
-  if (cb.firstChild) cb.firstChild.textContent = collapsed ? "Expand " : "Collapse ";
-});
-
-const ta = document.querySelector<HTMLTextAreaElement>(".composer textarea");
-ta?.addEventListener("input", () => {
-  ta.style.height = "auto";
-  ta.style.height = Math.min(ta.scrollHeight, 90) + "px";
-});

@@ -1,6 +1,18 @@
 import { mountTerminal, type TerminalHandle } from "./terminal";
-import { spawnPty, sendInput, resizePty, killPty, killAll, onExit, pickFolder } from "./ipc";
+import {
+  spawnPty,
+  sendInput,
+  resizePty,
+  killPty,
+  killAll,
+  onExit,
+  pickFolder,
+  onWindowClose,
+  confirmDialog,
+  destroyWindow,
+} from "./ipc";
 import { CLI_PRESETS, expandCrew, runLimited, launchSpec, type CrewState, type CliPreset } from "./crew";
+import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm } from "./workspaces";
 
 /* Home launcher ⇄ Workspace grid.
  * Home is shown while there are 0 agents (the prominent "create" entry).
@@ -41,26 +53,110 @@ function fmtUptime(ms: number): string {
   return h > 0 ? `${h}:${p(m % 60)}:${p(s % 60)}` : `${m}:${p(s % 60)}`;
 }
 
-const panes = new Map<string, Pane>();
+// Each tab is a Workspace: its own grid of panes. Only the active one is shown.
+interface Workspace {
+  id: string;
+  name: string;
+  dir: string | null;
+  gridEl: HTMLElement;
+  tabEl: HTMLElement;
+  panes: Map<string, Pane>;
+}
+const workspaces = new Map<string, Workspace>();
+let activeWs: Workspace | null = null;
+let wsCounter = 0;
 let counter = 0;
 const enc = new TextEncoder();
 
 const homeEl = document.getElementById("home") as HTMLElement;
 const appEl = document.getElementById("app") as HTMLElement;
-const grid = document.getElementById("grid") as HTMLElement;
-const spawnTile = document.getElementById("btnSpawn") as HTMLElement;
+const wsHost = document.getElementById("workspaces") as HTMLElement;
+const tabstrip = document.getElementById("tabstrip") as HTMLElement;
+const tabAdd = document.getElementById("tabAdd") as HTMLElement;
 
 function showWorkspace() {
   homeEl.hidden = true;
   appEl.hidden = false;
 }
 function showView() {
-  if (panes.size > 0) {
-    showWorkspace();
-  } else {
+  if (workspaces.size > 0) showWorkspace();
+  else {
     appEl.hidden = true;
     homeEl.hidden = false;
   }
+}
+
+const SPAWN_TILE_SVG =
+  '<span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span><span class="t">Spawn agent</span><span class="sub">real ConPTY · type · tree-kill</span>';
+
+function createWorkspace(dir: string | null): Workspace {
+  wsCounter += 1;
+  const id = `ws-${wsCounter}`;
+  const name = nextWorkspaceName(dir, [...workspaces.values()].map((w) => w.name));
+
+  const gridEl = document.createElement("div");
+  gridEl.className = "grid";
+  const tile = document.createElement("button");
+  tile.className = "tile-spawn";
+  tile.innerHTML = SPAWN_TILE_SVG;
+  tile.addEventListener("click", () => openModal("current"));
+  gridEl.appendChild(tile);
+  wsHost.appendChild(gridEl);
+
+  const tabEl = document.createElement("div");
+  tabEl.className = "tab";
+  tabEl.innerHTML =
+    `<span class="tdot"></span><span class="tname"></span><span class="tcount"></span>` +
+    `<button class="tclose" aria-label="Close workspace">${KILL_SVG}</button>`;
+  tabEl.querySelector(".tname")!.textContent = name;
+  tabstrip.insertBefore(tabEl, tabAdd);
+
+  const ws: Workspace = { id, name, dir, gridEl, tabEl, panes: new Map() };
+  tabEl.addEventListener("click", (e) => {
+    if ((e.target as HTMLElement).closest(".tclose")) return;
+    activateWorkspace(ws);
+  });
+  tabEl.querySelector(".tclose")!.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void removeWorkspace(ws);
+  });
+
+  workspaces.set(id, ws);
+  activateWorkspace(ws);
+  return ws;
+}
+
+function activateWorkspace(ws: Workspace) {
+  activeWs = ws;
+  for (const w of workspaces.values()) {
+    w.gridEl.hidden = w !== ws;
+    w.tabEl.classList.toggle("active", w === ws);
+  }
+  showWorkspace();
+}
+
+async function removeWorkspace(ws: Workspace) {
+  if (ws.panes.size > 0) {
+    const ok = await confirmDialog(
+      `Đóng workspace "${ws.name}" — ${ws.panes.size} terminal sẽ bị tắt?`,
+      "Đóng workspace",
+    );
+    if (!ok) return;
+  }
+  for (const id of [...ws.panes.keys()]) await removeAgent(ws, id);
+  const nextId = pickNextActive([...workspaces.keys()], ws.id);
+  ws.gridEl.remove();
+  ws.tabEl.remove();
+  workspaces.delete(ws.id);
+  if (activeWs === ws) {
+    const next = nextId ? workspaces.get(nextId) ?? null : null;
+    if (next) activateWorkspace(next);
+    else {
+      activeWs = null;
+      showView();
+    }
+  }
+  updateCount();
 }
 
 const RESTART_SVG =
@@ -88,11 +184,6 @@ function errMsg(e: unknown): string {
     }
   }
   return String(e);
-}
-
-function basename(p: string): string {
-  const parts = p.replace(/[/\\]+$/, "").split(/[/\\]/);
-  return parts[parts.length - 1] || p;
 }
 
 function buildPaneEl(
@@ -138,11 +229,20 @@ function setStatus(p: Pane, text: string, cls: "" | "run" | "err") {
 }
 
 function updateCount() {
-  const all = [...panes.values()];
+  let totalRun = 0;
+  let total = 0;
+  for (const w of workspaces.values()) {
+    const run = [...w.panes.values()].filter((p) => p.running).length;
+    totalRun += run;
+    total += w.panes.size;
+    const c = w.tabEl.querySelector<HTMLElement>(".tcount");
+    if (c) c.textContent = w.panes.size ? String(w.panes.size) : "";
+    w.tabEl.classList.toggle("live", run > 0);
+  }
   const run = document.getElementById("runCount");
-  if (run) run.textContent = String(all.filter((p) => p.running).length);
-  const total = document.getElementById("agentCount");
-  if (total) total.textContent = String(all.length);
+  if (run) run.textContent = String(totalRun);
+  const tot = document.getElementById("agentCount");
+  if (tot) tot.textContent = String(total);
 }
 
 interface AgentSpec {
@@ -158,7 +258,7 @@ interface AgentSpec {
 // Mount a pane immediately (status "queued…"); return a thunk that boots the
 // real process. Splitting mount from boot lets the caller throttle booting so a
 // big fleet doesn't spike the CPU all at once.
-function createAgent(spec: AgentSpec): () => Promise<void> {
+function createAgent(ws: Workspace, spec: AgentSpec): () => Promise<void> {
   // Make the (sized) workspace grid visible BEFORE mounting xterm, otherwise
   // fit() measures a display:none container as 0×0 and ConPTY paints the prompt
   // at the wrong size (blank pane).
@@ -166,7 +266,7 @@ function createAgent(spec: AgentSpec): () => Promise<void> {
   const id = newId();
   const sub = spec.cwd ? basename(spec.cwd) : "";
   const el = buildPaneEl(id, spec.name, sub, spec.badge, spec.color, spec.mono);
-  grid.insertBefore(el, spawnTile);
+  ws.gridEl.insertBefore(el, ws.gridEl.lastElementChild); // before the spawn tile
 
   const host = el.querySelector<HTMLElement>("[data-host]")!;
   const term = mountTerminal(
@@ -176,25 +276,25 @@ function createAgent(spec: AgentSpec): () => Promise<void> {
       // cursor-position-report reply that unblocks the very first render) as long
       // as the pane still exists — never gate on `running`, or the early reply is
       // dropped and ConPTY stalls (blank pane).
-      if (panes.has(id)) void sendInput(id, data).catch(() => {});
+      if (ws.panes.has(id)) void sendInput(id, data).catch(() => {});
     },
     (cols, rows) => {
-      if (panes.has(id)) void resizePty(id, cols, rows).catch(() => {});
+      if (ws.panes.has(id)) void resizePty(id, cols, rows).catch(() => {});
     },
   );
 
   const pane: Pane = { id, el, term, running: false, spawnedAt: null };
-  panes.set(id, pane);
+  ws.panes.set(id, pane);
   updateCount();
 
-  el.querySelector("[data-kill]")?.addEventListener("click", () => void removeAgent(id));
+  el.querySelector("[data-kill]")?.addEventListener("click", () => void removeAgent(ws, id));
   el.querySelector("[data-restart]")?.addEventListener("click", async () => {
-    await removeAgent(id);
-    await createAgent(spec)();
+    await removeAgent(ws, id);
+    await createAgent(ws, spec)();
   });
 
   return async () => {
-    if (!panes.has(id)) return; // killed before its turn to boot
+    if (!ws.panes.has(id)) return; // killed before its turn to boot
     const { cols, rows } = term.fit();
     try {
       // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows
@@ -217,8 +317,8 @@ function createAgent(spec: AgentSpec): () => Promise<void> {
   };
 }
 
-async function removeAgent(id: string) {
-  const p = panes.get(id);
+async function removeAgent(ws: Workspace, id: string) {
+  const p = ws.panes.get(id);
   if (!p) return;
   try {
     await killPty(id);
@@ -227,9 +327,8 @@ async function removeAgent(id: string) {
   }
   p.term.dispose();
   p.el.remove();
-  panes.delete(id);
+  ws.panes.delete(id);
   updateCount();
-  showView();
 }
 
 /* ---------------- recent folders ---------------- */
@@ -349,10 +448,13 @@ function buildCrewGrid() {
   }
 }
 
-function openModal() {
+// "new" → spawn into a fresh workspace tab; "current" → add to the active one.
+let modalTarget: "new" | "current" = "new";
+function openModal(mode: "new" | "current" = "new") {
+  modalTarget = mode;
   const saved = loadCrew();
   crew = { counts: saved.counts, custom: saved.custom, customCount: saved.customCount };
-  mDir.value = saved.dir;
+  mDir.value = mode === "current" && activeWs ? activeWs.dir ?? "" : saved.dir;
   mCustom.value = crew.custom;
   renderCrew();
   modal.classList.add("open");
@@ -402,11 +504,15 @@ async function spawnFromModal() {
   const totals: Record<string, number> = {};
   for (const p of fleet) totals[p.id] = (totals[p.id] ?? 0) + 1;
 
+  // Spawn into the active workspace, or a brand-new tab.
+  const ws = modalTarget === "current" && activeWs ? activeWs : createWorkspace(dir);
+  if (modalTarget === "current" && activeWs && !activeWs.dir && dir) activeWs.dir = dir;
+
   const boots = fleet.map((p: CliPreset) => {
     perId[p.id] = (perId[p.id] ?? 0) + 1;
     const base = p.shell && dir ? basename(dir) : p.label;
     const name = totals[p.id] > 1 ? `${base} #${perId[p.id]}` : base;
-    return createAgent({
+    return createAgent(ws, {
       program: p.program,
       args: p.args,
       cwd: dir,
@@ -435,14 +541,15 @@ document.addEventListener("keydown", (e) => {
 
 /* ---------------- home + workspace triggers ---------------- */
 
-document.getElementById("btnNewWorkspace")?.addEventListener("click", openModal);
-document.getElementById("btnNewAgent")?.addEventListener("click", openModal);
-spawnTile?.addEventListener("click", openModal);
+document.getElementById("btnNewWorkspace")?.addEventListener("click", () => openModal("new"));
+document.getElementById("btnNewAgent")?.addEventListener("click", () => openModal("current"));
+tabAdd?.addEventListener("click", () => openModal("new"));
 
 document.getElementById("btnQuick")?.addEventListener("click", () => {
   const dir = getRecents()[0] ?? null;
   const ps = CLI_PRESETS.find((p) => p.id === "powershell")!;
-  void createAgent({
+  const ws = createWorkspace(dir);
+  void createAgent(ws, {
     program: ps.program,
     args: ps.args,
     cwd: dir,
@@ -458,14 +565,15 @@ function tick() {
   const d = new Date();
   const p = (n: number) => (n < 10 ? "0" : "") + n;
   if (clk) clk.textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-  // Live uptime on every running pane.
+  // Live uptime on every running pane, across all workspaces.
   const now = Date.now();
-  for (const pane of panes.values()) {
-    if (pane.running && pane.spawnedAt != null) {
-      const u = pane.el.querySelector<HTMLElement>("[data-uptime]");
-      if (u) u.textContent = fmtUptime(now - pane.spawnedAt);
+  for (const w of workspaces.values())
+    for (const pane of w.panes.values()) {
+      if (pane.running && pane.spawnedAt != null) {
+        const u = pane.el.querySelector<HTMLElement>("[data-uptime]");
+        if (u) u.textContent = fmtUptime(now - pane.spawnedAt);
+      }
     }
-  }
 }
 tick();
 setInterval(tick, 1000);
@@ -479,11 +587,34 @@ showView();
 
 /* pty-exit listener LAST + guarded so it can never block the wiring above. */
 onExit((id, code) => {
-  const p = panes.get(id);
-  if (p) {
-    p.running = false;
-    p.spawnedAt = null;
-    setStatus(p, `exited (${code})`, "");
-    updateCount();
+  for (const w of workspaces.values()) {
+    const p = w.panes.get(id);
+    if (p) {
+      p.running = false;
+      p.spawnedAt = null;
+      setStatus(p, `exited (${code})`, "");
+      updateCount();
+      break;
+    }
   }
 }).catch((e) => console.warn("pty-exit listener unavailable:", e));
+
+/* ---------------- close app → confirm + kill all ---------------- */
+let closing = false;
+void onWindowClose(async (event) => {
+  if (closing) return;
+  let total = 0;
+  for (const w of workspaces.values()) total += w.panes.size;
+  if (!needsCloseConfirm(total)) return; // nothing running — let it close
+  event.preventDefault();
+  const ok = await confirmDialog(`${total} terminal đang chạy sẽ bị tắt. Đóng Maestro?`, "Đóng Maestro");
+  if (ok) {
+    closing = true;
+    try {
+      await killAll();
+    } catch {
+      /* ignore */
+    }
+    await destroyWindow();
+  }
+}).catch((e) => console.warn("close handler unavailable:", e));

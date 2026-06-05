@@ -74,7 +74,7 @@ svg{display:block;flex:none}
 .home-foot b{color:var(--muted)}
 
 /* ========================= WORKSPACE ========================= */
-.app{display:grid;grid-template-rows:50px 1fr;height:100vh;width:100vw}
+.app{display:grid;grid-template-rows:50px 40px 1fr;height:100vh;width:100vw}
 .topbar{display:flex;align-items:center;gap:14px;padding:0 16px;background:linear-gradient(180deg,#121821,#0f141b);border-bottom:1px solid var(--line);box-shadow:0 1px 0 rgba(0,0,0,.4)}
 .brand{display:flex;align-items:center;gap:9px;cursor:pointer}
 .brand .mark{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--accent-dim));display:grid;place-items:center;color:var(--accent-ink);box-shadow:0 0 0 1px rgba(198,241,53,.3),0 4px 14px rgba(198,241,53,.18)}
@@ -90,6 +90,20 @@ svg{display:block;flex:none}
 .stat .pip{width:7px;height:7px;border-radius:50%;background:var(--idle)}
 .stat.live .pip{background:var(--run);box-shadow:0 0 0 0 rgba(58,210,159,.5);animation:pulse 2.2s infinite}
 .clock{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;border-left:1px solid var(--line);padding-left:14px}
+/* tab strip — one tab per workspace */
+.tabstrip{display:flex;align-items:flex-end;gap:5px;padding:6px 10px 0;background:#0e131a;border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden}
+.tabstrip::-webkit-scrollbar{height:0}
+.tab{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 7px 0 11px;border-radius:8px 8px 0 0;border:1px solid transparent;border-bottom:none;color:var(--muted);background:transparent;font-size:12px;font-weight:600;white-space:nowrap;flex:none;cursor:pointer;transition:background .14s,color .14s}
+.tab:hover{background:var(--surface-1);color:var(--text-2)}
+.tab.active{background:var(--surface-2);color:var(--text);border-color:var(--line)}
+.tab .tdot{width:7px;height:7px;border-radius:50%;background:var(--idle);flex:none}
+.tab.live .tdot{background:var(--run);box-shadow:0 0 0 0 rgba(58,210,159,.5);animation:pulse 2.2s infinite}
+.tab .tname{max-width:160px;overflow:hidden;text-overflow:ellipsis}
+.tab .tcount{font-size:10px;color:var(--muted-2);font-variant-numeric:tabular-nums}
+.tab .tclose{width:18px;height:18px;border-radius:5px;display:grid;place-items:center;color:var(--muted-2);margin-left:1px}
+.tab .tclose:hover{background:var(--surface-3);color:var(--err)}
+.tab-add{width:30px;height:30px;border-radius:7px;display:grid;place-items:center;color:var(--muted);flex:none}
+.tab-add:hover{background:var(--surface-1);color:var(--accent)}
 .main{overflow:auto;padding:14px;
   background:
     radial-gradient(760px 340px at 12% -10%, rgba(198,241,53,.055), transparent 60%),
@@ -230,15 +244,10 @@ svg{display:block;flex:none}
     </div>
     <span class="clock" id="clock">--:--:--</span>
   </header>
-  <main class="main">
-    <div class="grid" id="grid">
-      <button class="tile-spawn" id="btnSpawn">
-        <span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>
-        <span class="t">Spawn agent</span>
-        <span class="sub">real ConPTY · type · tree-kill</span>
-      </button>
-    </div>
-  </main>
+  <nav class="tabstrip" id="tabstrip">
+    <button class="tab-add" id="tabAdd" aria-label="New workspace"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
+  </nav>
+  <main class="main" id="workspaces"></main>
 </div>
 
 <!-- ===================== MODAL ===================== -->

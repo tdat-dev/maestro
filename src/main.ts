@@ -1,5 +1,6 @@
 import { mountTerminal, type TerminalHandle } from "./terminal";
 import { spawnPty, sendInput, resizePty, killPty, killAll, onExit, pickFolder } from "./ipc";
+import { CLI_PRESETS, expandCrew, runLimited, type CrewState, type CliPreset } from "./crew";
 
 /* Home launcher ⇄ Workspace grid.
  * Home is shown while there are 0 agents (the prominent "create" entry).
@@ -67,7 +68,7 @@ function basename(p: string): string {
   return parts[parts.length - 1] || p;
 }
 
-function buildPaneEl(id: string, name: string, sub: string): HTMLElement {
+function buildPaneEl(id: string, name: string, sub: string, badge: string): HTMLElement {
   const el = document.createElement("section");
   el.className = "pane";
   el.dataset.id = id;
@@ -75,9 +76,9 @@ function buildPaneEl(id: string, name: string, sub: string): HTMLElement {
     <div class="pane-head">
       <span class="dot idle" data-dot></span>
       <span class="pane-name" title="${sub}">${name}</span>
-      <span class="badge">shell</span>
+      <span class="badge">${badge}</span>
       <span class="sp"></span>
-      <span class="status" data-status>spawning…</span>
+      <span class="status" data-status>queued…</span>
       <div class="ctrls">
         <button class="pctrl" data-restart aria-label="Restart agent">${RESTART_SVG}</button>
         <button class="pctrl danger" data-kill aria-label="Kill agent (tree)">${KILL_SVG}</button>
@@ -103,13 +104,24 @@ function updateCount() {
   if (c) c.textContent = String([...panes.values()].filter((p) => p.running).length);
 }
 
-async function createAgent(program: string, args: string[], cwd: string | null, name: string) {
+interface AgentSpec {
+  program: string;
+  args: string[];
+  cwd: string | null;
+  name: string;
+  badge: string;
+}
+
+// Mount a pane immediately (status "queued…"); return a thunk that boots the
+// real process. Splitting mount from boot lets the caller throttle booting so a
+// big fleet doesn't spike the CPU all at once.
+function createAgent(spec: AgentSpec): () => Promise<void> {
   // Make the (sized) workspace grid visible BEFORE mounting xterm, otherwise
   // fit() measures a display:none container as 0×0 and ConPTY paints the prompt
   // at the wrong size (blank pane).
   showWorkspace();
   const id = newId();
-  const el = buildPaneEl(id, name, cwd ?? program);
+  const el = buildPaneEl(id, spec.name, spec.cwd ?? spec.program, spec.badge);
   grid.insertBefore(el, spawnTile);
 
   const host = el.querySelector<HTMLElement>("[data-host]")!;
@@ -134,24 +146,27 @@ async function createAgent(program: string, args: string[], cwd: string | null, 
   el.querySelector("[data-kill]")?.addEventListener("click", () => void removeAgent(id));
   el.querySelector("[data-restart]")?.addEventListener("click", async () => {
     await removeAgent(id);
-    await createAgent(program, args, cwd, name);
+    await createAgent(spec)();
   });
 
-  const { cols, rows } = term.fit();
-  try {
-    await spawnPty(id, program, args, cwd, cols, rows, (bytes) => term.write(bytes));
-    pane.running = true;
-    setStatus(pane, "running", "run");
-    updateCount();
-    // Re-fit once the grid layout has settled; correct the PTY size if it moved.
-    requestAnimationFrame(() => {
-      const s = term.fit();
-      if (s.cols !== cols || s.rows !== rows) void resizePty(id, s.cols, s.rows);
-    });
-  } catch (e) {
-    setStatus(pane, "spawn failed", "err");
-    term.write(enc.encode(`\r\n\x1b[31m[spawn failed: ${errMsg(e)}]\x1b[0m\r\n`));
-  }
+  return async () => {
+    if (!panes.has(id)) return; // killed before its turn to boot
+    const { cols, rows } = term.fit();
+    try {
+      await spawnPty(id, spec.program, spec.args, spec.cwd, cols, rows, (bytes) => term.write(bytes));
+      pane.running = true;
+      setStatus(pane, "running", "run");
+      updateCount();
+      // Re-fit once the grid layout has settled; correct the PTY size if it moved.
+      requestAnimationFrame(() => {
+        const s = term.fit();
+        if (s.cols !== cols || s.rows !== rows) void resizePty(id, s.cols, s.rows);
+      });
+    } catch (e) {
+      setStatus(pane, "spawn failed", "err");
+      term.write(enc.encode(`\r\n\x1b[31m[spawn failed: ${errMsg(e)}]\x1b[0m\r\n`));
+    }
+  };
 }
 
 async function removeAgent(id: string) {
@@ -212,36 +227,83 @@ function renderRecents() {
 
 /* ---------------- spawn-setup modal ---------------- */
 
-const STORE_KEY = "maestro.spawn";
+const STORE_KEY = "maestro.crew";
+const MAX_CONCURRENT_BOOT = 3;
 const modal = document.getElementById("spawnModal") as HTMLElement;
 const mDir = document.getElementById("mDir") as HTMLInputElement;
-const mProg = document.getElementById("mProg") as HTMLInputElement;
-const mCount = document.getElementById("mCount") as HTMLInputElement;
-const chips = Array.from(document.querySelectorAll<HTMLElement>(".chip"));
+const mCustom = document.getElementById("mCustom") as HTMLInputElement;
+const crewGrid = document.getElementById("crewGrid") as HTMLElement;
+const crewTotalEl = document.getElementById("crewTotal") as HTMLElement;
+const spawnLabel = document.getElementById("mSpawnLabel") as HTMLElement;
 
-interface Saved {
+interface SavedCrew extends CrewState {
   dir: string;
-  cmd: string;
-  count: number;
 }
-function loadSaved(): Saved {
+
+let crew: CrewState = { counts: {}, custom: "", customCount: 0 };
+
+function loadCrew(): SavedCrew {
   try {
     const s = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
-    return { dir: s.dir ?? "", cmd: s.cmd || "powershell.exe -NoLogo", count: s.count || 1 };
+    return {
+      counts: s.counts && typeof s.counts === "object" ? s.counts : {},
+      custom: typeof s.custom === "string" ? s.custom : "",
+      customCount: Number.isFinite(s.customCount) ? s.customCount : 0,
+      dir: typeof s.dir === "string" ? s.dir : "",
+    };
   } catch {
-    return { dir: "", cmd: "powershell.exe -NoLogo", count: 1 };
+    return { counts: {}, custom: "", customCount: 0, dir: "" };
   }
 }
-function syncChips() {
-  const n = mCount.value;
-  chips.forEach((c) => c.classList.toggle("on", c.dataset.n === n));
+
+function renderCrew() {
+  const total = expandCrew(crew).length;
+  crewTotalEl.textContent = String(total);
+  spawnLabel.textContent = total > 0 ? `Spawn ${total} agent${total > 1 ? "s" : ""}` : "Spawn";
+  (document.getElementById("mSpawn") as HTMLButtonElement).disabled = total === 0;
+  crewGrid.querySelectorAll<HTMLElement>(".crew-card").forEach((card) => {
+    const id = card.dataset.id!;
+    const n = crew.counts[id] ?? 0;
+    card.classList.toggle("on", n > 0);
+    const nEl = card.querySelector<HTMLElement>("[data-n]");
+    if (nEl) nEl.textContent = String(n);
+  });
+  const cn = document.querySelector<HTMLElement>("[data-custom-n]");
+  if (cn) cn.textContent = String(crew.customCount);
 }
+
+function buildCrewGrid() {
+  crewGrid.replaceChildren();
+  for (const p of CLI_PRESETS) {
+    const card = document.createElement("div");
+    card.className = "crew-card";
+    card.dataset.id = p.id;
+    card.innerHTML = `
+      <span class="cc-name" title="${p.program}">${p.label}</span>
+      <span class="cc-badge">${p.badge}</span>
+      <div class="stepper">
+        <button type="button" data-dec aria-label="One fewer">−</button>
+        <span class="n" data-n>0</span>
+        <button type="button" data-inc aria-label="One more">+</button>
+      </div>`;
+    card.querySelector("[data-dec]")?.addEventListener("click", () => {
+      crew.counts[p.id] = Math.max(0, (crew.counts[p.id] ?? 0) - 1);
+      renderCrew();
+    });
+    card.querySelector("[data-inc]")?.addEventListener("click", () => {
+      crew.counts[p.id] = Math.min(32, (crew.counts[p.id] ?? 0) + 1);
+      renderCrew();
+    });
+    crewGrid.appendChild(card);
+  }
+}
+
 function openModal() {
-  const s = loadSaved();
-  mDir.value = s.dir;
-  mProg.value = s.cmd;
-  mCount.value = String(s.count);
-  syncChips();
+  const saved = loadCrew();
+  crew = { counts: saved.counts, custom: saved.custom, customCount: saved.customCount };
+  mDir.value = saved.dir;
+  mCustom.value = crew.custom;
+  renderCrew();
   modal.classList.add("open");
   mDir.focus();
   mDir.select();
@@ -250,13 +312,18 @@ function closeModal() {
   modal.classList.remove("open");
 }
 
-chips.forEach((c) => {
-  c.addEventListener("click", () => {
-    mCount.value = c.dataset.n || "1";
-    syncChips();
-  });
+mCustom.addEventListener("input", () => {
+  crew.custom = mCustom.value;
+  renderCrew();
 });
-mCount.addEventListener("input", syncChips);
+document.querySelector("[data-custom-stepper] [data-dec]")?.addEventListener("click", () => {
+  crew.customCount = Math.max(0, crew.customCount - 1);
+  renderCrew();
+});
+document.querySelector("[data-custom-stepper] [data-inc]")?.addEventListener("click", () => {
+  crew.customCount = Math.min(32, crew.customCount + 1);
+  renderCrew();
+});
 
 document.getElementById("mBrowse")?.addEventListener("click", async () => {
   const picked = await pickFolder(mDir.value || undefined);
@@ -268,23 +335,35 @@ document.getElementById("mBrowse")?.addEventListener("click", async () => {
 
 async function spawnFromModal() {
   const dir = mDir.value.trim() || null;
-  const cmd = mProg.value.trim() || "powershell.exe";
-  const count = Math.min(32, Math.max(1, parseInt(mCount.value, 10) || 1));
+  crew.custom = mCustom.value;
+  const fleet = expandCrew(crew);
+  if (fleet.length === 0) return;
 
-  const tokens = cmd.split(/\s+/);
-  const program = tokens[0];
-  const args = tokens.slice(1);
-  const base = dir ? basename(dir) : basename(program).replace(/\.exe$/i, "");
-
-  localStorage.setItem(STORE_KEY, JSON.stringify({ dir: dir ?? "", cmd, count }));
+  localStorage.setItem(
+    STORE_KEY,
+    JSON.stringify({ counts: crew.counts, custom: crew.custom, customCount: crew.customCount, dir: dir ?? "" }),
+  );
   if (dir) addRecent(dir);
   closeModal();
 
-  for (let i = 1; i <= count; i++) {
-    const name = count > 1 ? `${base} #${i}` : base;
-    await createAgent(program, args, dir, name);
-  }
+  // Name agents per CLI: "Claude Code #1", "Claude Code #2"; plain label when one.
+  const perId: Record<string, number> = {};
+  const totals: Record<string, number> = {};
+  for (const p of fleet) totals[p.id] = (totals[p.id] ?? 0) + 1;
+
+  const boots = fleet.map((p: CliPreset) => {
+    perId[p.id] = (perId[p.id] ?? 0) + 1;
+    const base = p.shell && dir ? basename(dir) : p.label;
+    const name = totals[p.id] > 1 ? `${base} #${perId[p.id]}` : base;
+    return createAgent({ program: p.program, args: p.args, cwd: dir, name, badge: p.badge });
+  });
+
+  // Boot through a concurrency-limited queue so many heavy CLIs don't all start
+  // at once and spike the CPU (panes already appeared above as "queued…").
+  await runLimited(boots, MAX_CONCURRENT_BOOT);
 }
+
+buildCrewGrid();
 
 document.getElementById("mSpawn")?.addEventListener("click", () => void spawnFromModal());
 document.getElementById("mCancel")?.addEventListener("click", closeModal);
@@ -304,7 +383,14 @@ spawnTile?.addEventListener("click", openModal);
 
 document.getElementById("btnQuick")?.addEventListener("click", () => {
   const dir = getRecents()[0] ?? null;
-  void createAgent("powershell.exe", ["-NoLogo"], dir, dir ? basename(dir) : "powershell");
+  const ps = CLI_PRESETS.find((p) => p.id === "powershell")!;
+  void createAgent({
+    program: ps.program,
+    args: ps.args,
+    cwd: dir,
+    name: dir ? basename(dir) : "powershell",
+    badge: ps.badge,
+  })();
 });
 
 /* ---------------- clock ---------------- */

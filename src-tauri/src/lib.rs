@@ -2,6 +2,7 @@ pub mod commands;
 pub mod core;
 pub mod error;
 pub mod state;
+pub mod worktree;
 
 use crate::state::AppState;
 use tauri::menu::{Menu, MenuItem};

@@ -34,6 +34,7 @@ thiserror = "2"
 [dev-dependencies]
 serial_test = "3"
 portable-pty = "0.9.0"
+tempfile = "3"
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_System_Threading",

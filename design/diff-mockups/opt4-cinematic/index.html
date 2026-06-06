@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maestro · AI Code — Cinematic Diff Review</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23c6f135'/%3E%3Cstop offset='.5' stop-color='%2327b9a3'/%3E%3Cstop offset='1' stop-color='%230f7a3e'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='24' height='24' rx='5' fill='%2311161d'/%3E%3Cpath d='M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5' fill='none' stroke='url(%23g)' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='miter'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Geist:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   MAESTRO — exact design tokens (mirrored from src/styles/tokens.css)
+   ============================================================ */
+:root{
+  --bg:#0d1014; --surface-0:#11161d; --surface-1:#161b22; --surface-2:#1c232c; --surface-3:#232b35;
+  --line:#2a323d; --line-strong:#3a4552;
+  --text:#e8edf2; --text-2:#c2ccd6; --muted:#94a3b1; --muted-2:#7d8b99;
+  --accent:#c6f135; --accent-dim:#9bbd2a; --accent-ink:#10160a; --accent-glow:rgba(198,241,53,.16);
+  --info:#5ec2f0; --run:#3ad29f; --idle:#6b7785; --err:#ff6b6b;
+  --r1:5px; --r2:7px; --r3:9px; --r4:12px;
+  --sans:'Geist', system-ui, -apple-system, sans-serif;
+  --mono:'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+  --display:'Bricolage Grotesque', sans-serif;
+  /* diff-specific accents derived from the palette */
+  --add:#3ad29f; --add-bg:rgba(58,210,159,.085); --add-line:rgba(58,210,159,.28); --add-ink:#8ff0cf;
+  --del:#ff6b6b; --del-bg:rgba(255,107,107,.075); --del-line:rgba(255,107,107,.26); --del-ink:#ffb0b0;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;
+  font-feature-settings:"cv01","ss01";-webkit-font-smoothing:antialiased;overflow:hidden}
+button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer}
+svg{display:block;flex:none}
+[hidden]{display:none !important}
+:focus-visible{outline:none;box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent);border-radius:var(--r2)}
+*::-webkit-scrollbar{width:9px;height:9px}
+*::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:6px;border:2px solid transparent;background-clip:padding-box}
+body.anim-paused *,body.anim-paused *::before,body.anim-paused *::after{animation-play-state:paused !important}
+
+/* ============================================================
+   APP SHELL — frameless, dark, aurora background (echoes home.css/workspace.css)
+   ============================================================ */
+.app{display:grid;grid-template-rows:46px 1fr;height:100vh;width:100vw}
+
+/* unified top bar — mirrors workspace.css .topbar */
+.topbar{display:flex;align-items:center;gap:10px;padding:0 14px 0 10px;background:#0e1218;border-bottom:1px solid var(--line);position:relative;z-index:30}
+.tb-home{width:30px;height:30px;border-radius:7px;display:grid;place-items:center;color:var(--muted);flex:none;margin-right:2px;transition:background .14s,color .14s}
+.tb-home:hover{background:var(--surface-1);color:var(--accent)}
+.tb-mark{width:24px;height:24px;flex:none;filter:drop-shadow(0 0 8px rgba(39,185,163,.35))}
+.tb-title{font-family:var(--display);font-style:italic;font-weight:800;font-size:15.5px;letter-spacing:-.02em}
+.tb-title .ai{
+  background:linear-gradient(105deg,#c6f135,#27b9a3 55%,#0f7a3e);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+.tb-crumb{font-family:var(--mono);font-size:10.5px;color:var(--muted-2);display:flex;align-items:center;gap:6px}
+.tb-crumb b{color:var(--text-2);font-weight:500}
+.spacer{flex:1}
+.stats{display:flex;align-items:center;gap:13px;flex:none}
+.stat{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted-2);font-weight:500}
+.stat b{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--text-2);font-weight:600}
+.stat.live b{color:var(--run)}
+.stat .pip{width:6px;height:6px;border-radius:50%;background:var(--idle)}
+.stat.live .pip{background:var(--run);box-shadow:0 0 6px var(--run);animation:pulse 2.2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(58,210,159,.45)}70%{box-shadow:0 0 0 6px rgba(58,210,159,0)}100%{box-shadow:0 0 0 0 rgba(58,210,159,0)}}
+
+/* the cinematic stage — aurora + dot-grid backdrop, echoing splash.css / home */
+.stage{position:relative;overflow:hidden;display:grid;grid-template-columns:248px 1fr;min-height:0}
+.stage::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(900px 480px at 16% -8%, rgba(198,241,53,.07), transparent 60%),
+    radial-gradient(760px 560px at 102% 110%, rgba(94,194,240,.05), transparent 62%),
+    radial-gradient(560px 560px at 78% 0%, rgba(39,185,163,.05), transparent 60%);
+  animation:auroraDrift 22s ease-in-out infinite alternate}
+.stage::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+  background-image:radial-gradient(circle at 1px 1px, rgba(255,255,255,.022) 1px, transparent 0);
+  background-size:24px 24px;
+  -webkit-mask:radial-gradient(circle at 60% 30%, #000, transparent 78%);
+          mask:radial-gradient(circle at 60% 30%, #000, transparent 78%)}
+@keyframes auroraDrift{0%{transform:translate3d(0,0,0) scale(1)}100%{transform:translate3d(-22px,16px,0) scale(1.05)}}
+
+/* ============================================================
+   AGENT SWITCHER (left rail) — fleet of review cards
+   ============================================================ */
+.rail{position:relative;z-index:1;display:flex;flex-direction:column;min-height:0;
+  border-right:1px solid var(--line);background:linear-gradient(180deg,rgba(17,22,29,.5),rgba(13,16,20,.2))}
+.rail-head{display:flex;align-items:center;justify-content:space-between;padding:13px 13px 9px}
+.rail-head .lbl{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-2);font-weight:600}
+.rail-head .ct{font-family:var(--mono);font-size:10px;color:var(--muted-2);background:var(--surface-2);border-radius:5px;padding:2px 6px}
+.rail-list{display:flex;flex-direction:column;gap:7px;padding:0 10px 14px;overflow-y:auto;min-height:0}
+.agent-pick{position:relative;display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:var(--r3);
+  border:1px solid var(--line);background:var(--surface-1);cursor:pointer;text-align:left;width:100%;
+  transition:border-color .16s,background .16s,transform .16s}
+.agent-pick:hover{border-color:var(--line-strong);background:var(--surface-2);transform:translateX(2px)}
+.agent-pick.active{border-color:var(--accent-dim);background:linear-gradient(180deg,rgba(198,241,53,.06),rgba(255,255,255,.012));
+  box-shadow:0 0 0 3px var(--accent-glow),0 10px 28px rgba(0,0,0,.4)}
+.agent-pick.active::before{content:"";position:absolute;left:-1px;top:9px;bottom:9px;width:3px;border-radius:3px;
+  background:linear-gradient(180deg,#c6f135,#27b9a3);box-shadow:0 0 10px rgba(198,241,53,.6)}
+.ap-mono{width:30px;height:30px;border-radius:8px;flex:none;display:grid;place-items:center;
+  font-family:var(--display);font-weight:800;font-size:13px;color:#0d1014;
+  box-shadow:0 0 0 1px rgba(0,0,0,.25), 0 0 14px -2px var(--c,#c6f135)}
+.ap-meta{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.ap-name{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.agent-pick.active .ap-name{color:var(--accent)}
+.ap-branch{font-family:var(--mono);font-size:9px;color:var(--muted-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ap-stat{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:none}
+.ap-dot{width:7px;height:7px;border-radius:50%;background:var(--idle)}
+.ap-dot.run{background:var(--run);box-shadow:0 0 7px var(--run);animation:pulse 2.2s infinite}
+.ap-dot.review{background:var(--info);box-shadow:0 0 7px var(--info)}
+.ap-dot.merged{background:var(--accent-dim)}
+.ap-delta{font-family:var(--mono);font-size:9px;font-variant-numeric:tabular-nums;display:flex;gap:5px}
+.ap-delta .p{color:var(--add)} .ap-delta .m{color:var(--del)}
+.rail-foot{margin-top:auto;padding:11px 13px;border-top:1px solid var(--line);font-size:10.5px;color:var(--muted-2)}
+.rail-foot b{color:var(--muted)}
+
+/* ============================================================
+   REVIEW SURFACE (scroll column)
+   ============================================================ */
+.review{position:relative;z-index:1;overflow-y:auto;min-height:0;padding:18px 20px 40px}
+.review-inner{width:min(960px,100%);margin:0 auto;display:flex;flex-direction:column;gap:16px}
+
+/* ---- HERO HEADER (agent identity) ---- */
+.hero{position:relative;border-radius:var(--r4);overflow:hidden;
+  border:1px solid var(--accent-dim);
+  background:linear-gradient(180deg,rgba(198,241,53,.07),rgba(255,255,255,.012));
+  box-shadow:0 0 0 4px var(--accent-glow),0 18px 50px rgba(0,0,0,.45);
+  animation:cardIn .4s cubic-bezier(.2,.7,.2,1) both}
+.hero::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(420px 220px at 88% -30%, rgba(39,185,163,.18), transparent 70%)}
+.hero-top{position:relative;display:flex;align-items:center;gap:14px;padding:18px 20px 14px}
+.hero-mono{width:52px;height:52px;border-radius:13px;flex:none;display:grid;place-items:center;
+  font-family:var(--display);font-weight:800;font-size:21px;color:#0d1014;
+  background:linear-gradient(135deg,#c6f135,#27b9a3 70%,#0f7a3e);
+  box-shadow:0 0 0 1px rgba(0,0,0,.3), 0 0 26px -4px rgba(39,185,163,.7); position:relative}
+.hero-id{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}
+.hero-name{font-family:var(--display);font-style:italic;font-weight:800;font-size:24px;letter-spacing:-.02em;line-height:1}
+.hero-name .role{font-style:normal;font-size:11px;font-family:var(--sans);font-weight:600;color:var(--muted);
+  letter-spacing:.02em;margin-left:9px;vertical-align:middle}
+.hero-sub{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.branch-badge{display:inline-flex;align-items:center;gap:6px;padding:3px 9px 3px 7px;border-radius:7px;
+  font-family:var(--mono);font-size:10.5px;color:var(--accent);
+  border:1px solid var(--accent-dim);background:var(--accent-glow)}
+.branch-badge svg{color:var(--accent-dim)}
+.into-badge{font-family:var(--mono);font-size:10px;color:var(--muted-2);display:inline-flex;align-items:center;gap:5px}
+.into-badge b{color:var(--text-2);font-weight:500}
+.hero-state{flex:none;font-size:9px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  padding:5px 10px;border-radius:6px;background:rgba(94,194,240,.13);color:var(--info)}
+
+/* stat ribbon */
+.hero-stats{position:relative;display:flex;gap:1px;border-top:1px solid var(--line);background:var(--line)}
+.hstat{flex:1;display:flex;flex-direction:column;gap:3px;padding:12px 18px;background:rgba(13,16,20,.55)}
+.hstat .n{font-family:var(--mono);font-size:18px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1}
+.hstat .n.add{color:var(--add)} .hstat .n.del{color:var(--del)} .hstat .n.files{color:var(--text)}
+.hstat .n.ok{color:var(--run)}
+.hstat .k{font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-2);font-weight:600}
+.hstat .barwrap{height:4px;border-radius:3px;background:var(--surface-3);overflow:hidden;margin-top:4px;display:flex}
+.hstat .barwrap i{display:block;height:100%}
+.hstat .barwrap .ba{background:var(--add)} .hstat .barwrap .bd{background:var(--del)}
+
+/* hero action row */
+.hero-actions{position:relative;display:flex;align-items:center;gap:9px;padding:13px 18px;border-top:1px solid var(--line);
+  background:rgba(13,16,20,.4)}
+.progress-pill{display:inline-flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);margin-right:auto}
+.progress-pill .track{width:140px;height:6px;border-radius:4px;background:var(--surface-3);overflow:hidden}
+.progress-pill .track i{display:block;height:100%;border-radius:4px;
+  background:linear-gradient(90deg,#c6f135,#27b9a3);transition:width .5s cubic-bezier(.2,.7,.2,1);box-shadow:0 0 10px rgba(198,241,53,.45)}
+.progress-pill b{font-family:var(--mono);color:var(--text-2);font-weight:500;font-variant-numeric:tabular-nums}
+
+/* buttons — mirror modal.css .btn / .btn-ghost */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 15px;border-radius:var(--r2);
+  border:1px solid var(--accent-dim);background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:12.5px;
+  transition:background .15s,box-shadow .15s,transform .1s}
+.btn:hover{background:#d3fc4d;box-shadow:0 0 0 4px var(--accent-glow),0 8px 22px rgba(0,0,0,.4)}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none;background:var(--surface-3);color:var(--muted-2);border-color:var(--line)}
+.btn.merge{background:linear-gradient(120deg,#c6f135,#27b9a3 90%);border-color:transparent;color:#08110b}
+.btn.merge:hover{box-shadow:0 0 0 4px var(--accent-glow),0 10px 30px rgba(39,185,163,.3)}
+.btn-ghost{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;border:1px solid var(--line-strong);
+  border-radius:var(--r2);background:transparent;color:var(--text-2);font-size:12.5px;font-weight:500;transition:background .14s,color .14s,border-color .14s}
+.btn-ghost:hover{background:var(--surface-3);color:var(--text)}
+.btn-ghost.danger:hover{background:rgba(255,107,107,.14);color:var(--err);border-color:rgba(255,107,107,.5)}
+
+/* ---- COMMIT BAR ---- */
+.commitbar{display:flex;align-items:stretch;gap:8px;padding:11px 12px;border-radius:var(--r3);
+  border:1px solid var(--line);background:var(--surface-1);animation:cardIn .4s cubic-bezier(.2,.7,.2,1) .04s both}
+.commit-ic{width:34px;height:34px;border-radius:8px;flex:none;display:grid;place-items:center;
+  background:var(--surface-3);color:var(--accent)}
+.commit-input{flex:1;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r2);
+  padding:8px 11px;color:var(--text);font-family:var(--mono);font-size:12px;min-width:0}
+.commit-input::placeholder{color:var(--muted-2)}
+.commit-input:focus{outline:none;border-color:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-glow)}
+
+/* ============================================================
+   FILE / HUNK CARDS
+   ============================================================ */
+.section-label{display:flex;align-items:center;gap:9px;margin:4px 2px 0;font-size:10px;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--muted-2);font-weight:600}
+.section-label .ln{flex:1;height:1px;background:var(--line)}
+
+.filecard{border:1px solid var(--line);border-radius:var(--r3);overflow:hidden;background:var(--surface-1);
+  animation:cardIn .4s cubic-bezier(.2,.7,.2,1) both;transition:border-color .18s,box-shadow .18s,opacity .3s,transform .3s}
+.filecard:hover{border-color:var(--line-strong)}
+.filecard.resolved{opacity:.62}
+.filecard.resolved:hover{opacity:1}
+.fc-head{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface-2);
+  border-bottom:1px solid var(--line);cursor:pointer;user-select:none}
+.fc-chev{color:var(--muted-2);transition:transform .2s}
+.filecard.collapsed .fc-chev{transform:rotate(-90deg)}
+.filecard.collapsed .fc-body{display:none}
+.fc-status{width:18px;height:18px;border-radius:5px;flex:none;display:grid;place-items:center;
+  font-family:var(--mono);font-size:10px;font-weight:600}
+.fc-status.mod{background:rgba(94,194,240,.14);color:var(--info)}
+.fc-status.add{background:rgba(58,210,159,.14);color:var(--add)}
+.fc-status.del{background:rgba(255,107,107,.14);color:var(--del)}
+.fc-status.ren{background:var(--surface-3);color:var(--muted)}
+.fc-path{font-family:var(--mono);font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.fc-path .dir{color:var(--muted-2)}
+.fc-path .file{color:var(--text);font-weight:500}
+.fc-delta{font-family:var(--mono);font-size:10.5px;font-variant-numeric:tabular-nums;display:flex;gap:7px;flex:none}
+.fc-delta .p{color:var(--add)} .fc-delta .m{color:var(--del)}
+.fc-hunkcount{font-family:var(--mono);font-size:9.5px;color:var(--muted-2);background:var(--surface-3);
+  border-radius:5px;padding:2px 7px;flex:none}
+.fc-resolved-badge{display:none;align-items:center;gap:5px;font-size:10px;font-weight:600;color:var(--run);flex:none}
+.filecard.resolved .fc-resolved-badge{display:inline-flex}
+.fc-body{display:flex;flex-direction:column}
+
+/* ---- hunk ---- */
+.hunk{border-top:1px solid var(--line);position:relative;overflow:hidden;transition:opacity .35s,filter .35s}
+.hunk:first-child{border-top:none}
+.hunk-bar{display:flex;align-items:center;gap:9px;padding:7px 12px;background:rgba(13,16,20,.4)}
+.hunk-loc{font-family:var(--mono);font-size:10.5px;color:var(--info)}
+.hunk-ctx{font-family:var(--mono);font-size:10.5px;color:var(--muted-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.hunk-state{font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:5px;flex:none;
+  opacity:0;transform:scale(.85);transition:opacity .2s,transform .2s}
+.hunk.accepted .hunk-state.ac{opacity:1;transform:scale(1);background:rgba(58,210,159,.16);color:var(--add)}
+.hunk.rejected .hunk-state.rj{opacity:1;transform:scale(1);background:rgba(255,107,107,.16);color:var(--del)}
+.hunk-actions{display:flex;gap:6px;flex:none}
+.hk-btn{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;
+  border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text-2);
+  transition:border-color .14s,color .14s,background .14s,box-shadow .14s,transform .1s}
+.hk-btn svg{width:12px;height:12px}
+.hk-btn.accept:hover{border-color:var(--add);color:var(--add);background:rgba(58,210,159,.12);box-shadow:0 0 0 3px rgba(58,210,159,.1)}
+.hk-btn.reject:hover{border-color:var(--del);color:var(--del);background:rgba(255,107,107,.12);box-shadow:0 0 0 3px rgba(255,107,107,.1)}
+.hk-btn:active{transform:scale(.95)}
+.hunk.accepted .hk-btn.accept{border-color:var(--add);color:var(--add);background:rgba(58,210,159,.14)}
+.hunk.rejected .hk-btn.reject{border-color:var(--del);color:var(--del);background:rgba(255,107,107,.14)}
+.hunk.resolved .hunk-actions{opacity:.7}
+
+/* satisfying sweep overlay on accept/reject */
+.hunk .sweep{position:absolute;inset:0;pointer-events:none;opacity:0;z-index:2}
+.hunk.flash-accept .sweep{background:linear-gradient(90deg,transparent,rgba(58,210,159,.22),transparent);
+  animation:sweep .55s ease-out}
+.hunk.flash-reject .sweep{background:linear-gradient(90deg,transparent,rgba(255,107,107,.2),transparent);
+  animation:sweep .55s ease-out}
+@keyframes sweep{0%{opacity:0;transform:translateX(-100%)}25%{opacity:1}100%{opacity:0;transform:translateX(100%)}}
+.hunk.rejected{filter:saturate(.55);opacity:.78}
+
+/* the diff body — monospace, legible */
+.diff{font-family:var(--mono);font-size:11.5px;line-height:1.62;overflow-x:auto;background:var(--surface-0)}
+.dl{display:grid;grid-template-columns:42px 42px 1fr;white-space:pre}
+.dl .gut{text-align:right;padding:0 8px 0 0;color:var(--muted-2);font-variant-numeric:tabular-nums;
+  -webkit-user-select:none;user-select:none;border-right:1px solid var(--line)}
+.dl .gut.s2{padding-right:10px}
+.dl .code{padding:0 14px;color:var(--text-2)}
+.dl.ctx .code{color:var(--muted)}
+.dl.add{background:var(--add-bg);box-shadow:inset 2px 0 0 var(--add-line)}
+.dl.add .code{color:var(--add-ink)}
+.dl.add .code::before{content:"+";color:var(--add);position:absolute;margin-left:-11px}
+.dl.del{background:var(--del-bg);box-shadow:inset 2px 0 0 var(--del-line)}
+.dl.del .code{color:var(--del-ink)}
+.dl.del .code::before{content:"\2212";color:var(--del);position:absolute;margin-left:-11px}
+.dl .code{position:relative}
+.tok-k{color:#7fd1ff} .tok-s{color:#c6f135} .tok-f{color:#8ed4c2} .tok-c{color:var(--muted-2);font-style:italic} .tok-n{color:#ffcaa0}
+
+/* ============================================================
+   MULTI-REPO grouped case
+   ============================================================ */
+.repo-group{border:1px solid var(--line);border-radius:var(--r4);background:rgba(17,22,29,.55);
+  animation:cardIn .4s cubic-bezier(.2,.7,.2,1) both}
+.repo-head{display:flex;align-items:center;gap:11px;padding:13px 15px;cursor:pointer;user-select:none;position:relative;overflow:hidden}
+.repo-head::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(300px 120px at 100% 0%, rgba(94,194,240,.08), transparent 70%)}
+.repo-chev{color:var(--muted-2);transition:transform .2s}
+.repo-group.collapsed .repo-chev{transform:rotate(-90deg)}
+.repo-group.collapsed .repo-body{display:none}
+.repo-ic{width:30px;height:30px;border-radius:8px;flex:none;display:grid;place-items:center;
+  background:var(--surface-3);color:var(--info)}
+.repo-meta{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.repo-name{font-size:13.5px;font-weight:600;color:var(--text)}
+.repo-name .agentchip{font-family:var(--mono);font-size:9.5px;font-weight:400;color:var(--accent);
+  border:1px solid var(--accent-dim);border-radius:5px;padding:1px 6px;margin-left:8px;vertical-align:middle}
+.repo-sub{font-family:var(--mono);font-size:9.5px;color:var(--muted-2)}
+.repo-delta{font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums;display:flex;gap:8px;flex:none}
+.repo-delta .p{color:var(--add)} .repo-delta .m{color:var(--del)}
+.repo-act{flex:none}
+.repo-body{padding:0 13px 13px;display:flex;flex-direction:column;gap:9px}
+.repo-clean{display:flex;align-items:center;gap:9px;padding:11px 14px;border:1px dashed var(--line-strong);
+  border-radius:var(--r3);color:var(--muted);font-size:12px;background:rgba(255,255,255,.008)}
+.repo-clean svg{color:var(--run)}
+
+/* tabbed views (Per-agent / Multi-repo) */
+.viewtabs{display:flex;gap:6px;align-items:center;padding:2px;border-radius:var(--r3);
+  background:var(--surface-1);border:1px solid var(--line);align-self:flex-start}
+.vt{padding:6px 13px;border-radius:7px;font-size:12px;font-weight:600;color:var(--muted);transition:color .14s,background .14s}
+.vt:hover{color:var(--text-2)}
+.vt.on{background:var(--surface-3);color:var(--accent)}
+.vt .badge{font-family:var(--mono);font-size:9px;color:var(--muted-2);margin-left:6px}
+
+/* toast */
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);z-index:80;
+  display:flex;align-items:center;gap:10px;padding:11px 16px;border-radius:var(--r3);
+  background:rgba(22,27,34,.94);border:1px solid var(--accent-dim);backdrop-filter:blur(10px);
+  box-shadow:0 0 0 4px var(--accent-glow),0 18px 44px rgba(0,0,0,.55);
+  color:var(--text);font-size:12.5px;font-weight:500;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast .ic{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;flex:none;
+  background:linear-gradient(135deg,#c6f135,#27b9a3);color:#08110b}
+.toast b{color:var(--accent)}
+
+@keyframes cardIn{from{opacity:0;transform:translateY(14px) scale(.99)}to{opacity:1;transform:none}}
+
+/* merge celebration burst (echoes splash.css intro-burst/flash) */
+.celebrate{position:fixed;inset:0;z-index:90;pointer-events:none;display:grid;place-items:center;opacity:0}
+.celebrate.go{animation:celebFade 1.1s ease forwards}
+@keyframes celebFade{0%{opacity:1}80%{opacity:1}100%{opacity:0;visibility:hidden}}
+.celebrate .burst{position:absolute;width:520px;height:520px;border-radius:50%;
+  background:repeating-conic-gradient(from 0deg, rgba(198,241,53,0) 0deg, rgba(198,241,53,.18) 2deg, rgba(198,241,53,0) 6deg);
+  -webkit-mask:radial-gradient(circle, transparent 30%, #000 46%, transparent 74%);
+          mask:radial-gradient(circle, transparent 30%, #000 46%, transparent 74%);opacity:0}
+.celebrate.go .burst{animation:cBurst .8s ease-out forwards}
+@keyframes cBurst{0%{opacity:0;transform:scale(.4)}40%{opacity:.9}100%{opacity:0;transform:scale(1.5)}}
+.celebrate .flash{position:absolute;width:240px;height:240px;border-radius:50%;opacity:0;
+  background:radial-gradient(circle, rgba(234,255,176,.85), rgba(39,185,163,.4) 35%, transparent 65%)}
+.celebrate.go .flash{animation:cFlash .55s ease-out forwards}
+@keyframes cFlash{0%{opacity:0;transform:scale(.5)}30%{opacity:.95;transform:scale(1.05)}100%{opacity:0;transform:scale(1.6)}}
+
+/* reduced motion — honor the setting like tokens/workspace do */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001s !important;animation-iteration-count:1 !important;transition-duration:.05s !important}
+  .stage::before{animation:none}
+  .hunk .sweep,.celebrate{display:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ======================= TOP BAR ======================= -->
+  <header class="topbar">
+    <button class="tb-home" title="Back to workspace" aria-label="Back to workspace">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+    </button>
+    <svg class="tb-mark" viewBox="0 0 24 24" fill="none" stroke="url(#tg)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="miter" width="24" height="24">
+      <defs><linearGradient id="tg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c6f135"/><stop offset=".5" stop-color="#27b9a3"/><stop offset="1" stop-color="#0f7a3e"/></linearGradient></defs>
+      <path d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5"/>
+    </svg>
+    <span class="tb-title">Maestro <span class="ai">AI Code</span></span>
+    <span class="tb-crumb">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      <b>checkout-revamp</b>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      review
+    </span>
+    <div class="spacer"></div>
+    <div class="stats">
+      <span class="stat live"><span class="pip"></span><b>4</b> reviewing</span>
+      <span class="stat"><b>6</b> agents</span>
+    </div>
+  </header>
+
+  <!-- ======================= STAGE ======================= -->
+  <div class="stage">
+
+    <!-- ---- AGENT SWITCHER ---- -->
+    <aside class="rail">
+      <div class="rail-head"><span class="lbl">Fleet · review queue</span><span class="ct">6</span></div>
+      <div class="rail-list" id="railList">
+        <button class="agent-pick active" data-agent="aider">
+          <span class="ap-mono" style="--c:#c6f135;background:#c6f135">A</span>
+          <span class="ap-meta"><span class="ap-name">Aider · 7b21</span><span class="ap-branch">maestro/aider-7b21</span></span>
+          <span class="ap-stat"><span class="ap-dot review"></span><span class="ap-delta"><span class="p">+184</span><span class="m">−63</span></span></span>
+        </button>
+        <button class="agent-pick" data-agent="claude">
+          <span class="ap-mono" style="--c:#5ec2f0;background:#5ec2f0">C</span>
+          <span class="ap-meta"><span class="ap-name">Claude · 3f8a</span><span class="ap-branch">maestro/claude-3f8a</span></span>
+          <span class="ap-stat"><span class="ap-dot run"></span><span class="ap-delta"><span class="p">+412</span><span class="m">−97</span></span></span>
+        </button>
+        <button class="agent-pick" data-agent="codex">
+          <span class="ap-mono" style="--c:#27b9a3;background:#27b9a3">X</span>
+          <span class="ap-meta"><span class="ap-name">Codex · a1d4</span><span class="ap-branch">maestro/codex-a1d4</span></span>
+          <span class="ap-stat"><span class="ap-dot review"></span><span class="ap-delta"><span class="p">+58</span><span class="m">−12</span></span></span>
+        </button>
+        <button class="agent-pick" data-agent="gemini">
+          <span class="ap-mono" style="--c:#ff9d6b;background:#ff9d6b">G</span>
+          <span class="ap-meta"><span class="ap-name">Gemini · c0e2</span><span class="ap-branch">maestro/gemini-c0e2</span></span>
+          <span class="ap-stat"><span class="ap-dot run"></span><span class="ap-delta"><span class="p">+221</span><span class="m">−40</span></span></span>
+        </button>
+        <button class="agent-pick" data-agent="qwen">
+          <span class="ap-mono" style="--c:#b58cff;background:#b58cff">Q</span>
+          <span class="ap-meta"><span class="ap-name">Qwen · 5h73</span><span class="ap-branch">maestro/qwen-5h73</span></span>
+          <span class="ap-stat"><span class="ap-dot merged"></span><span class="ap-delta"><span class="p" style="color:var(--muted-2)">merged</span></span></span>
+        </button>
+        <button class="agent-pick" data-agent="multi">
+          <span class="ap-mono" style="--c:#5ec2f0;background:linear-gradient(135deg,#5ec2f0,#27b9a3)">∑</span>
+          <span class="ap-meta"><span class="ap-name">Cursor · monorepo</span><span class="ap-branch">3 sub-repos · grouped</span></span>
+          <span class="ap-stat"><span class="ap-dot review"></span><span class="ap-delta"><span class="p">+96</span><span class="m">−31</span></span></span>
+        </button>
+      </div>
+      <div class="rail-foot"><b>git worktrees</b> · isolated · D:\.maestro-worktrees</div>
+    </aside>
+
+    <!-- ---- REVIEW SURFACE ---- -->
+    <main class="review">
+
+      <!-- ============ PER-AGENT VIEW (default) ============ -->
+      <div class="review-inner" id="viewAgent">
+
+        <div class="viewtabs">
+          <button class="vt on" data-view="agent">Per-agent diff</button>
+          <button class="vt" data-view="multi">Multi-repo<span class="badge">3 repos</span></button>
+        </div>
+
+        <!-- HERO -->
+        <section class="hero">
+          <div class="hero-top">
+            <div class="hero-mono">A</div>
+            <div class="hero-id">
+              <div class="hero-name">Aider<span class="role">refactor · checkout flow</span></div>
+              <div class="hero-sub">
+                <span class="branch-badge">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 3-3 3.5-6 4"/></svg>
+                  maestro/aider-7b21
+                </span>
+                <span class="into-badge">→ into <b>checkout-revamp</b></span>
+                <span class="into-badge">·&nbsp; 3 commits ahead</span>
+              </div>
+            </div>
+            <span class="hero-state">Ready to review</span>
+          </div>
+
+          <div class="hero-stats">
+            <div class="hstat"><span class="n files">7</span><span class="k">Files changed</span></div>
+            <div class="hstat"><span class="n add">+184</span><span class="k">Insertions</span>
+              <span class="barwrap"><i class="ba" style="width:74%"></i><i class="bd" style="width:26%"></i></span></div>
+            <div class="hstat"><span class="n del">−63</span><span class="k">Deletions</span></div>
+            <div class="hstat"><span class="n ok" id="heroDecided">0/9</span><span class="k">Hunks decided</span></div>
+          </div>
+
+          <div class="hero-actions">
+            <span class="progress-pill">
+              Review progress <span class="track"><i id="progFill" style="width:0%"></i></span>
+              <b id="progPct">0%</b>
+            </span>
+            <button class="btn-ghost" id="btnAcceptAll">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              Accept all
+            </button>
+            <button class="btn-ghost danger" id="btnRejectAll">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+              Reject all
+            </button>
+          </div>
+        </section>
+
+        <!-- COMMIT BAR -->
+        <div class="commitbar">
+          <span class="commit-ic">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M2 12h6M16 12h6"/></svg>
+          </span>
+          <input class="commit-input" id="commitMsg" value="refactor(checkout): extract PaymentSummary + guard empty cart" spellcheck="false">
+          <button class="btn" id="btnCommit" disabled>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M2 12h7M15 12h7"/></svg>
+            <span id="commitLabel">Stage &amp; commit</span>
+          </button>
+          <button class="btn merge" id="btnMerge" disabled>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="2.5"/><circle cx="6" cy="6" r="2.5"/><path d="M6 8.5V14a4 4 0 0 0 4 4h5.5"/></svg>
+            Merge branch
+          </button>
+        </div>
+
+        <div class="section-label">Changed files<span class="ln"></span><span style="text-transform:none;letter-spacing:0;color:var(--muted-2);font-weight:500">click ✓ / ✕ per hunk</span></div>
+
+        <!-- FILE 1 -->
+        <div class="filecard">
+          <div class="fc-head js-collapse">
+            <svg class="fc-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            <span class="fc-status mod">M</span>
+            <span class="fc-path"><span class="dir">src/checkout/</span><span class="file">PaymentSummary.tsx</span></span>
+            <span class="fc-delta"><span class="p">+96</span><span class="m">−21</span></span>
+            <span class="fc-hunkcount">3 hunks</span>
+            <span class="fc-resolved-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> resolved</span>
+          </div>
+          <div class="fc-body">
+
+            <div class="hunk">
+              <span class="sweep"></span>
+              <div class="hunk-bar">
+                <span class="hunk-loc">@@ −14,6 +14,9 @@</span>
+                <span class="hunk-ctx">export function PaymentSummary(props)</span>
+                <span class="hunk-state ac">Accepted</span><span class="hunk-state rj">Rejected</span>
+                <span class="hunk-actions">
+                  <button class="hk-btn accept js-accept"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Accept</button>
+                  <button class="hk-btn reject js-reject"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>Reject</button>
+                </span>
+              </div>
+              <div class="diff">
+                <div class="dl ctx"><span class="gut">14</span><span class="gut s2">14</span><span class="code">  <span class="tok-k">const</span> { items, currency } = props;</span></div>
+                <div class="dl del"><span class="gut">15</span><span class="gut s2"></span><span class="code">  <span class="tok-k">const</span> total = items.<span class="tok-f">reduce</span>((a, i) =&gt; a + i.price, <span class="tok-n">0</span>);</span></div>
+                <div class="dl add"><span class="gut"></span><span class="gut s2">15</span><span class="code">  <span class="tok-k">if</span> (!items.length) <span class="tok-k">return</span> &lt;<span class="tok-f">EmptyCart</span> /&gt;;</span></div>
+                <div class="dl add"><span class="gut"></span><span class="gut s2">16</span><span class="code">  <span class="tok-k">const</span> total = items.<span class="tok-f">reduce</span>((a, i) =&gt; a + i.price * i.qty, <span class="tok-n">0</span>);</span></div>
+                <div class="dl add"><span class="gut"></span><span class="gut s2">17</span><span class="code">  <span class="tok-k">const</span> tax = <span class="tok-f">round</span>(total * <span class="tok-n">0.08</span>);</span></div>
+                <div class="dl ctx"><span class="gut">16</span><span class="gut s2">18</span><span class="code">  <span class="tok-k">return</span> (</span></div>
+              </div>
+            </div>
+
+            <div class="hunk">
+              <span class="sweep"></span>
+              <div class="hunk-bar">
+                <span class="hunk-loc">@@ −31,4 +34,7 @@</span>
+                <span class="hunk-ctx">summary line rendering</span>
+                <span class="hunk-state ac">Accepted</span><span class="hunk-state rj">Rejected</span>
+                <span class="hunk-actions">
+                  <button class="hk-btn accept js-accept"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Accept</button>
+                  <button class="hk-btn reject js-reject"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>Reject</button>
+                </span>
+              </div>
+              <div class="diff">
+                <div class="dl ctx"><span class="gut">31</span><span class="gut s2">34</span><span class="code">    &lt;<span class="tok-f">Row</span> label=<span class="tok-s">"Subtotal"</span> value={total} /&gt;</span></div>
+                <div class="dl del"><span class="gut">32</span><span class="gut s2"></span><span class="code">    &lt;<span class="tok-f">Row</span> label=<span class="tok-s">"Total"</span> value={total} /&gt;</span></div>
+                <div class="dl add"><span class="gut"></span><span class="gut s2">35</span><span class="code">    &lt;<span class="tok-f">Row</span> label=<span class="tok-s">"Tax"</span> value={tax} muted /&gt;</span></div>
+                <div class="dl add"><span class="gut"></span><span class="gut s2">36</span><span class="code">    &lt;<span class="tok-f">Row</span> label=<span class="tok-s">"Total"</span> value={total + tax} strong /&gt;</span></div>
+                <div class="dl ctx"><span class="gut">33</span><span class="gut s2">37</span><span class="code">  );</span></div>
+              </div>
+            </div>
+
+            <div class="hunk">
+              <span class="sweep"></span>
+              <div class="hunk-bar">
+                <span class="hunk-loc">@@ −48,3 +52,5 @@</span>
+                <span class="hunk-ctx">export default + memo</span>
+                <span class="hunk-state ac">Accepted</span><span class="hunk-state rj">Rejected</span>
+                <span class="hunk-actions">
+                  <button class="hk-btn accept js-accept"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Accept</button>
+                  <button class="hk-btn reject js-reject"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>Reject</button>
+                </span>
+              </div>
+              <div class="diff">
+                <div class="dl ctx"><span class="gut">48</span><span class="gut s2">52</span><span class="code">}</span></div>
+                <div class="dl del"><span class="gut">49</span><span class="gut s2"></span><span class="code"><span class="tok-k">export default</span> PaymentSummary;</span></div>
+                <div class="dl add"><span class="gut"></span><span class="gut s2">53</span><span class="code"><span class="tok-k">export default</span> <span class="tok-f">memo</span>(PaymentSummary);</span></div>
+                <div class="dl ctx"><span class="gut">50</span><span class="gut s2">54</span><span class="code"><span class="tok-c">// renders the cart payment breakdown</span></span></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- FILE 2 -->
+        <div class="filecard collapsed">
+          <div class="fc-head js-collapse">
+            <svg class="fc-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            <span class="fc-status add">A</span>
+            <span class="fc-path"><span class="dir">src/checkout/</span><span class="file">EmptyCart.tsx</span></span>
+            <span class="fc-delta"><span class="p">+34</span><span class="m">−0</span></span>
+            <span class="fc-hunkcount">1 hunk</span>
+            <span class="fc-resolved-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> resolved</span>
+          </div>
+          <div class="fc-body">
+            <div class="hunk">
+              <span class="sweep"></span>
+              <div class="hunk-bar">
+                <span class="hunk-loc">@@ −0,0 +1,12 @@</span>
+                <span class="hunk-ctx">new file: empty-cart fallback</span>
+                <span class="hunk-state ac">Accepted</span><span class="hunk-state rj">Rejected</span>
+                <span class="hunk-actions">
+                  <button class="hk-btn accept js-accept"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Accept</button>
+                  <button class="hk-btn reject js-reject"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>Reject</button>
+                </span>
+              </div>
+              <div class="diff">
+                <div class="dl add"><span class="gut"></span><span class="gut s2">1</span><span class="code"><span class="tok-k">import</span> { Illustration } <span class="tok-k">from</span> <span class="tok-s">"@/ui"</span>;</span></div>
+                <div class="dl add"><span class="gut"></span><span class="gut s2">2</span><span class="code"><span class="tok-k">export function</span> <span class="tok-f">EmptyCart</span>() {</span></div>
+                <div class="dl add"><span class="gut"></span><span class="gut s2">3</span><span class="code">  <span class="tok-k">return</span> &lt;<span class="tok-f">Illustration</span> name=<span class="tok-s">"cart"</span> caption=<span class="tok-s">"Nothing here yet"</span> /&gt;;</span></div>
+                <div class="dl add"><span class="gut"></span><span class="gut s2">4</span><span class="code">}</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FILE 3 -->
+        <div class="filecard collapsed">
+          <div class="fc-head js-collapse">
+            <svg class="fc-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            <span class="fc-status mod">M</span>
+            <span class="fc-path"><span class="dir">src/checkout/</span><span class="file">cartReducer.ts</span></span>
+            <span class="fc-delta"><span class="p">+54</span><span class="m">−42</span></span>
+            <span class="fc-hunkcount">2 hunks</span>
+            <span class="fc-resolved-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> resolved</span>
+          </div>
+          <div class="fc-body">
+            <div class="hunk">
+              <span class="sweep"></span>
+              <div class="hunk-bar">
+                <span class="hunk-loc">@@ −22,7 +22,9 @@</span>
+                <span class="hunk-ctx">case "ADD_ITEM"</span>
+                <span class="hunk-state ac">Accepted</span><span class="hunk-state rj">Rejected</span>
+                <span class="hunk-actions">
+                  <button class="hk-btn accept js-accept"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Accept</button>
+                  <button class="hk-btn reject js-reject"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>Reject</button>
+                </span>
+              </div>
+              <div class="diff">
+                <div class="dl ctx"><span class="gut">22</span><span class="gut s2">22</span><span class="code">    <span class="tok-k">case</span> <span class="tok-s">"ADD_ITEM"</span>: {</span></div>
+                <div class="dl del"><span class="gut">23</span><span class="gut s2"></span><span class="code">      <span class="tok-k">return</span> [...state, action.item];</span></div>
+                <div class="dl add"><span class="gut"></span><span class="gut s2">23</span><span class="code">      <span class="tok-k">const</span> existing = state.<span class="tok-f">find</span>(i =&gt; i.id === action.item.id);</span></div>
+                <div class="dl add"><span class="gut"></span><span class="gut s2">24</span><span class="code">      <span class="tok-k">if</span> (existing) <span class="tok-k">return</span> <span class="tok-f">bumpQty</span>(state, existing.id);</span></div>
+                <div class="dl add"><span class="gut"></span><span class="gut s2">25</span><span class="code">      <span class="tok-k">return</span> [...state, { ...action.item, qty: <span class="tok-n">1</span> }];</span></div>
+                <div class="dl ctx"><span class="gut">24</span><span class="gut s2">26</span><span class="code">    }</span></div>
+              </div>
+            </div>
+            <div class="hunk">
+              <span class="sweep"></span>
+              <div class="hunk-bar">
+                <span class="hunk-loc">@@ −40,5 +43,6 @@</span>
+                <span class="hunk-ctx">case "REMOVE_ITEM"</span>
+                <span class="hunk-state ac">Accepted</span><span class="hunk-state rj">Rejected</span>
+                <span class="hunk-actions">
+                  <button class="hk-btn accept js-accept"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Accept</button>
+                  <button class="hk-btn reject js-reject"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>Reject</button>
+                </span>
+              </div>
+              <div class="diff">
+                <div class="dl ctx"><span class="gut">40</span><span class="gut s2">43</span><span class="code">    <span class="tok-k">case</span> <span class="tok-s">"REMOVE_ITEM"</span>:</span></div>
+                <div class="dl del"><span class="gut">41</span><span class="gut s2"></span><span class="code">      <span class="tok-k">return</span> state.<span class="tok-f">filter</span>(i =&gt; i.id !== action.id);</span></div>
+                <div class="dl add"><span class="gut"></span><span class="gut s2">44</span><span class="code">      <span class="tok-k">return</span> state.<span class="tok-f">filter</span>(i =&gt; i.id !== action.id &amp;&amp; i.qty &gt; <span class="tok-n">0</span>);</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /viewAgent -->
+
+      <!-- ============ MULTI-REPO VIEW ============ -->
+      <div class="review-inner" id="viewMulti" hidden>
+
+        <div class="viewtabs">
+          <button class="vt" data-view="agent">Per-agent diff</button>
+          <button class="vt on" data-view="multi">Multi-repo<span class="badge">3 repos</span></button>
+        </div>
+
+        <section class="hero">
+          <div class="hero-top">
+            <div class="hero-mono" style="background:linear-gradient(135deg,#5ec2f0,#27b9a3 70%,#0f7a3e)">∑</div>
+            <div class="hero-id">
+              <div class="hero-name">Cursor<span class="role">monorepo parent · 3 sub-repos touched</span></div>
+              <div class="hero-sub">
+                <span class="branch-badge">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+                  D:\work\acme-platform
+                </span>
+                <span class="into-badge">parent folder · no worktree · diffs grouped per repo</span>
+              </div>
+            </div>
+            <span class="hero-state">3 of 4 dirty</span>
+          </div>
+          <div class="hero-stats">
+            <div class="hstat"><span class="n files">11</span><span class="k">Files · 3 repos</span></div>
+            <div class="hstat"><span class="n add">+96</span><span class="k">Insertions</span>
+              <span class="barwrap"><i class="ba" style="width:76%"></i><i class="bd" style="width:24%"></i></span></div>
+            <div class="hstat"><span class="n del">−31</span><span class="k">Deletions</span></div>
+            <div class="hstat"><span class="n ok">0/3</span><span class="k">Repos staged</span></div>
+          </div>
+          <div class="hero-actions">
+            <span class="progress-pill">Each repo commits &amp; merges independently</span>
+            <button class="btn-ghost"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Accept all repos</button>
+          </div>
+        </section>
+
+        <!-- REPO A -->
+        <div class="repo-group">
+          <div class="repo-head js-repocollapse">
+            <svg class="repo-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            <span class="repo-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
+            <div class="repo-meta">
+              <div class="repo-name">packages/web-app<span class="agentchip">maestro/cursor-9c41</span></div>
+              <div class="repo-sub">5 files · on main · 2 commits ahead</div>
+            </div>
+            <span class="repo-delta"><span class="p">+58</span><span class="m">−14</span></span>
+            <button class="btn repo-act" style="padding:6px 12px">Commit &amp; merge</button>
+          </div>
+          <div class="repo-body">
+            <div class="filecard">
+              <div class="fc-head js-collapse">
+                <svg class="fc-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                <span class="fc-status mod">M</span>
+                <span class="fc-path"><span class="dir">src/routes/</span><span class="file">Checkout.tsx</span></span>
+                <span class="fc-delta"><span class="p">+22</span><span class="m">−6</span></span>
+                <span class="fc-hunkcount">1 hunk</span>
+                <span class="fc-resolved-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> resolved</span>
+              </div>
+              <div class="fc-body">
+                <div class="hunk">
+                  <span class="sweep"></span>
+                  <div class="hunk-bar">
+                    <span class="hunk-loc">@@ −12,4 +12,7 @@</span>
+                    <span class="hunk-ctx">route guard</span>
+                    <span class="hunk-state ac">Accepted</span><span class="hunk-state rj">Rejected</span>
+                    <span class="hunk-actions">
+                      <button class="hk-btn accept js-accept"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Accept</button>
+                      <button class="hk-btn reject js-reject"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>Reject</button>
+                    </span>
+                  </div>
+                  <div class="diff">
+                    <div class="dl ctx"><span class="gut">12</span><span class="gut s2">12</span><span class="code"><span class="tok-k">function</span> <span class="tok-f">Checkout</span>() {</span></div>
+                    <div class="dl del"><span class="gut">13</span><span class="gut s2"></span><span class="code">  <span class="tok-k">return</span> &lt;<span class="tok-f">PaymentSummary</span> /&gt;;</span></div>
+                    <div class="dl add"><span class="gut"></span><span class="gut s2">13</span><span class="code">  <span class="tok-k">const</span> { cart } = <span class="tok-f">useCart</span>();</span></div>
+                    <div class="dl add"><span class="gut"></span><span class="gut s2">14</span><span class="code">  <span class="tok-k">if</span> (!cart) <span class="tok-k">return</span> &lt;<span class="tok-f">Redirect</span> to=<span class="tok-s">"/cart"</span> /&gt;;</span></div>
+                    <div class="dl add"><span class="gut"></span><span class="gut s2">15</span><span class="code">  <span class="tok-k">return</span> &lt;<span class="tok-f">PaymentSummary</span> items={cart} /&gt;;</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- REPO B -->
+        <div class="repo-group collapsed">
+          <div class="repo-head js-repocollapse">
+            <svg class="repo-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            <span class="repo-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
+            <div class="repo-meta">
+              <div class="repo-name">packages/api<span class="agentchip">maestro/cursor-9c41</span></div>
+              <div class="repo-sub">6 files · on main · 1 commit ahead</div>
+            </div>
+            <span class="repo-delta"><span class="p">+38</span><span class="m">−17</span></span>
+            <button class="btn repo-act" style="padding:6px 12px">Commit &amp; merge</button>
+          </div>
+          <div class="repo-body">
+            <div class="repo-clean" style="border-style:solid;border-color:var(--line);color:var(--muted)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--info)"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+              6 changed files in <b style="font-family:var(--mono);color:var(--text-2)">packages/api</b> — expand to review each hunk.
+            </div>
+          </div>
+        </div>
+
+        <!-- REPO C (clean) -->
+        <div class="repo-group collapsed">
+          <div class="repo-head js-repocollapse">
+            <svg class="repo-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            <span class="repo-ic" style="color:var(--run)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <div class="repo-meta">
+              <div class="repo-name">packages/shared-ui</div>
+              <div class="repo-sub">no changes · working tree clean</div>
+            </div>
+            <span class="repo-delta" style="color:var(--muted-2)">clean</span>
+          </div>
+          <div class="repo-body">
+            <div class="repo-clean">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              Nothing to review — this sub-repo wasn't touched by the agent.
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /viewMulti -->
+
+    </main>
+  </div>
+</div>
+
+<!-- toast + celebration -->
+<div class="toast" id="toast"><span class="ic" id="toastIc"></span><span id="toastMsg"></span></div>
+<div class="celebrate" id="celebrate"><span class="burst"></span><span class="flash"></span></div>
+
+<script>
+(function(){
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+  /* ---- per-hunk accept / reject with satisfying micro-interaction ---- */
+  function setHunk(hunk, state){
+    hunk.classList.remove('accepted','rejected','flash-accept','flash-reject');
+    hunk.classList.add('resolved');
+    if(state==='accept'){ hunk.classList.add('accepted'); if(!reduce) hunk.classList.add('flash-accept'); }
+    else { hunk.classList.add('rejected'); if(!reduce) hunk.classList.add('flash-reject'); }
+    refresh();
+  }
+  document.addEventListener('click', function(e){
+    var acc = e.target.closest('.js-accept'); var rej = e.target.closest('.js-reject');
+    if(acc){ setHunk(acc.closest('.hunk'),'accept'); }
+    else if(rej){ setHunk(rej.closest('.hunk'),'reject'); }
+  });
+
+  /* ---- collapse file cards & repo groups ---- */
+  document.addEventListener('click', function(e){
+    var fh = e.target.closest('.js-collapse');
+    if(fh && !e.target.closest('.hk-btn')){ fh.parentElement.classList.toggle('collapsed'); }
+    var rh = e.target.closest('.js-repocollapse');
+    if(rh && !e.target.closest('.btn')){ rh.parentElement.classList.toggle('collapsed'); }
+  });
+
+  /* ---- agent switcher ---- */
+  var picks = document.querySelectorAll('.agent-pick');
+  picks.forEach(function(p){ p.addEventListener('click', function(){
+    picks.forEach(function(x){x.classList.remove('active');}); p.classList.add('active');
+    if(p.dataset.agent==='multi'){ showView('multi'); } else { showView('agent'); }
+  });});
+
+  /* ---- view tabs (per-agent / multi-repo) ---- */
+  function showView(v){
+    document.getElementById('viewAgent').hidden = (v!=='agent');
+    document.getElementById('viewMulti').hidden = (v!=='multi');
+  }
+  document.querySelectorAll('.vt').forEach(function(t){ t.addEventListener('click', function(){
+    showView(t.dataset.view);
+  });});
+
+  /* ---- bulk accept / reject ---- */
+  document.getElementById('btnAcceptAll').addEventListener('click', function(){
+    document.querySelectorAll('#viewAgent .hunk').forEach(function(h){ setHunk(h,'accept'); });
+  });
+  document.getElementById('btnRejectAll').addEventListener('click', function(){
+    document.querySelectorAll('#viewAgent .hunk').forEach(function(h){ setHunk(h,'reject'); });
+  });
+
+  /* ---- progress + gating of commit / merge ---- */
+  function refresh(){
+    var hunks = document.querySelectorAll('#viewAgent .hunk');
+    var total = hunks.length, decided = 0, accepted = 0;
+    hunks.forEach(function(h){
+      if(h.classList.contains('resolved')) decided++;
+      if(h.classList.contains('accepted')) accepted++;
+    });
+    var pct = total? Math.round(decided/total*100):0;
+    document.getElementById('progFill').style.width = pct+'%';
+    document.getElementById('progPct').textContent = pct+'%';
+    document.getElementById('heroDecided').textContent = decided+'/'+total;
+    /* mark file cards resolved when all their hunks are decided */
+    document.querySelectorAll('#viewAgent .filecard').forEach(function(fc){
+      var fh = fc.querySelectorAll('.hunk');
+      var done = Array.prototype.every.call(fh, function(h){return h.classList.contains('resolved');});
+      fc.classList.toggle('resolved', fh.length>0 && done);
+    });
+    /* commit enabled once everything decided AND at least one accepted */
+    var allDecided = decided===total && total>0;
+    document.getElementById('btnCommit').disabled = !(allDecided && accepted>0);
+    document.getElementById('commitLabel').textContent = accepted>0 ? ('Stage & commit '+accepted+' hunk'+(accepted!==1?'s':'')) : 'Stage & commit';
+  }
+
+  /* ---- commit → enables merge ---- */
+  var committed = false;
+  document.getElementById('btnCommit').addEventListener('click', function(){
+    if(this.disabled) return;
+    committed = true;
+    this.disabled = true; document.getElementById('commitLabel').textContent = 'Committed';
+    document.getElementById('btnMerge').disabled = false;
+    toast('check', 'Staged & committed to <b>maestro/aider-7b21</b>');
+  });
+
+  /* ---- merge → celebration ---- */
+  document.getElementById('btnMerge').addEventListener('click', function(){
+    if(this.disabled) return;
+    this.disabled = true; this.textContent = 'Merged ✓';
+    if(!reduce){ var c = document.getElementById('celebrate'); c.classList.add('go');
+      setTimeout(function(){ c.classList.remove('go'); }, 1200); }
+    toast('merge', 'Merged <b>maestro/aider-7b21</b> → checkout-revamp · worktree cleaned');
+  });
+
+  function toast(kind, msg){
+    var t = document.getElementById('toast');
+    document.getElementById('toastMsg').innerHTML = msg;
+    document.getElementById('toastIc').innerHTML = kind==='merge'
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="2.5"/><circle cx="6" cy="6" r="2.5"/><path d="M6 8.5V14a4 4 0 0 0 4 4h5.5"/></svg>'
+      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+    t.classList.add('show');
+    clearTimeout(t._t); t._t = setTimeout(function(){ t.classList.remove('show'); }, 3200);
+  }
+
+  refresh();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maestro · AI Code — Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Geist:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   Maestro tokens — copied verbatim from src/styles/tokens.css
+   ============================================================ */
+:root{
+  --bg:#0d1014; --surface-0:#11161d; --surface-1:#161b22; --surface-2:#1c232c; --surface-3:#232b35;
+  --line:#2a323d; --line-strong:#3a4552;
+  --text:#e8edf2; --text-2:#c2ccd6; --muted:#94a3b1; --muted-2:#7d8b99;
+  --accent:#c6f135; --accent-dim:#9bbd2a; --accent-ink:#10160a; --accent-glow:rgba(198,241,53,.16);
+  --info:#5ec2f0; --run:#3ad29f; --idle:#6b7785; --err:#ff6b6b;
+  --r1:5px; --r2:7px; --r3:9px; --r4:12px;
+  --sans:'Geist', system-ui, -apple-system, sans-serif;
+  --mono:'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+  --display:'Bricolage Grotesque', sans-serif;
+  /* diff-local semantic tones, derived from existing palette */
+  --add:#3ad29f; --add-glow:rgba(58,210,159,.10); --add-line:rgba(58,210,159,.22);
+  --del:#ff6b6b; --del-glow:rgba(255,107,107,.08); --del-line:rgba(255,107,107,.20);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;
+  font-feature-settings:"cv01","ss01";-webkit-font-smoothing:antialiased;overflow:hidden;
+}
+button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer}
+svg{display:block;flex:none}
+[hidden]{display:none !important}
+:focus-visible{outline:none;box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent);border-radius:var(--r2)}
+*::-webkit-scrollbar{width:9px;height:9px}
+*::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:6px;border:2px solid transparent;background-clip:padding-box}
+kbd{
+  font-family:var(--mono);font-size:9.5px;font-weight:500;line-height:1;
+  color:var(--text-2);background:var(--surface-3);border:1px solid var(--line-strong);
+  border-bottom-width:2px;border-radius:4px;padding:2px 5px;min-width:16px;text-align:center;
+  display:inline-flex;align-items:center;justify-content:center;
+}
+
+/* ============================================================
+   Shell — frameless window chrome + 3-column review layout
+   ============================================================ */
+.win{display:grid;grid-template-rows:46px 1fr;height:100vh;width:100vw}
+
+/* top bar — mirrors workspace .topbar */
+.topbar{display:flex;align-items:center;gap:12px;padding:0 12px;background:#0e1218;border-bottom:1px solid var(--line)}
+.tb-back{width:30px;height:30px;border-radius:7px;display:grid;place-items:center;color:var(--muted);flex:none;transition:background .14s,color .14s}
+.tb-back:hover{background:var(--surface-1);color:var(--accent)}
+.tb-title{display:flex;align-items:baseline;gap:9px;flex:none}
+.tb-title .wm{font-family:var(--display);font-style:italic;font-weight:800;font-size:15px;letter-spacing:-.01em}
+.tb-title .crumb{font-size:12px;color:var(--muted);font-weight:500}
+.tb-title .crumb b{color:var(--text-2);font-weight:600}
+.tb-seg{display:flex;gap:2px;padding:3px;background:var(--surface-1);border:1px solid var(--line);border-radius:8px;margin-left:6px}
+.tb-seg button{padding:4px 11px;border-radius:5px;font-size:11.5px;font-weight:500;color:var(--muted);transition:background .14s,color .14s}
+.tb-seg button:hover{color:var(--text-2)}
+.tb-seg button.on{background:var(--surface-3);color:var(--text)}
+.spacer{flex:1}
+/* command palette trigger — keyboard-first hint */
+.cmdk{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 9px 0 11px;border-radius:8px;border:1px solid var(--line);background:var(--surface-1);color:var(--muted);font-size:12px;transition:border-color .15s,color .15s}
+.cmdk:hover{border-color:var(--line-strong);color:var(--text-2)}
+.cmdk svg{width:13px;height:13px}
+.win-ctrls{display:flex;gap:2px;margin-left:4px}
+.wc{width:28px;height:26px;border-radius:6px;display:grid;place-items:center;color:var(--muted-2);transition:background .14s,color .14s}
+.wc:hover{background:var(--surface-2);color:var(--text-2)}
+.wc.close:hover{background:rgba(255,107,107,.16);color:var(--err)}
+
+.body{display:grid;grid-template-columns:248px 1fr 264px;min-height:0;overflow:hidden}
+
+/* ============================================================
+   LEFT RAIL — agent switcher + file tree (grouped by repo)
+   ============================================================ */
+.rail{display:flex;flex-direction:column;min-height:0;background:var(--surface-0);border-right:1px solid var(--line)}
+
+/* agent switcher */
+.agentsw{padding:11px 11px 10px;border-bottom:1px solid var(--line)}
+.rail-label{font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-2);font-weight:600;margin-bottom:8px;padding:0 2px;display:flex;align-items:center;gap:7px}
+.rail-label .ct{font-family:var(--mono);font-weight:500;color:var(--muted-2);background:var(--surface-2);border-radius:4px;padding:1px 5px;font-size:9px}
+.agent{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:7px 8px;border-radius:var(--r2);color:var(--text-2);transition:background .13s,color .13s;position:relative}
+.agent + .agent{margin-top:2px}
+.agent:hover{background:var(--surface-1)}
+.agent.on{background:var(--surface-2)}
+.agent.on::before{content:"";position:absolute;left:-11px;top:8px;bottom:8px;width:2px;border-radius:2px;background:var(--accent)}
+.mono{width:24px;height:24px;border-radius:6px;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:12px;color:#0d1014;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.agent .ameta{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.agent .aname{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;color:var(--text)}
+.agent .abranch{font-family:var(--mono);font-size:9px;color:var(--muted-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+.agent .acount{font-family:var(--mono);font-size:9.5px;font-variant-numeric:tabular-nums;color:var(--muted-2);flex:none}
+.agent.on .acount{color:var(--accent)}
+.adot{width:6px;height:6px;border-radius:50%;background:var(--idle);flex:none}
+.adot.run{background:var(--run);box-shadow:0 0 6px var(--run)}
+
+/* file tree */
+.tree{flex:1;overflow-y:auto;padding:10px 9px 16px}
+.repo-group + .repo-group{margin-top:14px}
+.repo-head{display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:var(--r1);color:var(--muted);cursor:pointer;user-select:none}
+.repo-head:hover{background:var(--surface-1)}
+.repo-head .chev{width:11px;height:11px;color:var(--muted-2);transition:transform .15s}
+.repo-head.collapsed .chev{transform:rotate(-90deg)}
+.repo-head .rname{font-size:11.5px;font-weight:600;color:var(--text-2);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.repo-head .rstat{font-family:var(--mono);font-size:9px;font-variant-numeric:tabular-nums;display:flex;gap:6px;flex:none}
+.repo-head .rstat .a{color:var(--add)}
+.repo-head .rstat .d{color:var(--del)}
+.repo-files{margin-top:3px}
+.repo-head.collapsed + .repo-files{display:none}
+.file{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:5px 7px 5px 9px;border-radius:var(--r1);color:var(--text-2);transition:background .12s;position:relative}
+.file:hover{background:var(--surface-1)}
+.file.on{background:var(--surface-2)}
+.file.on::before{content:"";position:absolute;left:2px;top:7px;bottom:7px;width:2px;border-radius:2px;background:var(--accent)}
+.file .ftag{width:15px;flex:none;font-family:var(--mono);font-size:10px;font-weight:600;text-align:center}
+.file .ftag.m{color:var(--info)}
+.file .ftag.a{color:var(--add)}
+.file .ftag.d{color:var(--del)}
+.file .fname{flex:1;min-width:0;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-feature-settings:"cv01"}
+.file .fname .dir{color:var(--muted-2)}
+.file .fnum{font-family:var(--mono);font-size:9px;font-variant-numeric:tabular-nums;color:var(--muted-2);flex:none}
+.file.done .fname{color:var(--muted-2)}
+.file .fcheck{width:13px;height:13px;flex:none;color:var(--add);opacity:0}
+.file.done .fcheck{opacity:1}
+
+/* ============================================================
+   CENTER — diff viewer
+   ============================================================ */
+.center{display:flex;flex-direction:column;min-width:0;min-height:0;
+  background:
+    radial-gradient(680px 320px at 18% -8%, rgba(198,241,53,.035), transparent 60%),
+    radial-gradient(circle at 1px 1px, rgba(255,255,255,.014) 1px, transparent 0);
+  background-size:auto,22px 22px;
+}
+.diff-head{display:flex;align-items:center;gap:11px;padding:12px 18px;border-bottom:1px solid var(--line);flex:none;background:rgba(14,18,24,.55);backdrop-filter:blur(4px)}
+.dh-path{display:flex;align-items:baseline;gap:1px;min-width:0;flex:1}
+.dh-path .dir{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.dh-path .base{font-family:var(--mono);font-size:13px;color:var(--text);font-weight:600}
+.dh-stat{display:flex;align-items:center;gap:9px;flex:none;font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums}
+.dh-stat .a{color:var(--add)}
+.dh-stat .d{color:var(--del)}
+.dh-stat .bar{display:flex;gap:1.5px}
+.dh-stat .bar i{width:5px;height:9px;border-radius:1px;display:block}
+.dh-stat .bar i.a{background:var(--add)}
+.dh-stat .bar i.d{background:var(--del)}
+.dh-stat .bar i.n{background:var(--line-strong)}
+
+.diff-scroll{flex:1;overflow-y:auto;padding:14px 18px 220px}
+
+/* a hunk = a card */
+.hunk{border:1px solid var(--line);border-radius:var(--r3);overflow:hidden;margin-bottom:14px;background:var(--surface-1);transition:border-color .15s,box-shadow .15s,opacity .2s}
+.hunk.cursor{border-color:var(--accent-dim);box-shadow:0 0 0 1px var(--accent-dim),0 6px 24px rgba(0,0,0,.35)}
+.hunk.accepted{opacity:.62}
+.hunk.accepted:hover{opacity:1}
+.hunk.rejected{opacity:.5}
+.hunk.rejected:hover{opacity:.8}
+.hunk-head{display:flex;align-items:center;gap:10px;padding:7px 11px;background:var(--surface-2);border-bottom:1px solid var(--line);font-family:var(--mono);font-size:10.5px}
+.hunk-head .range{color:var(--info);font-weight:500}
+.hunk-head .ctx{color:var(--muted-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.hunk-state{font-family:var(--sans);font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:5px;flex:none}
+.hunk-state.pending{background:var(--surface-3);color:var(--muted-2)}
+.hunk-state.accepted{background:var(--add-glow);color:var(--add)}
+.hunk-state.rejected{background:var(--del-glow);color:var(--del)}
+
+/* per-hunk action affordance — appears on cursor/hover */
+.hunk-acts{display:flex;align-items:center;gap:5px;flex:none;opacity:0;transition:opacity .14s}
+.hunk.cursor .hunk-acts,.hunk:hover .hunk-acts{opacity:1}
+.hk-btn{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:var(--r1);border:1px solid var(--line-strong);background:var(--surface-3);color:var(--text-2);font-family:var(--sans);font-size:10.5px;font-weight:600;transition:border-color .13s,color .13s,background .13s}
+.hk-btn:hover{color:var(--text)}
+.hk-btn.acc:hover{border-color:var(--add);color:var(--add);background:var(--add-glow)}
+.hk-btn.rej:hover{border-color:var(--del);color:var(--del);background:var(--del-glow)}
+.hk-btn kbd{margin-left:1px}
+
+/* diff lines */
+.lines{font-family:var(--mono);font-size:12px;line-height:1.65;background:var(--surface-0)}
+.ln{display:flex;white-space:pre;min-height:21px}
+.ln .gut{flex:none;width:84px;display:flex;color:var(--muted-2);user-select:none;font-size:10px;padding-top:1px}
+.ln .gut .o,.ln .gut .n{width:42px;text-align:right;padding-right:11px;font-variant-numeric:tabular-nums}
+.ln .sign{flex:none;width:16px;text-align:center;user-select:none}
+.ln .code{flex:1;padding-right:14px}
+.ln.add{background:var(--add-glow)}
+.ln.add .sign{color:var(--add)}
+.ln.add .code{color:#d7f5e8}
+.ln.del{background:var(--del-glow)}
+.ln.del .sign{color:var(--del)}
+.ln.del .code{color:#f6d3d3}
+.ln.ctx .code{color:var(--text-2)}
+/* token-level emphasis inside a changed line */
+.tok-add{background:rgba(58,210,159,.22);border-radius:3px;padding:0 1px}
+.tok-del{background:rgba(255,107,107,.22);border-radius:3px;padding:0 1px}
+/* syntax hints (subtle, monochrome-leaning) */
+.kw{color:var(--info)} .str{color:var(--accent-dim)} .fn{color:#b9a6f0} .cm{color:var(--muted-2);font-style:italic} .num{color:#e0a878}
+.ln.add .kw,.ln.del .kw{opacity:.92}
+
+/* file-done banner between hunks */
+.file-foot{display:flex;align-items:center;justify-content:center;gap:9px;padding:9px;margin-bottom:14px;border:1px dashed var(--line-strong);border-radius:var(--r3);color:var(--muted);font-size:11px}
+.file-foot svg{width:13px;height:13px;color:var(--add)}
+
+/* ============================================================
+   RIGHT DOCK — review summary + commit + merge
+   ============================================================ */
+.dock{display:flex;flex-direction:column;min-height:0;background:var(--surface-0);border-left:1px solid var(--line)}
+.dock-sec{padding:14px 14px;border-bottom:1px solid var(--line)}
+.dock-sec:last-child{border-bottom:none}
+
+/* branch identity */
+.branch-card{display:flex;flex-direction:column;gap:10px}
+.bc-top{display:flex;align-items:center;gap:9px}
+.bc-top .mono{width:28px;height:28px;font-size:13px}
+.bc-id{display:flex;flex-direction:column;gap:1px;min-width:0}
+.bc-id .n{font-size:13px;font-weight:600;color:var(--text)}
+.bc-id .r{font-family:var(--mono);font-size:9.5px;color:var(--muted-2)}
+.branch-badge{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;padding:4px 9px 4px 8px;border-radius:var(--r2);border:1px solid var(--line-strong);background:var(--surface-2);font-family:var(--mono);font-size:10.5px;color:var(--text-2)}
+.branch-badge svg{width:12px;height:12px;color:var(--accent)}
+.branch-badge .arrow{color:var(--muted-2)}
+.branch-badge .base{color:var(--muted)}
+
+/* progress meter */
+.meter-label{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px}
+.meter-label .t{font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-2);font-weight:600}
+.meter-label .v{font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums;color:var(--text-2)}
+.meter{height:6px;border-radius:6px;background:var(--surface-2);overflow:hidden;display:flex}
+.meter .seg-a{background:var(--add)}
+.meter .seg-r{background:var(--del)}
+.meter-key{display:flex;gap:14px;margin-top:9px;font-size:10.5px;color:var(--muted)}
+.meter-key span{display:inline-flex;align-items:center;gap:6px}
+.meter-key i{width:8px;height:8px;border-radius:2px;display:block}
+.meter-key i.a{background:var(--add)} .meter-key i.r{background:var(--del)} .meter-key i.p{background:var(--line-strong)}
+
+/* commit composer */
+.dock-sec .sec-label{font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-2);font-weight:600;margin-bottom:9px}
+.commit-msg{width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r2);padding:9px 10px;color:var(--text);font-family:var(--mono);font-size:11.5px;line-height:1.5;resize:none;min-height:70px}
+.commit-msg::placeholder{color:var(--muted-2)}
+.commit-msg:focus{outline:none;border-color:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-glow)}
+.stage-row{display:flex;align-items:center;justify-content:space-between;margin-top:9px;font-size:11px;color:var(--muted)}
+.stage-row b{font-family:var(--mono);color:var(--text-2);font-variant-numeric:tabular-nums}
+
+.dock-actions{margin-top:auto;padding:14px;border-top:1px solid var(--line);background:var(--surface-0);display:flex;flex-direction:column;gap:8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:9px 14px;border-radius:var(--r2);border:1px solid var(--accent-dim);background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:12.5px;transition:background .14s}
+.btn:hover{background:#d3fc4d}
+.btn kbd{background:rgba(16,22,10,.18);border-color:rgba(16,22,10,.25);color:var(--accent-ink);border-bottom-width:1px}
+.btn-ghost{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:8px 14px;border:1px solid var(--line-strong);border-radius:var(--r2);background:transparent;color:var(--text-2);font-size:12px;font-weight:500;transition:background .14s,color .14s,border-color .14s}
+.btn-ghost:hover{background:var(--surface-3);color:var(--text)}
+.btn-ghost.merge:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--accent-glow)}
+.btn-ghost svg{width:13px;height:13px}
+.gate{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r2);background:var(--add-glow);border:1px solid var(--add-line);font-size:10.5px;color:var(--text-2);line-height:1.35}
+.gate svg{width:14px;height:14px;color:var(--add);flex:none}
+
+/* ============================================================
+   Footer status / keyboard legend
+   ============================================================ */
+.legend{position:fixed;left:248px;right:264px;bottom:0;display:flex;align-items:center;gap:16px;padding:8px 18px;
+  background:rgba(14,18,24,.82);backdrop-filter:blur(8px);border-top:1px solid var(--line);font-size:10.5px;color:var(--muted);z-index:20}
+.legend .grp{display:flex;align-items:center;gap:6px}
+.legend .grp + .grp{padding-left:16px;border-left:1px solid var(--line)}
+.legend .grp span{color:var(--muted-2)}
+.legend .spacer{flex:1}
+.legend .pos{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--text-2)}
+
+/* command palette overlay */
+.palette-back{position:fixed;inset:0;background:rgba(6,9,13,.62);display:none;align-items:flex-start;justify-content:center;padding-top:13vh;z-index:100}
+.palette-back.open{display:flex}
+.palette{width:540px;max-width:calc(100vw - 40px);background:var(--surface-1);border:1px solid var(--line-strong);border-radius:var(--r4);box-shadow:0 28px 80px rgba(0,0,0,.6);overflow:hidden}
+.pal-in{display:flex;align-items:center;gap:11px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.pal-in svg{width:16px;height:16px;color:var(--muted)}
+.pal-in input{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:14px;font-family:var(--sans)}
+.pal-in input::placeholder{color:var(--muted-2)}
+.pal-list{max-height:340px;overflow-y:auto;padding:6px}
+.pal-item{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:var(--r2);color:var(--text-2);font-size:12.5px}
+.pal-item:first-child,.pal-item:hover{background:var(--surface-2);color:var(--text)}
+.pal-item .pi-ic{width:16px;color:var(--muted)}
+.pal-item:first-child .pi-ic,.pal-item:hover .pi-ic{color:var(--accent)}
+.pal-item .pi-k{margin-left:auto;display:flex;gap:4px}
+.pal-sec{font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-2);font-weight:600;padding:9px 11px 4px}
+
+@media (prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important}}
+</style>
+</head>
+<body>
+<div class="win">
+
+  <!-- ===================== TOP BAR ===================== -->
+  <header class="topbar">
+    <button class="tb-back" title="Back to workspace" aria-label="Back to workspace">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+    </button>
+    <div class="tb-title">
+      <span class="wm">AI&nbsp;Code</span>
+      <span class="crumb">Review · <b>web-app</b></span>
+    </div>
+    <div class="tb-seg" role="tablist">
+      <button>Grid</button>
+      <button class="on" aria-selected="true">Review</button>
+      <button>Timeline</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="cmdk" id="cmdkBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      Commands
+      <kbd>⌘</kbd><kbd>K</kbd>
+    </button>
+    <div class="win-ctrls">
+      <button class="wc" aria-label="Minimize"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><path d="M0 5h10"/></svg></button>
+      <button class="wc" aria-label="Maximize"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="0.5" y="0.5" width="9" height="9"/></svg></button>
+      <button class="wc close" aria-label="Close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M0 0l10 10M10 0L0 10"/></svg></button>
+    </div>
+  </header>
+
+  <div class="body">
+
+    <!-- ===================== LEFT RAIL ===================== -->
+    <aside class="rail">
+      <div class="agentsw">
+        <div class="rail-label">Agents <span class="ct">4</span></div>
+
+        <button class="agent on" aria-current="true">
+          <span class="mono" style="--c:#c6f135;background:#c6f135">C</span>
+          <span class="ameta">
+            <span class="aname">codex · refactor</span>
+            <span class="abranch">maestro/codex-9f3a</span>
+          </span>
+          <span class="acount">7</span>
+          <span class="adot run" title="running"></span>
+        </button>
+
+        <button class="agent">
+          <span class="mono" style="background:#5ec2f0">G</span>
+          <span class="ameta">
+            <span class="aname">gemini · tests</span>
+            <span class="abranch">maestro/gemini-2b71</span>
+          </span>
+          <span class="acount">12</span>
+          <span class="adot run"></span>
+        </button>
+
+        <button class="agent">
+          <span class="mono" style="background:#b9a6f0">Cl</span>
+          <span class="ameta">
+            <span class="aname">claude · docs</span>
+            <span class="abranch">maestro/claude-7e0c</span>
+          </span>
+          <span class="acount">3</span>
+          <span class="adot"></span>
+        </button>
+
+        <button class="agent">
+          <span class="mono" style="background:#e0a878">Ai</span>
+          <span class="ameta">
+            <span class="aname">aider · schema</span>
+            <span class="abranch">maestro/aider-4c19</span>
+          </span>
+          <span class="acount">5</span>
+          <span class="adot"></span>
+        </button>
+      </div>
+
+      <!-- file tree, grouped by repo (multi-repo parent case) -->
+      <nav class="tree" aria-label="Changed files">
+        <div class="repo-group">
+          <div class="repo-head" data-collapse>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            <span class="rname">apps/web</span>
+            <span class="rstat"><span class="a">+148</span><span class="d">−39</span></span>
+          </div>
+          <div class="repo-files">
+            <button class="file on" aria-current="true">
+              <span class="ftag m">M</span>
+              <span class="fname"><span class="dir">src/auth/</span>session.ts</span>
+              <span class="fnum">3</span>
+              <svg class="fcheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </button>
+            <button class="file done">
+              <span class="ftag m">M</span>
+              <span class="fname"><span class="dir">src/auth/</span>token.ts</span>
+              <span class="fnum">2</span>
+              <svg class="fcheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </button>
+            <button class="file">
+              <span class="ftag a">A</span>
+              <span class="fname"><span class="dir">src/auth/</span>refresh.ts</span>
+              <span class="fnum">1</span>
+              <svg class="fcheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="repo-group">
+          <div class="repo-head" data-collapse>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            <span class="rname">packages/core</span>
+            <span class="rstat"><span class="a">+22</span><span class="d">−6</span></span>
+          </div>
+          <div class="repo-files">
+            <button class="file">
+              <span class="ftag m">M</span>
+              <span class="fname"><span class="dir">src/</span>config.ts</span>
+              <span class="fnum">1</span>
+              <svg class="fcheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </button>
+            <button class="file">
+              <span class="ftag d">D</span>
+              <span class="fname"><span class="dir">src/</span>legacy.ts</span>
+              <span class="fnum">1</span>
+              <svg class="fcheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="repo-group">
+          <div class="repo-head collapsed" data-collapse>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            <span class="rname">services/api</span>
+            <span class="rstat"><span class="a">+0</span><span class="d">−0</span></span>
+          </div>
+          <div class="repo-files"></div>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- ===================== CENTER — DIFF ===================== -->
+    <section class="center">
+      <div class="diff-head">
+        <div class="dh-path">
+          <span class="dir">src/auth/</span><span class="base">session.ts</span>
+        </div>
+        <div class="dh-stat">
+          <span class="a">+18</span><span class="d">−7</span>
+          <span class="bar"><i class="a"></i><i class="a"></i><i class="a"></i><i class="d"></i><i class="n"></i></span>
+        </div>
+      </div>
+
+      <div class="diff-scroll" id="diffScroll">
+
+        <!-- ---- HUNK 1 (cursor) ---- -->
+        <article class="hunk cursor" tabindex="-1">
+          <div class="hunk-head">
+            <span class="range">@@ -14,9 +14,12 @@</span>
+            <span class="ctx">export async function createSession(user: User)</span>
+            <span class="hunk-state pending">Pending</span>
+            <div class="hunk-acts">
+              <button class="hk-btn acc">Accept <kbd>A</kbd></button>
+              <button class="hk-btn rej">Reject <kbd>R</kbd></button>
+            </div>
+          </div>
+          <div class="lines">
+            <div class="ln ctx"><span class="gut"><span class="o">14</span><span class="n">14</span></span><span class="sign"> </span><span class="code">  <span class="kw">const</span> now = <span class="fn">Date</span>.now();</span></div>
+            <div class="ln del"><span class="gut"><span class="o">15</span><span class="n"></span></span><span class="sign">-</span><span class="code">  <span class="kw">const</span> ttl = <span class="num">3600</span>;</span></div>
+            <div class="ln add"><span class="gut"><span class="o"></span><span class="n">15</span></span><span class="sign">+</span><span class="code">  <span class="kw">const</span> ttl = config.<span class="tok-add">sessionTtlSeconds</span>;</span></div>
+            <div class="ln add"><span class="gut"><span class="o"></span><span class="n">16</span></span><span class="sign">+</span><span class="code">  <span class="kw">const</span> issuedAt = <span class="kw">new</span> <span class="fn">Date</span>(now);</span></div>
+            <div class="ln ctx"><span class="gut"><span class="o">16</span><span class="n">17</span></span><span class="sign"> </span><span class="code">  <span class="kw">return</span> {</span></div>
+            <div class="ln del"><span class="gut"><span class="o">17</span><span class="n"></span></span><span class="sign">-</span><span class="code">    token: <span class="fn">sign</span>({ <span class="tok-del">uid: user.id</span> }),</span></div>
+            <div class="ln add"><span class="gut"><span class="o"></span><span class="n">18</span></span><span class="sign">+</span><span class="code">    token: <span class="fn">sign</span>({ <span class="tok-add">sub: user.id, iat: now</span> }),</span></div>
+            <div class="ln ctx"><span class="gut"><span class="o">18</span><span class="n">19</span></span><span class="sign"> </span><span class="code">    expiresAt: now + ttl * <span class="num">1000</span>,</span></div>
+            <div class="ln add"><span class="gut"><span class="o"></span><span class="n">20</span></span><span class="sign">+</span><span class="code">    issuedAt,</span></div>
+            <div class="ln ctx"><span class="gut"><span class="o">19</span><span class="n">21</span></span><span class="sign"> </span><span class="code">  };</span></div>
+          </div>
+        </article>
+
+        <!-- ---- HUNK 2 (accepted) ---- -->
+        <article class="hunk accepted" tabindex="-1">
+          <div class="hunk-head">
+            <span class="range">@@ -41,6 +44,8 @@</span>
+            <span class="ctx">function rotateSecret()</span>
+            <span class="hunk-state accepted">Accepted</span>
+            <div class="hunk-acts">
+              <button class="hk-btn acc">Undo <kbd>A</kbd></button>
+              <button class="hk-btn rej">Reject <kbd>R</kbd></button>
+            </div>
+          </div>
+          <div class="lines">
+            <div class="ln ctx"><span class="gut"><span class="o">41</span><span class="n">44</span></span><span class="sign"> </span><span class="code">  <span class="cm">// rotate on a fixed cadence</span></span></div>
+            <div class="ln del"><span class="gut"><span class="o">42</span><span class="n"></span></span><span class="sign">-</span><span class="code">  setInterval(rotate, <span class="num">86400000</span>);</span></div>
+            <div class="ln add"><span class="gut"><span class="o"></span><span class="n">45</span></span><span class="sign">+</span><span class="code">  <span class="kw">const</span> day = <span class="num">24</span> * <span class="num">60</span> * <span class="num">60</span> * <span class="num">1000</span>;</span></div>
+            <div class="ln add"><span class="gut"><span class="o"></span><span class="n">46</span></span><span class="sign">+</span><span class="code">  setInterval(rotate, day);</span></div>
+            <div class="ln ctx"><span class="gut"><span class="o">43</span><span class="n">47</span></span><span class="sign"> </span><span class="code">}</span></div>
+          </div>
+        </article>
+
+        <!-- ---- HUNK 3 (rejected) ---- -->
+        <article class="hunk rejected" tabindex="-1">
+          <div class="hunk-head">
+            <span class="range">@@ -58,4 +61,7 @@</span>
+            <span class="ctx">export function debugDump()</span>
+            <span class="hunk-state rejected">Rejected</span>
+            <div class="hunk-acts">
+              <button class="hk-btn acc">Accept <kbd>A</kbd></button>
+              <button class="hk-btn rej">Undo <kbd>R</kbd></button>
+            </div>
+          </div>
+          <div class="lines">
+            <div class="ln add"><span class="gut"><span class="o"></span><span class="n">61</span></span><span class="sign">+</span><span class="code">  <span class="fn">console</span>.log(<span class="str">'session'</span>, currentSession);</span></div>
+            <div class="ln add"><span class="gut"><span class="o"></span><span class="n">62</span></span><span class="sign">+</span><span class="code">  <span class="fn">console</span>.log(<span class="str">'secret'</span>, secretKey);</span></div>
+          </div>
+        </article>
+
+        <div class="file-foot">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          End of <b style="color:var(--text-2);margin:0 3px;font-family:var(--mono);font-size:11px">session.ts</b> · <kbd>J</kbd> for next file
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== RIGHT DOCK ===================== -->
+    <aside class="dock">
+      <div class="dock-sec">
+        <div class="branch-card">
+          <div class="bc-top">
+            <span class="mono" style="background:#c6f135">C</span>
+            <div class="bc-id">
+              <span class="n">codex · refactor</span>
+              <span class="r">PID 24180 · 7 files changed</span>
+            </div>
+          </div>
+          <span class="branch-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+            maestro/codex-9f3a <span class="arrow">→</span> <span class="base">main</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="dock-sec">
+        <div class="meter-label"><span class="t">Hunks reviewed</span><span class="v">9 / 23</span></div>
+        <div class="meter">
+          <div class="seg-a" style="width:30%"></div>
+          <div class="seg-r" style="width:9%"></div>
+        </div>
+        <div class="meter-key">
+          <span><i class="a"></i>7 accepted</span>
+          <span><i class="r"></i>2 rejected</span>
+          <span><i class="p"></i>14 left</span>
+        </div>
+      </div>
+
+      <div class="dock-sec">
+        <div class="sec-label">Commit message</div>
+        <textarea class="commit-msg" spellcheck="false">refactor(auth): config-driven session TTL
+
+Replace magic numbers with config values and
+add issuedAt to the session payload.</textarea>
+        <div class="stage-row">Will stage <b>7 accepted</b> hunks across <b>4 files</b></div>
+      </div>
+
+      <div class="dock-actions">
+        <div class="gate">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          Verification gate passed — tests &amp; lint green
+        </div>
+        <button class="btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><line x1="3" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="21" y2="12"/></svg>
+          Stage &amp; Commit <kbd>⌘</kbd><kbd>↵</kbd>
+        </button>
+        <button class="btn-ghost merge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>
+          Merge branch → main
+        </button>
+        <button class="btn-ghost" style="border-color:var(--line);color:var(--muted)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          Discard branch &amp; worktree
+        </button>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- ===================== KEYBOARD LEGEND / STATUS ===================== -->
+  <footer class="legend">
+    <div class="grp"><kbd>J</kbd><kbd>K</kbd><span>hunk</span></div>
+    <div class="grp"><kbd>A</kbd><span>accept</span><kbd>R</kbd><span>reject</span></div>
+    <div class="grp"><kbd>⇧</kbd><kbd>A</kbd><span>accept file</span></div>
+    <div class="grp"><kbd>[</kbd><kbd>]</kbd><span>agent</span></div>
+    <div class="grp"><kbd>⌘</kbd><kbd>↵</kbd><span>commit</span></div>
+    <div class="spacer"></div>
+    <span class="pos">session.ts · hunk 1 / 3</span>
+  </footer>
+</div>
+
+<!-- ===================== COMMAND PALETTE ===================== -->
+<div class="palette-back" id="paletteBack">
+  <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="pal-in">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input placeholder="Review actions, agents, files…" id="palInput" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="pal-list">
+      <div class="pal-sec">Review</div>
+      <div class="pal-item"><span class="pi-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>Accept all hunks in this file<span class="pi-k"><kbd>⇧</kbd><kbd>A</kbd></span></div>
+      <div class="pal-item"><span class="pi-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span>Reject this hunk<span class="pi-k"><kbd>R</kbd></span></div>
+      <div class="pal-item"><span class="pi-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><line x1="3" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="21" y2="12"/></svg></span>Stage &amp; commit accepted hunks<span class="pi-k"><kbd>⌘</kbd><kbd>↵</kbd></span></div>
+      <div class="pal-sec">Branch</div>
+      <div class="pal-item"><span class="pi-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg></span>Merge maestro/codex-9f3a → main</div>
+      <div class="pal-sec">Go to agent</div>
+      <div class="pal-item"><span class="pi-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg></span>gemini · tests <span style="color:var(--muted-2);font-family:var(--mono);font-size:10px;margin-left:8px">maestro/gemini-2b71</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Tiny, dependency-free interactivity — keyboard-first review flow.
+   Hunk navigation (j/k), accept/reject (a/r), command palette (⌘K). */
+(function(){
+  const scroll = document.getElementById('diffScroll');
+  const hunks = () => Array.from(scroll.querySelectorAll('.hunk'));
+  let idx = 0;
+
+  function setCursor(i){
+    const hs = hunks();
+    i = Math.max(0, Math.min(hs.length - 1, i));
+    hs.forEach((h,n)=>h.classList.toggle('cursor', n===i));
+    idx = i;
+    const pos = document.querySelector('.legend .pos');
+    if(pos) pos.textContent = `session.ts · hunk ${i+1} / ${hs.length}`;
+    hs[i].scrollIntoView({block:'nearest', behavior:'smooth'});
+  }
+
+  function setState(h, state){
+    h.classList.remove('accepted','rejected');
+    const badge = h.querySelector('.hunk-state');
+    const accBtn = h.querySelector('.hk-btn.acc');
+    const rejBtn = h.querySelector('.hk-btn.rej');
+    badge.className = 'hunk-state ' + state;
+    if(state==='accepted'){ h.classList.add('accepted'); badge.textContent='Accepted'; accBtn.firstChild.textContent='Undo '; rejBtn.firstChild.textContent='Reject '; }
+    else if(state==='rejected'){ h.classList.add('rejected'); badge.textContent='Rejected'; accBtn.firstChild.textContent='Accept '; rejBtn.firstChild.textContent='Undo '; }
+    else { badge.textContent='Pending'; accBtn.firstChild.textContent='Accept '; rejBtn.firstChild.textContent='Reject '; }
+  }
+
+  function toggle(state){
+    const h = hunks()[idx];
+    const cur = h.classList.contains(state) ? 'pending' : state;
+    setState(h, cur);
+    if(cur !== 'pending' && idx < hunks().length-1) setCursor(idx+1);
+  }
+
+  // button wiring
+  hunks().forEach((h,n)=>{
+    h.querySelector('.hk-btn.acc').addEventListener('click', e=>{ e.stopPropagation(); setCursor(n); toggle('accepted'); });
+    h.querySelector('.hk-btn.rej').addEventListener('click', e=>{ e.stopPropagation(); setCursor(n); toggle('rejected'); });
+    h.addEventListener('click', ()=>setCursor(n));
+  });
+
+  // collapse repo groups
+  document.querySelectorAll('[data-collapse]').forEach(rh=>{
+    rh.addEventListener('click', ()=>rh.classList.toggle('collapsed'));
+  });
+
+  // command palette
+  const back = document.getElementById('paletteBack');
+  const palInput = document.getElementById('palInput');
+  function openPal(){ back.classList.add('open'); palInput.value=''; palInput.focus(); }
+  function closePal(){ back.classList.remove('open'); }
+  document.getElementById('cmdkBtn').addEventListener('click', openPal);
+  back.addEventListener('click', e=>{ if(e.target===back) closePal(); });
+
+  document.addEventListener('keydown', e=>{
+    const inField = /INPUT|TEXTAREA/.test(document.activeElement.tagName);
+    // ⌘K / Ctrl+K
+    if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='k'){ e.preventDefault(); back.classList.contains('open')?closePal():openPal(); return; }
+    if(e.key==='Escape'){ closePal(); return; }
+    if(back.classList.contains('open')) return;
+    if(inField) return;
+    const k = e.key.toLowerCase();
+    if(k==='j'){ e.preventDefault(); setCursor(idx+1); }
+    else if(k==='k'){ e.preventDefault(); setCursor(idx-1); }
+    else if(k==='a'){ e.preventDefault(); toggle('accepted'); }
+    else if(k==='r'){ e.preventDefault(); toggle('rejected'); }
+  });
+
+  setCursor(0);
+})();
+</script>
+</body>
+</html>

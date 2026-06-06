@@ -168,6 +168,14 @@
           <span>Auto-adds the skip-permission flag for: Claude, Codex, Gemini, Qwen, Aider, Copilot</span>
         </span>
       </label>
+      <label class="perm-toggle" for="mIsolate" id="mIsolateRow" hidden>
+        <input type="checkbox" id="mIsolate" checked>
+        <span class="pt-sw"></span>
+        <span class="pt-text">
+          <b>Isolate each agent in its own git worktree</b>
+          <span>Each agent works on its own branch off HEAD, so changes are reviewable per agent. Only available when the folder is a git repo.</span>
+        </span>
+      </label>
       <div class="crew-total">Total: <b id="crewTotal">0</b> agents</div>
     </div>
     <div class="modal-foot">

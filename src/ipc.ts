@@ -132,3 +132,15 @@ export async function worktreeRemove(
 ): Promise<void> {
   await invoke("worktree_remove", { repoRoot, path, branch: branch ?? null });
 }
+
+export interface RepoRef { path: string; name: string }
+
+/** Git repos to review under `dir` (the dir itself, or its sub-repos). */
+export async function reposUnder(dir: string): Promise<RepoRef[]> {
+  return invoke<RepoRef[]>("git_repos_under", { dir });
+}
+
+/** Raw unified diff of a repo's working tree vs HEAD. */
+export async function repoDiff(repoRoot: string): Promise<string> {
+  return invoke<string>("repo_diff", { repoRoot });
+}

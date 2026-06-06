@@ -2,6 +2,7 @@ pub mod commands;
 pub mod core;
 pub mod error;
 pub mod state;
+pub mod worktree;
 
 use crate::state::AppState;
 use tauri::menu::{Menu, MenuItem};
@@ -78,6 +79,9 @@ pub fn run() {
             commands::pty_kill_all,
             commands::set_tray_visible,
             commands::set_tray_tooltip,
+            worktree::git_repo_root,
+            worktree::worktree_add,
+            worktree::worktree_remove,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

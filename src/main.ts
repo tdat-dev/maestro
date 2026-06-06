@@ -26,6 +26,7 @@ import { checkForUpdates } from "./updater";
 import { initTitlebar } from "./titlebar";
 import { initIdleAnimationPause } from "./power";
 import { CLI_LOGOS } from "./logos";
+import { initAiCode, setActiveDirProvider } from "./aicode";
 
 /* Home launcher ⇄ Workspace grid.
  * Home is shown while there are 0 agents (the prominent "create" entry).
@@ -1096,6 +1097,10 @@ document.getElementById("btnQuick")?.addEventListener("click", () => {
 
 /* ---------------- frameless window controls ---------------- */
 initTitlebar();
+
+/* ---------------- AI Code (read-only diff review) ---------------- */
+setActiveDirProvider(() => activeWs?.dir ?? null);
+initAiCode();
 
 /* Pause decorative animations when the window is hidden/unfocused (saves GPU). */
 initIdleAnimationPause();

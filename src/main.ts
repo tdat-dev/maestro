@@ -15,7 +15,10 @@ import {
   setTrayVisible,
   setTrayTooltip,
   onTrayQuit,
+  gitRepoRoot,
+  worktreeAdd,
 } from "./ipc";
+import { branchName } from "./worktree";
 import { getHideToTray, setHideToTray } from "./settings";
 import { CLI_PRESETS, expandCrew, runLimited, launchSpec, effectiveArgs, type CrewState, type CliPreset } from "./crew";
 import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm } from "./workspaces";
@@ -74,6 +77,8 @@ interface Workspace {
   id: string;
   name: string;
   dir: string | null;
+  repoRoot: string | null;   // git repo root when isolated; else null
+  isolated: boolean;         // create a worktree per agent
   gridEl: HTMLElement;
   tabEl: HTMLElement;
   panes: Map<string, Pane>;
@@ -149,7 +154,7 @@ function createWorkspace(dir: string | null, name?: string): Workspace {
   tabEl.querySelector(".tname")!.textContent = wsName;
   tabstrip.insertBefore(tabEl, tabAdd);
 
-  const ws: Workspace = { id, name: wsName, dir, gridEl, tabEl, panes: new Map() };
+  const ws: Workspace = { id, name: wsName, dir, repoRoot: null, isolated: false, gridEl, tabEl, panes: new Map() };
   tabEl.addEventListener("click", (e) => {
     if ((e.target as HTMLElement).closest(".tclose")) return;
     activateWorkspace(ws);
@@ -450,7 +455,7 @@ function buildPaneEl(
       <span class="mono" style="--c:${color}">${CLI_LOGOS[badge] ?? mono}</span>
       <span class="pane-id">
         <span class="pane-name" title="${name}">${name}</span>
-        <span class="pane-sub" title="${sub ? badge + " · " + sub : badge}">${sub ? badge + " · " + sub : badge}</span>
+        <span class="pane-sub" data-sub title="${sub ? badge + " · " + sub : badge}">${sub ? badge + " · " + sub : badge}</span>
       </span>
       <span class="uptime" data-uptime></span>
       <span class="pane-stat" data-status>queued</span>
@@ -511,6 +516,8 @@ interface AgentSpec {
   badge: string;
   color: string;
   mono: string;
+  worktree?: string;  // worktree path once created (isolated agents)
+  branch?: string;    // the agent's git branch (isolated agents)
 }
 
 // Mount a pane immediately (status "queued…"); return a thunk that boots the
@@ -575,10 +582,26 @@ function createAgent(ws: Workspace, spec: AgentSpec, restore = false): () => Pro
     if (!ws.panes.has(id)) return; // killed before its turn to boot
     const { cols, rows } = term.fit();
     try {
+      // Isolated agents get their own worktree+branch; point the PTY cwd there.
+      let cwd = spec.cwd;
+      if (ws.isolated && ws.repoRoot && !spec.worktree) {
+        try {
+          spec.branch = branchName(spec.name, id.slice(-6));
+          spec.worktree = await worktreeAdd(ws.repoRoot, spec.branch);
+          cwd = spec.worktree;
+          const subEl = el.querySelector<HTMLElement>("[data-sub]");
+          if (subEl && spec.branch) subEl.textContent = spec.branch;
+          saveSession();
+        } catch (e) {
+          term.write(enc.encode(`\r\n\x1b[33m[worktree failed, using project dir: ${errMsg(e)}]\x1b[0m\r\n`));
+        }
+      } else if (spec.worktree) {
+        cwd = spec.worktree;
+      }
       // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows
       // can actually launch them — see launchSpec.
       const launch = launchSpec(spec.program, spec.args);
-      await spawnPty(id, launch.program, launch.args, spec.cwd, cols, rows, (bytes) => {
+      await spawnPty(id, launch.program, launch.args, cwd, cols, rows, (bytes) => {
         pane.lastOutputAt = Date.now();
         term.write(bytes);
       });
@@ -708,6 +731,23 @@ const crewGrid = document.getElementById("crewGrid") as HTMLElement;
 const crewTotalEl = document.getElementById("crewTotal") as HTMLElement;
 const spawnLabel = document.getElementById("mSpawnLabel") as HTMLElement;
 const mSkipPerms = document.getElementById("mSkipPerms") as HTMLInputElement;
+const mIsolate = document.getElementById("mIsolate") as HTMLInputElement;
+const mIsolateRow = document.getElementById("mIsolateRow") as HTMLElement;
+
+// Reveal the isolate toggle only when the working directory is a single git repo.
+async function refreshIsolateToggle() {
+  const dir = mDir.value.trim();
+  let isRepo = false;
+  if (dir) {
+    try {
+      isRepo = (await gitRepoRoot(dir)) !== null;
+    } catch {
+      isRepo = false;
+    }
+  }
+  mIsolateRow.hidden = !isRepo;
+}
+mDir.addEventListener("change", () => void refreshIsolateToggle());
 
 interface SavedCrew extends CrewState {
   dir: string;
@@ -786,6 +826,7 @@ function openModal(mode: "new" | "current" = "new") {
   mCustom.value = crew.custom;
   mSkipPerms.checked = saved.skipPerms;
   renderCrew();
+  void refreshIsolateToggle();
   modal.classList.add("open");
   mDir.focus();
   mDir.select();
@@ -834,6 +875,16 @@ async function spawnCrew(
   // Spawn into the active workspace, or a brand-new tab.
   const ws = mode === "current" && activeWs ? activeWs : createWorkspace(dir);
   if (mode === "current" && activeWs && !activeWs.dir && dir) activeWs.dir = dir;
+
+  // Decide isolation once per spawn: only for a fresh git-repo workspace when
+  // the modal's toggle is on. (Existing isolated workspaces keep their setting.)
+  if (!ws.isolated && dir) {
+    const root = await gitRepoRoot(dir).catch(() => null);
+    if (root && !mIsolateRow.hidden && mIsolate.checked) {
+      ws.repoRoot = root;
+      ws.isolated = true;
+    }
+  }
 
   const boots = fleet.map((p: CliPreset) => {
     perId[p.id] = (perId[p.id] ?? 0) + 1;

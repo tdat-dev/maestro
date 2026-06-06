@@ -59,18 +59,19 @@ pub fn git_repos_under(dir: String) -> Vec<RepoRef> {
     out
 }
 
-/// Raw unified diff of a repo's working tree vs HEAD (staged + unstaged),
-/// including untracked files. Empty string when the tree is clean.
+/// Raw unified diff of a repo's working tree vs HEAD — tracked changes AND
+/// newly created (untracked) files. `git add -N` records intent-to-add so the
+/// diff includes new files as full additions; it does not stage content and is
+/// reversible, and it honors .gitignore. Empty string when there is nothing to show.
 #[tauri::command]
 pub fn repo_diff(repo_root: String) -> Result<String, CommandError> {
-    // `--no-color`, 3 lines of context; `HEAD` covers staged+unstaged tracked
-    // changes. Untracked files are appended via a second pass below.
-    let tracked = git(
+    let _ = git(&["add", "-N", "--", "."], &repo_root); // best-effort; surfaces untracked files in the diff
+    let diff = git(
         &["-c", "core.quotepath=false", "diff", "--no-color", "HEAD"],
         &repo_root,
     )
     .unwrap_or_default();
-    Ok(tracked)
+    Ok(diff)
 }
 
 #[cfg(test)]
@@ -133,5 +134,17 @@ mod tests {
         std::fs::create_dir(&repo).unwrap();
         init_repo(&repo);
         assert_eq!(repo_diff(repo.to_string_lossy().to_string()).unwrap(), "");
+    }
+
+    #[test]
+    fn repo_diff_includes_untracked_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("u");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        std::fs::write(repo.join("new.txt"), "fresh\n").unwrap(); // untracked
+        let d = repo_diff(repo.to_string_lossy().to_string()).unwrap();
+        assert!(d.contains("new.txt"), "new files must be reviewable: {d}");
+        assert!(d.contains("+fresh"), "added content must show: {d}");
     }
 }

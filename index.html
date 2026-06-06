@@ -112,6 +112,7 @@
       <button class="tab-add" id="tabAdd" aria-label="New workspace"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
     </nav>
     <div class="spacer" data-tauri-drag-region></div>
+    <button class="tb-btn" id="btnAiCode" title="AI Code — review agent changes"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg> AI Code</button>
     <button class="tb-btn" id="btnNewAgent"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Agent</button>
     <div class="stats" data-tauri-drag-region>
       <span class="stat live"><span class="pip"></span><b id="runCount">0</b> live</span>
@@ -127,6 +128,14 @@
     <div class="bcast-targets" id="bcastTargets"></div>
     <span class="bcast-count" id="bcastCount">0 agents</span>
     <button class="bcast-send" id="bcastSend" disabled><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg> Broadcast <kbd>&#9166;</kbd></button>
+  </div>
+</div>
+
+<!-- ===================== AI CODE (diff review) ===================== -->
+<div id="aicode" aria-hidden="true">
+  <div class="mc">
+    <aside class="fleet"><div class="fleet-head"><span class="ft">Changes</span><span class="fcount" id="aiRepoCount"></span></div><div class="fleet-scroll" id="aiFleet"></div></aside>
+    <section class="dock" id="aiDock"><div class="dock-body" id="aiDockBody"></div></section>
   </div>
 </div>
 

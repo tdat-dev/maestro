@@ -590,7 +590,7 @@ function createAgent(ws: Workspace, spec: AgentSpec, restore = false): () => Pro
           spec.worktree = await worktreeAdd(ws.repoRoot, spec.branch);
           cwd = spec.worktree;
           const subEl = el.querySelector<HTMLElement>("[data-sub]");
-          if (subEl && spec.branch) subEl.textContent = spec.branch;
+          if (subEl) subEl.textContent = spec.branch;
           saveSession();
         } catch (e) {
           term.write(enc.encode(`\r\n\x1b[33m[worktree failed, using project dir: ${errMsg(e)}]\x1b[0m\r\n`));
@@ -745,6 +745,7 @@ async function refreshIsolateToggle() {
       isRepo = false;
     }
   }
+  if (mDir.value.trim() !== dir) return; // dir changed while awaiting — drop stale result
   mIsolateRow.hidden = !isRepo;
 }
 mDir.addEventListener("change", () => void refreshIsolateToggle());

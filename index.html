@@ -5,9 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Maestro</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23c6f135'/%3E%3Cstop offset='.5' stop-color='%2327b9a3'/%3E%3Cstop offset='1' stop-color='%230f7a3e'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='24' height='24' rx='5' fill='%2311161d'/%3E%3Cpath d='M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5' fill='none' stroke='url(%23g)' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='miter'/%3E%3C/svg%3E">
+<!-- First-paint guard: dark immediately so there's no white flash before the
+     app's CSS loads. The intro splash stays hidden until its real styles apply,
+     so it can't render as an unstyled static frame. -->
+<style>html,body{height:100%;margin:0;background:#0d1014;overflow:hidden}</style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Geist:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- App styles as a render-blocking link (not injected by JS) so the first
+     paint is fully styled — kills the dev-mode flash-of-unstyled-content. -->
+<link rel="stylesheet" href="/src/styles/index.css">
 
 </head>
 <body class="boot">
@@ -49,6 +56,7 @@
 
 <!-- ============== custom window controls (frameless) ============== -->
 <div class="win-ctrls">
+  <button class="wc" id="btnSettings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
   <button class="wc" id="wcMin" aria-label="Minimize"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><path d="M0 5h10"/></svg></button>
   <button class="wc" id="wcMax" aria-label="Maximize"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="0.5" y="0.5" width="9" height="9"/></svg></button>
   <button class="wc close" id="wcClose" aria-label="Close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M0 0l10 10M10 0L0 10"/></svg></button>
@@ -204,6 +212,29 @@
     </div>
     <div class="modal-foot">
       <button class="btn-ghost" id="tplCloseBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SETTINGS ===================== -->
+<div class="backdrop" id="settingsModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="modal-head">
+      <span class="t">Settings</span>
+      <button class="x" id="setClose" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <label class="perm-toggle" for="setHideTray">
+        <input type="checkbox" id="setHideTray">
+        <span class="pt-sw"></span>
+        <span class="pt-text">
+          <b>Hide to tray</b>
+          <span>Minimizing tucks Maestro into the system tray (agents keep running) instead of dropping to the taskbar. The close button still quits.</span>
+        </span>
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" id="setCloseBtn">Close</button>
     </div>
   </div>
 </div>

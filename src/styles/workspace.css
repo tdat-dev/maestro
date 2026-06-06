@@ -2,7 +2,7 @@
 .app{display:grid;grid-template-rows:46px 1fr auto;height:100vh;width:100vw}
 
 /* ---------- unified top bar ---------- */
-.topbar{display:flex;align-items:center;gap:10px;padding:0 150px 0 10px;background:#0e1218;border-bottom:1px solid var(--line)}
+.topbar{display:flex;align-items:center;gap:10px;padding:0 196px 0 10px;background:#0e1218;border-bottom:1px solid var(--line)}
 .spacer{flex:1;align-self:stretch}
 /* home button — back to launcher, agents keep running */
 .tb-home{width:30px;height:30px;border-radius:7px;display:grid;place-items:center;color:var(--muted);flex:none;margin-right:5px;transition:background .14s,color .14s}
@@ -56,8 +56,11 @@
 .pane.err{border-color:rgba(255,107,107,.4)}
 .pane.stopped{opacity:.66;transition:opacity .15s,border-color .15s,box-shadow .15s}
 .pane.stopped:hover{opacity:1}
-.pane-head{display:flex;align-items:center;gap:9px;padding:7px 8px 7px 9px;background:var(--surface-2);border-bottom:1px solid var(--line);flex:none}
+.pane-head{display:flex;align-items:center;gap:9px;padding:7px 8px 7px 9px;background:var(--surface-2);border-bottom:1px solid var(--line);flex:none;cursor:grab}
+.pane-head:active{cursor:grabbing}
+.pane-head .mono,.pane-head .pctrl{cursor:pointer}
 .mono{width:24px;height:24px;border-radius:6px;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:12.5px;color:#0d1014;background:var(--c,#c6f135);box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.mono svg{display:block}
 .pane-id{display:flex;flex-direction:column;gap:0;min-width:0;flex:1}
 .pane-name{font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
 .pane-sub{font-family:var(--mono);font-size:9.5px;color:var(--muted-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
@@ -73,6 +76,28 @@
 .term-host{flex:1;min-height:0;background:var(--surface-0);padding:10px 6px 8px 13px;overflow:hidden}
 .term-host .xterm{height:100%}
 .term-host .xterm-viewport{overflow-y:auto}
+
+/* ---------- maximize / focus one pane ---------- */
+.grid.has-max .pane{display:none}
+.grid.has-max .pane.maxed{display:flex;grid-column:1 / -1 !important;grid-row:1 / -1 !important;animation:none}
+.pane.maxed{border-color:var(--accent-dim)}
+.pctrl.on{background:var(--accent-glow);color:var(--accent)}
+
+/* ---------- drag-reorder ---------- */
+.pane.dragging{opacity:.45;outline:2px dashed var(--accent-dim);outline-offset:-2px}
+/* while a drag is in flight, let dragover reach the panes (not the xterm canvas) */
+.grid.reordering .term-host{pointer-events:none}
+.grid.reordering .pane{transition:transform .12s ease}
+
+/* ---------- find in output ---------- */
+.pane-find{display:flex;align-items:center;gap:5px;padding:6px 8px;background:var(--surface-2);border-bottom:1px solid var(--line);flex:none}
+.pane-find[hidden]{display:none}
+.pane-find-in{flex:1;min-width:0;background:var(--surface-0);border:1px solid var(--line-strong);border-radius:6px;padding:5px 9px;color:var(--text);font-family:var(--mono);font-size:11.5px}
+.pane-find-in:focus{outline:none;border-color:var(--accent-dim);box-shadow:0 0 0 2px var(--accent-glow)}
+.pane-find-in::placeholder{color:var(--muted-2)}
+.pane-find-count{font-family:var(--mono);font-size:10px;font-variant-numeric:tabular-nums;color:var(--muted-2);min-width:30px;text-align:right}
+.pane-find-btn{width:24px;height:24px;border-radius:5px;display:grid;place-items:center;color:var(--muted-2);font-size:16px;line-height:1;flex:none;transition:background .14s,color .14s}
+.pane-find-btn:hover{background:var(--surface-3);color:var(--text)}
 
 /* empty workspace → centered spawn prompt */
 .tile-spawn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;border:1.5px dashed var(--line-strong);border-radius:var(--r3);color:var(--muted);background:rgba(255,255,255,.008);transition:border-color .18s,color .18s,background .18s}

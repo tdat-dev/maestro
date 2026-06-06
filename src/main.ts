@@ -1,4 +1,5 @@
-import "./styles/index.css";
+// Styles are loaded via a render-blocking <link> in index.html (not imported
+// here) so the first paint is fully styled — see the note in index.html.
 import { mountTerminal, type TerminalHandle } from "./terminal";
 import {
   spawnPty,
@@ -11,11 +12,17 @@ import {
   onWindowClose,
   confirmDialog,
   destroyWindow,
+  setTrayVisible,
+  setTrayTooltip,
+  onTrayQuit,
 } from "./ipc";
+import { getHideToTray, setHideToTray } from "./settings";
 import { CLI_PRESETS, expandCrew, runLimited, launchSpec, effectiveArgs, type CrewState, type CliPreset } from "./crew";
 import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm } from "./workspaces";
 import { checkForUpdates } from "./updater";
 import { initTitlebar } from "./titlebar";
+import { initIdleAnimationPause } from "./power";
+import { CLI_LOGOS } from "./logos";
 
 /* Home launcher ⇄ Workspace grid.
  * Home is shown while there are 0 agents (the prominent "create" entry).
@@ -187,6 +194,127 @@ function layoutGrid(ws: Workspace) {
   }
 }
 
+/* ---------------- pane focus / maximize ---------------- */
+// Blow one pane up to fill the whole workspace (others hidden); toggle off to
+// restore the grid. Only one pane is maximized at a time. Triggered by the ⤢
+// button or a double-click on the pane header.
+function toggleMax(ws: Workspace, pane: Pane) {
+  const willMax = !pane.el.classList.contains("maxed");
+  for (const p of ws.panes.values()) {
+    const on = p === pane && willMax;
+    p.el.classList.toggle("maxed", on);
+    const b = p.el.querySelector<HTMLElement>("[data-max]");
+    if (b) {
+      b.innerHTML = on ? MIN_SVG : MAX_SVG;
+      b.setAttribute("aria-label", on ? "Restore pane" : "Maximize pane");
+    }
+  }
+  ws.gridEl.classList.toggle("has-max", willMax);
+  // The visible cell(s) resized → re-fit every terminal and correct PTY sizes.
+  requestAnimationFrame(() => {
+    for (const p of ws.panes.values()) {
+      const s = p.term.fit();
+      if (p.running) void resizePty(p.id, s.cols, s.rows).catch(() => {});
+    }
+    if (willMax) pane.term.focus();
+  });
+}
+
+/* ---------------- pane search (find in output) ---------------- */
+function wirePaneSearch(pane: Pane) {
+  const el = pane.el;
+  const bar = el.querySelector<HTMLElement>("[data-find]");
+  const input = el.querySelector<HTMLInputElement>("[data-find-in]");
+  const count = el.querySelector<HTMLElement>("[data-find-count]");
+  if (!bar || !input) return;
+  const open = () => {
+    bar.hidden = false;
+    input.focus();
+    input.select();
+    if (input.value) pane.term.findNext(input.value);
+  };
+  const close = () => {
+    bar.hidden = true;
+    pane.term.clearSearch();
+    if (count) count.textContent = "";
+    pane.term.focus();
+  };
+  pane.term.onSearchResults((cur, total) => {
+    if (count) count.textContent = total ? `${cur}/${total}` : input.value ? "0/0" : "";
+  });
+  el.querySelector("[data-search]")?.addEventListener("click", () => (bar.hidden ? open() : close()));
+  el.querySelector("[data-find-close]")?.addEventListener("click", close);
+  el.querySelector("[data-find-next]")?.addEventListener("click", () => pane.term.findNext(input.value));
+  el.querySelector("[data-find-prev]")?.addEventListener("click", () => pane.term.findPrev(input.value));
+  input.addEventListener("input", () => pane.term.findNext(input.value));
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (e.shiftKey) pane.term.findPrev(input.value);
+      else pane.term.findNext(input.value);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      close();
+    }
+  });
+}
+
+/* ---------------- pane drag-reorder ---------------- */
+// Header is the drag handle; dropping over another pane live-reorders the DOM,
+// and the new order is committed back into ws.panes (+ persisted) on dragend.
+let dragSrc: { ws: Workspace; id: string } | null = null;
+function wirePaneDrag(ws: Workspace, pane: Pane) {
+  const el = pane.el;
+  const head = el.querySelector<HTMLElement>("[data-drag]");
+  if (!head) return;
+  head.setAttribute("draggable", "true");
+  head.addEventListener("dragstart", (e) => {
+    if ((e.target as HTMLElement).closest(".pctrl")) {
+      e.preventDefault(); // buttons aren't drag handles
+      return;
+    }
+    dragSrc = { ws, id: pane.id };
+    el.classList.add("dragging");
+    ws.gridEl.classList.add("reordering");
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", pane.id);
+    }
+  });
+  head.addEventListener("dragend", () => {
+    el.classList.remove("dragging");
+    ws.gridEl.classList.remove("reordering");
+    dragSrc = null;
+    commitPaneOrder(ws);
+  });
+  el.addEventListener("dragover", (e) => {
+    if (!dragSrc || dragSrc.ws !== ws || dragSrc.id === pane.id) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    const src = ws.panes.get(dragSrc.id);
+    if (!src) return;
+    const r = el.getBoundingClientRect();
+    // anti-diagonal split → upper-left half drops before this pane, else after
+    const before = (e.clientY - r.top) / r.height + (e.clientX - r.left) / r.width < 1;
+    ws.gridEl.insertBefore(src.el, before ? el : el.nextSibling);
+  });
+  el.addEventListener("drop", (e) => e.preventDefault());
+}
+
+// Rebuild ws.panes to match the current DOM order, then re-tile + persist.
+function commitPaneOrder(ws: Workspace) {
+  const next = new Map<string, Pane>();
+  ws.gridEl.querySelectorAll<HTMLElement>(".pane").forEach((p) => {
+    const id = p.dataset.id;
+    const existing = id ? ws.panes.get(id) : undefined;
+    if (id && existing) next.set(id, existing);
+  });
+  for (const [k, v] of ws.panes) if (!next.has(k)) next.set(k, v); // safety net
+  ws.panes = next;
+  layoutGrid(ws);
+  saveSession();
+}
+
 /** In-app confirm modal (unlike the native dialog, it can carry a "Don't ask
  *  again" checkbox). Resolves { ok, dontAsk }. */
 function confirmModal(opts: {
@@ -277,6 +405,12 @@ const RESTART_SVG =
   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>';
 const KILL_SVG =
   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const SEARCH_SVG =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>';
+const MAX_SVG =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
+const MIN_SVG =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h3a2 2 0 0 0 2-2V4M15 4v3a2 2 0 0 0 2 2h3M20 15h-3a2 2 0 0 0-2 2v3M9 20v-3a2 2 0 0 0-2-2H4"/></svg>';
 
 function newId(): string {
   counter += 1;
@@ -312,8 +446,8 @@ function buildPaneEl(
   el.className = "pane";
   el.dataset.id = id;
   el.innerHTML = `
-    <div class="pane-head">
-      <span class="mono" style="--c:${color}">${mono}</span>
+    <div class="pane-head" data-drag>
+      <span class="mono" style="--c:${color}">${CLI_LOGOS[badge] ?? mono}</span>
       <span class="pane-id">
         <span class="pane-name" title="${name}">${name}</span>
         <span class="pane-sub" title="${sub ? badge + " · " + sub : badge}">${sub ? badge + " · " + sub : badge}</span>
@@ -321,9 +455,18 @@ function buildPaneEl(
       <span class="uptime" data-uptime></span>
       <span class="pane-stat" data-status>queued</span>
       <div class="ctrls">
+        <button class="pctrl" data-search aria-label="Search output">${SEARCH_SVG}</button>
+        <button class="pctrl" data-max aria-label="Maximize pane">${MAX_SVG}</button>
         <button class="pctrl" data-restart aria-label="Restart agent">${RESTART_SVG}</button>
         <button class="pctrl danger" data-kill aria-label="Kill agent (tree)">${KILL_SVG}</button>
       </div>
+    </div>
+    <div class="pane-find" data-find hidden>
+      <input class="pane-find-in" data-find-in type="text" placeholder="Find in output…" spellcheck="false" />
+      <span class="pane-find-count" data-find-count></span>
+      <button class="pane-find-btn" data-find-prev aria-label="Previous match">&#8249;</button>
+      <button class="pane-find-btn" data-find-next aria-label="Next match">&#8250;</button>
+      <button class="pane-find-btn" data-find-close aria-label="Close search">${KILL_SVG}</button>
     </div>
     <div class="term-host" data-host></div>`;
   return el;
@@ -355,6 +498,9 @@ function updateCount() {
   const tot = document.getElementById("agentCount");
   if (tot) tot.textContent = String(total);
   updateBcast();
+  // Keep the tray tooltip in sync so a hidden window still shows it's alive.
+  const tip = totalRun > 0 ? `Maestro · ${totalRun} running` : "Maestro";
+  void setTrayTooltip(tip).catch(() => {});
 }
 
 interface AgentSpec {
@@ -415,6 +561,13 @@ function createAgent(ws: Workspace, spec: AgentSpec, restore = false): () => Pro
     await removeAgent(ws, id);
     await createAgent(ws, spec)();
   });
+  el.querySelector("[data-max]")?.addEventListener("click", () => toggleMax(ws, pane));
+  el.querySelector<HTMLElement>("[data-drag]")?.addEventListener("dblclick", (e) => {
+    if ((e.target as HTMLElement).closest(".pctrl")) return; // ignore dbl-clicks on buttons
+    toggleMax(ws, pane);
+  });
+  wirePaneSearch(pane);
+  wirePaneDrag(ws, pane);
 
   saveSession();
 
@@ -892,6 +1045,9 @@ document.getElementById("btnQuick")?.addEventListener("click", () => {
 /* ---------------- frameless window controls ---------------- */
 initTitlebar();
 
+/* Pause decorative animations when the window is hidden/unfocused (saves GPU). */
+initIdleAnimationPause();
+
 /* ---------------- broadcast input (type once → whole tab) ---------------- */
 const bcast = document.getElementById("bcast") as HTMLElement;
 const bcastInput = document.getElementById("bcastInput") as HTMLInputElement;
@@ -1046,22 +1202,71 @@ onExit((id, code) => {
   }
 }).catch((e) => console.warn("pty-exit listener unavailable:", e));
 
-/* ---------------- close app → confirm + kill all ---------------- */
+/* ---------------- settings modal ---------------- */
+const settingsModal = document.getElementById("settingsModal") as HTMLElement | null;
+const setHideTray = document.getElementById("setHideTray") as HTMLInputElement | null;
+
+function openSettings() {
+  if (setHideTray) setHideTray.checked = getHideToTray();
+  settingsModal?.classList.add("open");
+}
+function closeSettings() {
+  settingsModal?.classList.remove("open");
+}
+
+setHideTray?.addEventListener("change", () => {
+  const on = setHideTray.checked;
+  setHideToTray(on);
+  void setTrayVisible(on).catch((e) => console.warn("set tray visibility failed:", e));
+});
+
+document.getElementById("btnSettings")?.addEventListener("click", openSettings);
+document.getElementById("btnSettingsHome")?.addEventListener("click", openSettings);
+document.getElementById("setClose")?.addEventListener("click", closeSettings);
+document.getElementById("setCloseBtn")?.addEventListener("click", closeSettings);
+settingsModal?.addEventListener("mousedown", (e) => {
+  if (e.target === settingsModal) closeSettings();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && settingsModal?.classList.contains("open")) closeSettings();
+});
+
+/* ---------------- close / quit / hide-to-tray ---------------- */
 let closing = false;
+
+/** Full quit: confirm if terminals are running, kill them all, destroy the
+ *  window. Used by the X button (when hide-to-tray is off) and the tray "Quit". */
+async function quitApp(): Promise<void> {
+  if (closing) return;
+  let total = 0;
+  for (const w of workspaces.values()) total += w.panes.size;
+  if (needsCloseConfirm(total)) {
+    const ok = await confirmDialog(`${total} running terminal(s) will be killed. Quit Maestro?`, "Quit Maestro");
+    if (!ok) return;
+  }
+  closing = true;
+  try {
+    await killAll();
+  } catch {
+    /* ignore */
+  }
+  await destroyWindow();
+}
+
+// The X button always quits (with a kill-all confirm when terminals run).
+// "Hide to tray" is bound to the minimize button instead — see titlebar.ts.
 void onWindowClose(async (event) => {
   if (closing) return;
   let total = 0;
   for (const w of workspaces.values()) total += w.panes.size;
   if (!needsCloseConfirm(total)) return; // nothing running — let it close
   event.preventDefault();
-  const ok = await confirmDialog(`${total} running terminal(s) will be killed. Quit Maestro?`, "Quit Maestro");
-  if (ok) {
-    closing = true;
-    try {
-      await killAll();
-    } catch {
-      /* ignore */
-    }
-    await destroyWindow();
-  }
+  await quitApp();
 }).catch((e) => console.warn("close handler unavailable:", e));
+
+// Tray "Quit" → same full-quit flow (Rust already re-showed the window so the
+// confirm dialog is visible).
+void onTrayQuit(() => quitApp()).catch((e) => console.warn("tray-quit listener unavailable:", e));
+
+// Mirror the tray icon's visibility to the saved setting on boot.
+void setTrayVisible(getHideToTray()).catch((e) => console.warn("set tray visibility failed:", e));

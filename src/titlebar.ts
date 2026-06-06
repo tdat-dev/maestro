@@ -4,7 +4,23 @@ import {
   requestCloseWindow,
   isWindowMaximized,
   onWindowResized,
+  hideWindow,
+  notify,
 } from "./ipc";
+import { getHideToTray, trayNoticeShown, markTrayNoticeShown } from "./settings";
+
+/** Tuck the window into the tray and, the first time only, tell the user the
+ *  app is still alive so they don't think it quit. */
+async function hideToTray(): Promise<void> {
+  await hideWindow();
+  if (!trayNoticeShown()) {
+    markTrayNoticeShown();
+    void notify(
+      "Maestro is still running",
+      "Open it from the system tray, or right-click the tray icon to quit.",
+    ).catch(() => {});
+  }
+}
 
 const MAX_ICON =
   '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="0.5" y="0.5" width="9" height="9"/></svg>';
@@ -27,7 +43,11 @@ export function initTitlebar(): void {
     }
   }
 
-  document.getElementById("wcMin")?.addEventListener("click", () => void minimizeWindow());
+  document.getElementById("wcMin")?.addEventListener("click", () => {
+    // When "Hide to tray" is on, the minimize button tucks the window into the
+    // tray instead of dropping it to the taskbar. (The X button always quits.)
+    void (getHideToTray() ? hideToTray() : minimizeWindow());
+  });
   wcMaxBtn?.addEventListener("click", async () => {
     await toggleMaximizeWindow();
     await refreshMaxIcon();

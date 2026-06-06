@@ -2,6 +2,7 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open, confirm } from "@tauri-apps/plugin-dialog";
+import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 
 /**
  * Thin wrappers around the Tauri pty_* commands. Every call is addressed to a
@@ -64,6 +65,33 @@ export async function onWindowClose(
 /** Force the window closed without re-firing onCloseRequested. */
 export async function destroyWindow(): Promise<void> {
   await getCurrentWindow().destroy();
+}
+
+/** Hide the window (used by the "Hide to tray" flow — keeps agents running). */
+export async function hideWindow(): Promise<void> {
+  await getCurrentWindow().hide();
+}
+
+/** Show or hide the system-tray icon (mirrors the "Hide to tray" setting). */
+export async function setTrayVisible(visible: boolean): Promise<void> {
+  await invoke("set_tray_visible", { visible });
+}
+
+/** Set the tray icon's hover tooltip (e.g. live agent count). */
+export async function setTrayTooltip(tooltip: string): Promise<void> {
+  await invoke("set_tray_tooltip", { tooltip });
+}
+
+/** Fire a one-shot OS notification (asks for permission once if needed). */
+export async function notify(title: string, body: string): Promise<void> {
+  let granted = await isPermissionGranted();
+  if (!granted) granted = (await requestPermission()) === "granted";
+  if (granted) sendNotification({ title, body });
+}
+
+/** Fire `cb` when the tray menu's "Quit" item is chosen. */
+export async function onTrayQuit(cb: () => void | Promise<void>): Promise<UnlistenFn> {
+  return listen("tray-quit", () => void cb());
 }
 
 /* ---- custom title-bar window controls (frameless) ---- */

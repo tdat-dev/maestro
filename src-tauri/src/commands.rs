@@ -106,3 +106,25 @@ pub fn pty_kill_all(state: State<'_, AppState>) -> Result<(), CommandError> {
     reg.clear();
     Ok(())
 }
+
+/// Show or hide the system-tray icon. Driven by the frontend "Hide to tray"
+/// setting so the icon only appears for users who opt in.
+#[tauri::command]
+pub fn set_tray_visible(app: AppHandle, visible: bool) -> Result<(), CommandError> {
+    if let Some(tray) = app.tray_by_id("main") {
+        tray.set_visible(visible)
+            .map_err(|e| CommandError::Failed(e.to_string()))?;
+    }
+    Ok(())
+}
+
+/// Update the tray icon's hover tooltip (e.g. "Maestro · 3 running") so users
+/// can see at a glance that agents are still alive while the window is hidden.
+#[tauri::command]
+pub fn set_tray_tooltip(app: AppHandle, tooltip: String) -> Result<(), CommandError> {
+    if let Some(tray) = app.tray_by_id("main") {
+        tray.set_tooltip(Some(tooltip))
+            .map_err(|e| CommandError::Failed(e.to_string()))?;
+    }
+    Ok(())
+}

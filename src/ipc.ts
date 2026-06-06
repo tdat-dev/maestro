@@ -112,3 +112,23 @@ export async function isWindowMaximized(): Promise<boolean> {
 export async function onWindowResized(cb: () => void): Promise<void> {
   await getCurrentWindow().onResized(() => cb());
 }
+
+/** Repo root if `dir` is inside a single git repo, else null. */
+export async function gitRepoRoot(dir: string): Promise<string | null> {
+  const r = await invoke<string | null>("git_repo_root", { dir });
+  return r ?? null;
+}
+
+/** Create a worktree on `branch` off HEAD of `repoRoot`; returns its path. */
+export async function worktreeAdd(repoRoot: string, branch: string): Promise<string> {
+  return invoke<string>("worktree_add", { repoRoot, branch });
+}
+
+/** Remove a worktree (optionally deleting its branch). */
+export async function worktreeRemove(
+  repoRoot: string,
+  path: string,
+  branch?: string,
+): Promise<void> {
+  await invoke("worktree_remove", { repoRoot, path, branch: branch ?? null });
+}

@@ -1,5 +1,8 @@
 use std::path::{Path, PathBuf};
 
+use crate::error::CommandError;
+use std::process::Command;
+
 /// A short, stable, filesystem-safe slug for an arbitrary string.
 fn slug(s: &str) -> String {
     let mut out = String::new();
@@ -22,7 +25,7 @@ fn short_hash(s: &str) -> String {
     for b in s.bytes() {
         h = h.wrapping_mul(33).wrapping_add(b as u64);
     }
-    let mut n = h % 36u64.pow(6);
+    let mut n = h;
     let digits = b"0123456789abcdefghijklmnopqrstuvwxyz";
     let mut buf = [b'0'; 6];
     for i in (0..6).rev() {
@@ -32,9 +35,18 @@ fn short_hash(s: &str) -> String {
     String::from_utf8(buf.to_vec()).unwrap()
 }
 
+/// Validate that a branch name is safe to pass to git and the filesystem.
+fn valid_branch(b: &str) -> bool {
+    !b.is_empty()
+        && !b.starts_with('-')
+        && !b.contains("..")
+        && b.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'/' | b'-' | b'_' | b'.'))
+}
+
 /// Compute the worktree directory for a repo + branch:
-/// `<drive>:\.maestro-worktrees\<repo-slug>-<hash>\<branch-slug>`.
+/// `<drive>:\.maestro-worktrees\<repo-slug>-<hash>\<branch-slug>-<branch-hash>`.
 /// The root sits on the repo's own drive (never C:/profile) and out of the repo tree.
+/// NOTE: UNC paths (\\server\share) are unsupported — Windows-local repos only.
 pub fn worktree_path_for(repo_root: &str, branch: &str) -> PathBuf {
     let root = Path::new(repo_root);
     let repo_name = root
@@ -44,16 +56,14 @@ pub fn worktree_path_for(repo_root: &str, branch: &str) -> PathBuf {
     // Drive prefix on Windows (e.g. "D:"); fall back to the path root otherwise.
     let drive = repo_root.get(0..2).filter(|d| d.ends_with(':')).unwrap_or("");
     let folder = format!("{}-{}", slug(&repo_name), short_hash(repo_root));
+    let leaf = format!("{}-{}", slug(branch), short_hash(branch));
     let mut p = PathBuf::new();
     p.push(format!("{}\\", drive));
     p.push(".maestro-worktrees");
     p.push(folder);
-    p.push(slug(branch));
+    p.push(leaf);
     p
 }
-
-use crate::error::CommandError;
-use std::process::Command;
 
 fn git(args: &[&str], cwd: &str) -> Result<String, CommandError> {
     let out = Command::new("git")
@@ -81,6 +91,9 @@ pub fn git_repo_root(dir: String) -> Option<String> {
 /// Create a worktree on a new branch off HEAD. Returns the worktree path.
 #[tauri::command]
 pub fn worktree_add(repo_root: String, branch: String) -> Result<String, CommandError> {
+    if !valid_branch(&branch) {
+        return Err(CommandError::Failed(format!("invalid branch name: {branch}")));
+    }
     let path = worktree_path_for(&repo_root, &branch);
     let path_str = path.to_string_lossy().to_string();
     if let Some(parent) = path.parent() {
@@ -119,7 +132,7 @@ mod tests {
             .to_string();
         assert!(p.starts_with("D:\\.maestro-worktrees\\"), "got {p}");
         assert!(p.contains("payments-svc-"), "got {p}");
-        assert!(p.ends_with("maestro-claude-a1b2"), "got {p}");
+        assert!(p.contains("maestro-claude-a1b2-"), "got {p}");
     }
 
     #[test]
@@ -127,6 +140,12 @@ mod tests {
         let a = worktree_path_for("D:\\a\\app", "maestro/x");
         let b = worktree_path_for("D:\\b\\app", "maestro/x");
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn worktree_add_rejects_bad_branch() {
+        let result = worktree_add("D:\\whatever".into(), "../evil".into());
+        assert!(result.is_err(), "expected Err for bad branch name, got Ok");
     }
 
     fn init_repo(dir: &std::path::Path) {

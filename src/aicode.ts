@@ -78,10 +78,13 @@ async function render() {
 
 /** Wire the topbar toggle. Call once at startup. */
 export function initAiCode() {
-  document.getElementById("btnAiCode")?.addEventListener("click", () => {
+  const btn = document.getElementById("btnAiCode");
+  btn?.addEventListener("click", () => {
     const p = panel()!;
     const open = p.classList.toggle("open");
-    document.getElementById("btnAiCode")?.classList.toggle("on", open);
+    p.setAttribute("aria-hidden", open ? "false" : "true");
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    btn.classList.toggle("on", open);
     if (open) void render();
   });
 }

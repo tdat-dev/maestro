@@ -1102,8 +1102,30 @@ initTitlebar();
 setActiveDirProvider(() => activeWs?.dir ?? null);
 initAiCode();
 
-/* Pause decorative animations when the window is hidden/unfocused (saves GPU). */
-initIdleAnimationPause();
+/* Pause decorative animations when the window is hidden/unfocused (saves GPU).
+ * On resume, repaint everything: after a long idle / display sleep / tray stint,
+ * WebView2 can drop its GPU surface to black and never repaint on its own. */
+function repaintAfterResume() {
+  // 1) Re-fit + resize every terminal. A pane whose WebGL context was lost has
+  //    fallen back to the DOM renderer; the fit/resize forces it to redraw so it
+  //    isn't left as a black canvas.
+  for (const w of workspaces.values())
+    for (const p of w.panes.values()) {
+      const s = p.term.fit();
+      if (p.running) void resizePty(p.id, s.cols, s.rows).catch(() => {});
+    }
+  // 2) Best-effort nudge for the whole webview: briefly create then drop a
+  //    compositing layer so Chromium/WebView2 re-composites the surface in case
+  //    the GPU process dropped the page to black. translateZ(0) doesn't move
+  //    anything visually, so there's no flicker.
+  const body = document.body;
+  body.style.transform = "translateZ(0)";
+  void body.offsetHeight; // force reflow so the layer is actually created
+  requestAnimationFrame(() => {
+    body.style.transform = "";
+  });
+}
+initIdleAnimationPause(repaintAfterResume);
 
 /* ---------------- broadcast input (type once → whole tab) ---------------- */
 const bcast = document.getElementById("bcast") as HTMLElement;

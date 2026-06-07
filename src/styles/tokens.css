@@ -7,13 +7,14 @@
   --info:#5ec2f0; --run:#3ad29f; --idle:#6b7785; --err:#ff6b6b;
   --r1:5px; --r2:7px; --r3:9px; --r4:12px;
   /* type system: sans for UI chrome, mono for technical values, display for the wordmark */
-  --sans:'Geist', system-ui, -apple-system, sans-serif;
-  --mono:'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
-  --display:'Bricolage Grotesque', sans-serif;
+  --sans:'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono:'Geist Mono', ui-monospace, 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+  --display:'Geist', system-ui, -apple-system, sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
-body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;font-feature-settings:"cv01","ss01";-webkit-font-smoothing:antialiased;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13.5px;font-feature-settings:"cv01","ss01";text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;overflow:hidden}
+code,pre,kbd,[class*="mono"]{letter-spacing:0}
 button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer}
 svg{display:block;flex:none}
 [hidden]{display:none !important}

@@ -32,4 +32,21 @@ describe("parseDiff", () => {
   it("returns [] for an empty diff", () => {
     expect(parseDiff("")).toEqual([]);
   });
+
+  it("names binary files from the header and flags them (no hunks, 0/0)", () => {
+    const raw = [
+      "diff --git a/logo.png b/logo.png",
+      "new file mode 100644",
+      "index 0000000..abc1234",
+      "Binary files /dev/null and b/logo.png differ",
+      "",
+    ].join("\n");
+    const files = parseDiff(raw);
+    expect(files).toHaveLength(1);
+    expect(files[0].path).toBe("logo.png");
+    expect(files[0].binary).toBe(true);
+    expect(files[0].hunks).toHaveLength(0);
+    expect(files[0].additions).toBe(0);
+    expect(files[0].deletions).toBe(0);
+  });
 });

@@ -33,9 +33,18 @@
   background:linear-gradient(90deg,color-mix(in srgb,var(--repo,#c6f135) 11%,var(--surface-2)),var(--surface-2) 62%);
   border:1px solid var(--line);border-left:3px solid var(--repo,#c6f135)}
 #aicode .repo-grp-h svg{color:var(--repo,var(--accent));flex:none}
-#aicode .repo-grp-h .rg-name{font-size:11.5px;font-weight:700;font-family:var(--mono);color:var(--text);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#aicode .repo-grp-h .rg-name{font-size:12.5px;font-weight:700;font-family:var(--mono);color:var(--text);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #aicode .repo-grp-h .rg-count{flex:none;font-family:var(--mono);font-size:9px;color:var(--repo,var(--accent));background:color-mix(in srgb,var(--repo,#c6f135) 16%,transparent);border-radius:4px;padding:1px 6px;font-variant-numeric:tabular-nums}
 #aicode .repo-grp-h .rg-meta{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--muted-2);font-variant-numeric:tabular-nums;flex:none}
+/* the repo header is the selector — click to show just that repo's diff */
+#aicode .repo-grp-h{cursor:pointer;transition:border-color .14s,box-shadow .14s}
+#aicode .repo-grp-h:hover{border-color:var(--line-strong)}
+#aicode .repo-grp-h.sel{border-color:var(--repo,var(--accent));box-shadow:0 0 0 1px var(--repo,var(--accent))}
+/* each file row is collapsible — click its header to fold/unfold the diff */
+#aicode .filehdr.ffile{cursor:pointer}
+#aicode .filehdr.ffile:hover{background:#11171f}
+#aicode .fchevron{flex:none;width:11px;text-align:center;color:var(--muted-2);font-size:9px}
+#aicode .filecard.collapsed .fbody{display:none}
 /* lanes sit under their repo header on a faint rail so the grouping reads at a glance */
 #aicode .repo-lanes{position:relative;margin:4px 0 0 4px;padding-left:8px;border-left:1px solid var(--line)}
 
@@ -86,9 +95,9 @@
 #aicode .ftab.newfile .fdot{background:var(--add)}
 
 /* the diff body */
-#aicode .dock-body{flex:1;min-height:0;overflow-y:auto;background:var(--surface-0)}
+#aicode .dock-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;background:var(--surface-0)}
 #aicode .filehdr{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:8px;padding:8px 11px;background:#0f141a;border-bottom:1px solid var(--line)}
-#aicode .filehdr .fp{font-family:var(--mono);font-size:11px;color:var(--text-2);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#aicode .filehdr .fp{font-family:var(--mono);font-size:12.5px;color:var(--text-2);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #aicode .filehdr .fp .seg{color:var(--muted-2)}
 #aicode .filehdr .fbadge{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-2);background:var(--surface-3);border-radius:4px;padding:2px 6px}
 
@@ -96,12 +105,13 @@
 #aicode .hunk{border-bottom:1px solid var(--line)}
 #aicode .hunk.rejected{opacity:.42}
 #aicode .hunk.accepted .hunk-bar{background:rgba(58,210,159,.07)}
-#aicode .hunk-bar{display:flex;align-items:center;gap:9px;padding:6px 10px 6px 12px;background:var(--surface-1);border-bottom:1px solid var(--line);position:sticky;top:37px;z-index:2}
-#aicode .hunk-range{font-family:var(--mono);font-size:10px;color:var(--info);font-variant-numeric:tabular-nums;flex:none}
+/* not sticky: many sticky hunk-bars tank scroll perf in WebView2. */
+#aicode .hunk-bar{display:flex;align-items:center;gap:9px;padding:6px 10px 6px 12px;background:var(--surface-1);border-bottom:1px solid var(--line)}
+#aicode .hunk-range{font-family:var(--mono);font-size:11px;color:var(--info);font-variant-numeric:tabular-nums;flex:none}
 #aicode .hunk-ctx{font-family:var(--mono);font-size:10px;color:var(--muted-2);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* diff lines (mono) */
-#aicode .diff{font-family:var(--mono);font-size:11px;line-height:1.6}
+#aicode .diff{font-family:var(--mono);font-size:13.5px;line-height:1.5}
 #aicode .dl{display:flex;white-space:pre}
 #aicode .dl .gut{flex:none;width:74px;display:flex;color:var(--muted-2);font-size:10px;user-select:none;background:var(--surface-0);border-right:1px solid var(--line)}
 #aicode .dl .gut span{width:37px;text-align:right;padding-right:8px;font-variant-numeric:tabular-nums}

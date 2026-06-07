@@ -15,6 +15,7 @@ export interface DiffFile {
   additions: number;
   deletions: number;
   hunks: DiffHunk[];
+  binary?: boolean; // git reported "Binary files differ" (no text hunks)
 }
 
 export function parseDiff(raw: string): DiffFile[] {
@@ -25,10 +26,16 @@ export function parseDiff(raw: string): DiffFile[] {
   for (const line of raw.split("\n")) {
     if (line.startsWith("diff --git")) {
       file = { path: "", additions: 0, deletions: 0, hunks: [] };
+      // Path from the header itself, so binary/mode-only files still get a name
+      // even when there's no `+++ b/` line. The `+++`/`---` branches refine it.
+      const m = line.match(/^diff --git a\/(.+) b\/(.+)$/);
+      if (m) file.path = m[2];
       hunk = null;
       files.push(file);
     } else if (!file) {
       continue;
+    } else if (line.startsWith("Binary files") || line.startsWith("GIT binary patch")) {
+      file.binary = true;
     } else if (line.startsWith("+++ ")) {
       const p = line.slice(4).replace(/^b\//, "");
       if (p !== "/dev/null") file.path = p;

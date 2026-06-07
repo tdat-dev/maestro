@@ -1,0 +1,107 @@
+{
+  "idle": {
+    "frames": 4,
+    "frameW": 79,
+    "frameH": 144,
+    "fps": 6,
+    "loop": true
+  },
+  "pet_idle": {
+    "frames": 4,
+    "frameW": 68,
+    "frameH": 101,
+    "fps": 6,
+    "loop": true
+  },
+  "walk": {
+    "frames": 4,
+    "frameW": 81,
+    "frameH": 146,
+    "fps": 8,
+    "loop": true
+  },
+  "pet_walk": {
+    "frames": 4,
+    "frameW": 113,
+    "frameH": 95,
+    "fps": 8,
+    "loop": true
+  },
+  "run": {
+    "frames": 4,
+    "frameW": 95,
+    "frameH": 142,
+    "fps": 12,
+    "loop": true
+  },
+  "pet_run": {
+    "frames": 4,
+    "frameW": 113,
+    "frameH": 93,
+    "fps": 12,
+    "loop": true
+  },
+  "jump": {
+    "frames": 4,
+    "frameW": 85,
+    "frameH": 158,
+    "fps": 10,
+    "loop": false
+  },
+  "pet_jump": {
+    "frames": 4,
+    "frameW": 80,
+    "frameH": 122,
+    "fps": 10,
+    "loop": false
+  },
+  "wave": {
+    "frames": 4,
+    "frameW": 84,
+    "frameH": 149,
+    "fps": 7,
+    "loop": false
+  },
+  "pet_cheer": {
+    "frames": 4,
+    "frameW": 70,
+    "frameH": 103,
+    "fps": 8,
+    "loop": true
+  },
+  "attack": {
+    "frames": 4,
+    "frameW": 166,
+    "frameH": 153,
+    "fps": 10,
+    "loop": false
+  },
+  "pet_attack": {
+    "frames": 3,
+    "frameW": 67,
+    "frameH": 118,
+    "fps": 10,
+    "loop": false
+  },
+  "sit_pet": {
+    "frames": 4,
+    "frameW": 173,
+    "frameH": 146,
+    "fps": 4,
+    "loop": true
+  },
+  "celebrate": {
+    "frames": 5,
+    "frameW": 82,
+    "frameH": 129,
+    "fps": 9,
+    "loop": false
+  },
+  "pet_cheer_b": {
+    "frames": 3,
+    "frameW": 75,
+    "frameH": 123,
+    "fps": 8,
+    "loop": true
+  }
+}

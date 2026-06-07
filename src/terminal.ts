@@ -71,15 +71,60 @@ export function mountTerminal(
       try {
         const { WebglAddon } = await import("@xterm/addon-webgl");
         const webgl = new WebglAddon();
-        webgl.onContextLoss(() => webgl.dispose());
+        webgl.onContextLoss(() => {
+          // GPU/WebGL context was dropped — idle, display sleep, driver TDR, or
+          // the WebView2 GPU process crashed. Disposing the addon makes xterm
+          // fall back to the DOM renderer so this pane keeps rendering instead
+          // of going black. Hand the GPU budget slot back too: otherwise the
+          // counter leaks and the fleet drifts toward holding more live contexts
+          // than the GPU allows, which makes further losses more likely.
+          console.warn("[maestro] webgl context lost → DOM renderer fallback");
+          webgl.dispose();
+          if (usedWebgl) {
+            usedWebgl = false;
+            liveWebgl--;
+          }
+        });
         term.loadAddon(webgl);
       } catch {
-        /* DOM renderer (default) is fine */
+        // Couldn't create the GPU renderer — the DOM renderer (default) is fine,
+        // but release the budget slot we optimistically reserved above.
+        if (usedWebgl) {
+          usedWebgl = false;
+          liveWebgl--;
+        }
       }
     })();
   }
 
   term.onData((data) => onInput(data));
+
+  // Windows-terminal-style clipboard: Ctrl+V (and Ctrl+Shift+V) pastes from the
+  // OS clipboard into the PTY; Ctrl+C copies the selection if there is one,
+  // otherwise it falls through as the usual interrupt. xterm doesn't wire these
+  // by default, so we intercept them here and read/write via the Web Clipboard
+  // API (works in the WebView2 secure context).
+  term.attachCustomKeyEventHandler((e) => {
+    if (e.type !== "keydown" || !e.ctrlKey || e.altKey) return true;
+    const key = e.key.toLowerCase();
+    if (key === "v") {
+      navigator.clipboard
+        .readText()
+        .then((text) => {
+          if (text) onInput(text);
+        })
+        .catch(() => {});
+      return false; // don't let xterm send the raw ^V (0x16)
+    }
+    if (key === "c" && !e.shiftKey && term.hasSelection()) {
+      const sel = term.getSelection();
+      if (sel) {
+        void navigator.clipboard.writeText(sel).catch(() => {});
+        return false; // copied — swallow so it isn't sent as SIGINT
+      }
+    }
+    return true;
+  });
 
   const ro = new ResizeObserver(() => {
     fit.fit();

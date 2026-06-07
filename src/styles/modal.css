@@ -1,5 +1,9 @@
 /* Spawn-setup modal: crew picker, custom command, full-access toggle. */
-.backdrop{position:fixed;inset:0;background:rgba(6,9,13,.66);display:none;align-items:center;justify-content:center;z-index:100}
+/* translateZ(0) promotes the translucent backdrop to its own GPU layer so the
+   compositor blends it over the live workspace (blinking cursors, etc.) without
+   re-rastering everything each frame — avoids the WebView2 lag while a modal is
+   open. Paired with a repaint nudge on open (see openModal in main.ts). */
+.backdrop{position:fixed;inset:0;background:rgba(6,9,13,.66);display:none;align-items:center;justify-content:center;z-index:100;transform:translateZ(0)}
 .backdrop.open{display:flex}
 .modal{width:460px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);display:flex;flex-direction:column;background:var(--surface-1);border:1px solid var(--line-strong);border-radius:12px;box-shadow:0 24px 70px rgba(0,0,0,.6);overflow:hidden}
 .modal-head{display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid var(--line)}

@@ -348,6 +348,7 @@ function confirmModal(opts: {
     inputEl.value = opts.input.value ?? "";
   }
   m.classList.add("open");
+  requestAnimationFrame(repaintAfterResume); // see openModal: clears backdrop-induced compositor lag
   if (opts.input) {
     inputEl.focus();
     inputEl.select();
@@ -833,6 +834,11 @@ function openModal(mode: "new" | "current" = "new") {
   modal.classList.add("open");
   mDir.focus();
   mDir.select();
+  // The translucent backdrop over the live workspace can drop WebView2's
+  // compositor into a sustained-lag state. Force a repaint (the same fix the
+  // window-resume handler applies) so the app doesn't lag while the modal is
+  // open — otherwise the user has to alt-tab away and back to clear it.
+  requestAnimationFrame(repaintAfterResume);
 }
 function closeModal() {
   modal.classList.remove("open");
@@ -1033,6 +1039,7 @@ function renderTemplates() {
 function openTplModal() {
   renderTemplates();
   tplModal.classList.add("open");
+  requestAnimationFrame(repaintAfterResume); // see openModal: clears backdrop-induced compositor lag
 }
 function closeTplModal() {
   tplModal.classList.remove("open");
@@ -1310,6 +1317,7 @@ setCheckUpdate?.addEventListener("click", async () => {
 function openSettings() {
   if (setHideTray) setHideTray.checked = getHideToTray();
   settingsModal?.classList.add("open");
+  requestAnimationFrame(repaintAfterResume); // see openModal: clears backdrop-induced compositor lag
 }
 function closeSettings() {
   settingsModal?.classList.remove("open");

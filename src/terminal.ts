@@ -19,10 +19,16 @@ export interface TerminalHandle {
   onSearchResults(cb: (current: number, total: number) => void): void;
 }
 
-// Browsers cap live WebGL contexts (~16) and thrash past that, which is what
-// makes a big fleet of panes lag. Only the first N panes get the GPU renderer;
-// the rest fall back to the default DOM renderer.
-const WEBGL_BUDGET = 8;
+// WebGL renderer is DISABLED (budget 0 → every pane uses the DOM renderer).
+//
+// On WebView2 (Windows) xterm's WebGL canvases interact badly with the
+// compositor: any unrelated repaint — e.g. the glow when toggling a crew card
+// in the spawn modal — stalls the GPU for 15-20s and freezes the whole app,
+// and the contexts also get lost on idle (the "goes black after a while" bug).
+// The DOM renderer is plenty fast for terminal output and has none of these
+// problems. Kept as a budget (not deleted) so it's easy to re-enable per-pane
+// if a future WebView2 fixes the compositor interaction.
+const WEBGL_BUDGET = 0;
 let liveWebgl = 0;
 
 const SEARCH_OPTS = {

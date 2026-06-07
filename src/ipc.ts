@@ -1,7 +1,7 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open, confirm } from "@tauri-apps/plugin-dialog";
+import { open, confirm, message } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 
 /**
@@ -52,6 +52,15 @@ export async function pickFolder(defaultPath?: string): Promise<string | null> {
 /** Native confirm dialog. Returns true if the user accepts. */
 export async function confirmDialog(message: string, title: string): Promise<boolean> {
   return confirm(message, { title, kind: "warning" });
+}
+
+/** Native single-button message dialog (info/up-to-date/error feedback). */
+export async function messageDialog(
+  text: string,
+  title: string,
+  kind: "info" | "warning" | "error" = "info",
+): Promise<void> {
+  await message(text, { title, kind });
 }
 
 /** Register a handler for the window's close (X) button. Call event.preventDefault()

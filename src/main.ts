@@ -23,6 +23,7 @@ import { getHideToTray, setHideToTray } from "./settings";
 import { CLI_PRESETS, expandCrew, runLimited, launchSpec, effectiveArgs, type CrewState, type CliPreset } from "./crew";
 import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm } from "./workspaces";
 import { checkForUpdates } from "./updater";
+import { getVersion } from "@tauri-apps/api/app";
 import { initTitlebar } from "./titlebar";
 import { initIdleAnimationPause } from "./power";
 import { CLI_LOGOS } from "./logos";
@@ -1284,6 +1285,27 @@ onExit((id, code) => {
 /* ---------------- settings modal ---------------- */
 const settingsModal = document.getElementById("settingsModal") as HTMLElement | null;
 const setHideTray = document.getElementById("setHideTray") as HTMLInputElement | null;
+const setVersion = document.getElementById("setVersion");
+const setCheckUpdate = document.getElementById("setCheckUpdate") as HTMLButtonElement | null;
+
+// Show the running version in the Settings "Updates" row.
+void getVersion()
+  .then((v) => { if (setVersion) setVersion.textContent = `Maestro v${v}`; })
+  .catch(() => {});
+
+// Manual update check. Unlike the silent startup check, this one always reports
+// back (up to date / error), and guards against double-clicks while it runs.
+setCheckUpdate?.addEventListener("click", async () => {
+  setCheckUpdate.disabled = true;
+  const label = setCheckUpdate.textContent;
+  setCheckUpdate.textContent = "Checking…";
+  try {
+    await checkForUpdates(false);
+  } finally {
+    setCheckUpdate.disabled = false;
+    setCheckUpdate.textContent = label;
+  }
+});
 
 function openSettings() {
   if (setHideTray) setHideTray.checked = getHideToTray();

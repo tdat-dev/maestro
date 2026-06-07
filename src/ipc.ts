@@ -17,9 +17,11 @@ export async function spawnPty(
   rows: number,
   onBytes: (bytes: Uint8Array) => void,
 ): Promise<void> {
-  // Rust `Vec<u8>` arrives over the Channel as a JS number[]; wrap for xterm.
-  const ch = new Channel<number[]>();
-  ch.onmessage = (msg) => onBytes(new Uint8Array(msg));
+  // PTY output streams as raw binary (ArrayBuffer), NOT a JSON number[]. The
+  // number[] path serialized every byte as a JSON number on both sides and
+  // choked the whole app under a chatty fleet; a raw buffer is ~100x cheaper.
+  const ch = new Channel<ArrayBuffer>();
+  ch.onmessage = (buf) => onBytes(new Uint8Array(buf));
   await invoke("pty_spawn", { agentId, program, args, cwd, cols, rows, onBytes: ch });
 }
 

@@ -1,5 +1,5 @@
 use serde::Serialize;
-use tauri::ipc::Channel;
+use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::core::command_spec::CommandSpec;
@@ -23,7 +23,11 @@ pub fn pty_spawn(
     cwd: Option<String>,
     cols: u16,
     rows: u16,
-    on_bytes: Channel<Vec<u8>>,
+    // Raw-bytes channel: PTY output is streamed as binary (ArrayBuffer on the JS
+    // side). Sending `Vec<u8>` directly would serialize every byte as a JSON
+    // number — pathologically slow under a chatty agent's output and the cause
+    // of the whole-app lag when a fleet is producing a lot of terminal output.
+    on_bytes: Channel<InvokeResponseBody>,
 ) -> Result<(), CommandError> {
     let mut spec = CommandSpec::new(program);
     for a in args {
@@ -50,7 +54,7 @@ pub fn pty_spawn(
         &spec,
         size,
         move |bytes| {
-            let _ = channel.send(bytes.to_vec());
+            let _ = channel.send(InvokeResponseBody::Raw(bytes.to_vec()));
         },
         move |code| {
             let _ = app2.emit("pty-exit", ExitPayload { id: exit_id, code });

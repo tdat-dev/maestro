@@ -1,6 +1,7 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open, confirm, message } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 
@@ -43,6 +44,17 @@ export async function killAll(): Promise<void> {
 
 export async function onExit(cb: (agentId: string, code: number) => void): Promise<UnlistenFn> {
   return listen<{ id: string; code: number }>("pty-exit", (e) => cb(e.payload.id, e.payload.code));
+}
+
+/** A file drag-drop event from the OS. `leave` carries no paths/position. */
+export type DropPayload =
+  | { type: "enter" | "over" | "drop"; paths: string[]; position: { x: number; y: number } }
+  | { type: "leave" };
+
+/** Subscribe to OS file drag-drop over the window (enter/over/drop/leave).
+ *  Positions are physical pixels — divide by devicePixelRatio for CSS coords. */
+export async function onDragDrop(cb: (p: DropPayload) => void): Promise<UnlistenFn> {
+  return getCurrentWebview().onDragDropEvent((e) => cb(e.payload as DropPayload));
 }
 
 /** Native folder picker. Returns the chosen directory, or null if cancelled. */

@@ -17,6 +17,7 @@ import {
   onTrayQuit,
   gitRepoRoot,
   worktreeAdd,
+  onDragDrop,
 } from "./ipc";
 import { branchName } from "./worktree";
 import { getHideToTray, setHideToTray } from "./settings";
@@ -1267,6 +1268,37 @@ showView();
 // Silently check GitHub Releases for a newer signed build; prompts only if one
 // exists. No-op in dev / when offline.
 void checkForUpdates(true);
+
+/* ---------------- file drag-drop → terminal ---------------- */
+// Drop a file (e.g. a PDF) onto a pane and its path is typed into that agent's
+// terminal — so you can then ask the AI to read it. The pane under the cursor
+// is highlighted while dragging.
+let dropTarget: Pane | null = null;
+function paneAtPoint(x: number, y: number): Pane | null {
+  const dpr = window.devicePixelRatio || 1;
+  const el = document.elementFromPoint(x / dpr, y / dpr)?.closest<HTMLElement>(".pane");
+  const id = el?.dataset.id;
+  return id && activeWs ? activeWs.panes.get(id) ?? null : null;
+}
+function setDropTarget(p: Pane | null) {
+  if (p === dropTarget) return;
+  dropTarget?.el.classList.remove("drop-target");
+  dropTarget = p;
+  dropTarget?.el.classList.add("drop-target");
+}
+void onDragDrop((e) => {
+  if (e.type === "leave") return setDropTarget(null);
+  if (e.type === "enter" || e.type === "over") {
+    return setDropTarget(paneAtPoint(e.position.x, e.position.y));
+  }
+  // drop: type the (whitespace-quoted) path(s) into the targeted pane's PTY.
+  const target = paneAtPoint(e.position.x, e.position.y) ?? dropTarget;
+  setDropTarget(null);
+  if (!target || e.paths.length === 0) return;
+  const text = e.paths.map((p) => (/\s/.test(p) ? `"${p}"` : p)).join(" ") + " ";
+  void sendInput(target.id, text).catch(() => {});
+  target.term.focus();
+});
 
 /* pty-exit listener LAST + guarded so it can never block the wiring above. */
 onExit((id, code) => {

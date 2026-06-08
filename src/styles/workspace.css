@@ -52,6 +52,9 @@
 .pane{position:relative;display:flex;flex-direction:column;background:var(--surface-1);border:1px solid var(--line);border-radius:var(--r3);overflow:hidden;transition:border-color .15s,box-shadow .15s;animation:paneIn .3s cubic-bezier(.2,.7,.2,1) both}
 .pane:hover{border-color:var(--line-strong)}
 .pane.run{border-color:rgba(58,210,159,.26)}
+/* highlighted while a file is dragged over it (drop → path typed into the PTY) */
+.pane.drop-target{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim),inset 0 0 44px -12px rgba(198,241,53,.3)}
+.pane.drop-target::after{content:"Drop file to attach path";position:absolute;inset:0;display:grid;place-items:center;background:rgba(13,16,20,.5);color:var(--accent);font-size:13px;font-weight:600;letter-spacing:.02em;pointer-events:none;z-index:5}
 .pane.run::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:linear-gradient(90deg,transparent,var(--run),transparent);opacity:.55}
 .pane.err{border-color:rgba(255,107,107,.4)}
 .pane.stopped{opacity:.66;transition:opacity .15s,border-color .15s,box-shadow .15s}

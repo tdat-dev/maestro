@@ -2,6 +2,14 @@ use std::path::{Path, PathBuf};
 
 use crate::error::CommandError;
 use std::process::Command;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+/// CREATE_NO_WINDOW — the release build is a windowed subsystem app with no
+/// console, so a child `git` spawned without this flag pops up a flashing
+/// console window (which steals focus and looks like a UI freeze).
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// A short, stable, filesystem-safe slug for an arbitrary string.
 fn slug(s: &str) -> String {
@@ -66,9 +74,11 @@ pub fn worktree_path_for(repo_root: &str, branch: &str) -> PathBuf {
 }
 
 fn git(args: &[&str], cwd: &str) -> Result<String, CommandError> {
-    let out = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
+    let mut cmd = Command::new("git");
+    cmd.args(args).current_dir(cwd);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    let out = cmd
         .output()
         .map_err(|e| CommandError::Failed(format!("git not available: {e}")))?;
     if !out.status.success() {

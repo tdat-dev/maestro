@@ -2,11 +2,20 @@ use crate::error::CommandError;
 use serde::Serialize;
 use std::path::Path;
 use std::process::Command;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+/// CREATE_NO_WINDOW — without it, git children spawned from the windowed (release)
+/// build pop up a flashing console window that steals focus and looks like lag.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 fn git(args: &[&str], cwd: &str) -> Result<String, CommandError> {
-    let out = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
+    let mut cmd = Command::new("git");
+    cmd.args(args).current_dir(cwd);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    let out = cmd
         .output()
         .map_err(|e| CommandError::Failed(format!("git not available: {e}")))?;
     if !out.status.success() {

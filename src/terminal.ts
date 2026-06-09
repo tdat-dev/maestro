@@ -105,31 +105,16 @@ export function mountTerminal(
 
   term.onData((data) => onInput(data));
 
-  // Windows-terminal-style clipboard: Ctrl+V (and Ctrl+Shift+V) pastes from the
-  // OS clipboard into the PTY; Ctrl+C copies the selection if there is one,
-  // otherwise it falls through as the usual interrupt. xterm doesn't wire these
-  // by default, so we intercept them here and read/write via the Web Clipboard
-  // API (works in the WebView2 secure context).
-  term.attachCustomKeyEventHandler((e) => {
-    if (e.type !== "keydown" || !e.ctrlKey || e.altKey) return true;
-    const key = e.key.toLowerCase();
-    if (key === "v") {
-      navigator.clipboard
-        .readText()
-        .then((text) => {
-          if (text) onInput(text);
-        })
-        .catch(() => {});
-      return false; // don't let xterm send the raw ^V (0x16)
-    }
-    if (key === "c" && !e.shiftKey && term.hasSelection()) {
-      const sel = term.getSelection();
-      if (sel) {
-        void navigator.clipboard.writeText(sel).catch(() => {});
-        return false; // copied — swallow so it isn't sent as SIGINT
-      }
-    }
-    return true;
+  // Clipboard. Paste is handled natively by xterm (it listens for the WebView2
+  // `paste` event on its textarea), so Ctrl+V needs no wiring here — doing it
+  // ourselves would inject the text a second time (the double-paste bug).
+  //
+  // Copy is copy-on-select: highlighting text writes it straight to the OS
+  // clipboard, so there's no Ctrl+C step. That also leaves Ctrl+C free to send
+  // the interrupt (SIGINT) even when a selection is present, like a real shell.
+  term.onSelectionChange(() => {
+    const sel = term.getSelection();
+    if (sel) void navigator.clipboard.writeText(sel).catch(() => {});
   });
 
   const ro = new ResizeObserver(() => {

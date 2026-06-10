@@ -105,10 +105,20 @@ export function mountTerminal(
 
   term.onData((data) => onInput(data));
 
-  // Clipboard. Paste is handled natively by xterm (it listens for the WebView2
-  // `paste` event on its textarea), so Ctrl+V needs no wiring here — doing it
-  // ourselves would inject the text a second time (the double-paste bug).
-  //
+  // Clipboard. xterm core swallows Ctrl+V on Windows: it maps it to the raw
+  // ^V byte (0x16), sends that to the PTY and preventDefault()s the keydown,
+  // so the browser's native `paste` event never fires. Returning false here
+  // makes xterm skip the key entirely WITHOUT cancelling it — the WebView2
+  // default action then fires `paste` on xterm's textarea, which xterm's own
+  // paste listener turns into exactly one paste. (Do NOT also read the
+  // clipboard manually — that's the old double-paste bug.)
+  term.attachCustomKeyEventHandler((e) => {
+    if (e.type === "keydown" && e.ctrlKey && !e.altKey && e.key.toLowerCase() === "v") {
+      return false;
+    }
+    return true;
+  });
+
   // Copy is copy-on-select: highlighting text writes it straight to the OS
   // clipboard, so there's no Ctrl+C step. That also leaves Ctrl+C free to send
   // the interrupt (SIGINT) even when a selection is present, like a real shell.

@@ -65,3 +65,24 @@
 .recent-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .home-foot{margin-top:30px;text-align:center;font-size:10.5px;color:var(--muted-2)}
 .home-foot b{color:var(--muted)}
+
+/* Mascot companion — anchored to the home floor; the controller (main.ts) slides
+   this wrapper left/right while the sprite plays its walk cycle. The inner
+   .mascot element manages its own scale + horizontal flip, so we only ever
+   translate the wrapper here (no transform clash). */
+/* Fixed-size box, bottom-center anchored: the idle/walk cells differ in width
+   (121 vs 165px) so a shrink-wrapped box would shift the figure sideways on every
+   swap. A constant box + grid centering keeps the feet pinned. main.ts animates
+   only this wrapper's translateX (via the Web Animations API). */
+.home-mascot{position:absolute;left:0;top:0;width:180px;height:262px;
+  display:grid;place-items:end center;z-index:6;pointer-events:none;will-change:transform}
+/* Only the character itself is interactive (grab to drag-place); the rest of the
+   box stays click-through so it never blocks the Home buttons behind it. */
+.home-mascot .mascot{position:relative;z-index:1;pointer-events:auto;cursor:grab;
+  touch-action:none;user-select:none;-webkit-user-drag:none}
+.home-mascot.dragging .mascot{cursor:grabbing}
+/* Contact shadow — a separate element so it never gets re-rasterised per sprite
+   frame (a filter on the animated .mascot caused paint jank). */
+.home-mascot .hm-shadow{position:absolute;left:50%;bottom:-4px;width:86px;height:16px;
+  transform:translateX(-50%);border-radius:50%;z-index:0;
+  background:radial-gradient(ellipse at center, rgba(0,0,0,.42), transparent 70%)}

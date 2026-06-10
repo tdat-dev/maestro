@@ -28,8 +28,10 @@ const RESTORE_ICON =
   '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="0.5" y="2.5" width="7" height="7"/><path d="M2.5 2.5V0.5h7v7H7"/></svg>';
 
 /** Wire the frameless title-bar controls (minimize / maximize-restore / close).
- *  Self-contained: depends only on the window ipc wrappers. */
-export function initTitlebar(): void {
+ *  Self-contained: depends only on the window ipc wrappers.
+ *  `allowHideToTray=false` (detached windows): minimize ALWAYS minimizes — the
+ *  tray can only re-show the MAIN window, so hiding a detached one loses it. */
+export function initTitlebar(allowHideToTray = true): void {
   const wcMaxBtn = document.getElementById("wcMax");
 
   async function refreshMaxIcon() {
@@ -46,7 +48,7 @@ export function initTitlebar(): void {
   document.getElementById("wcMin")?.addEventListener("click", () => {
     // When "Hide to tray" is on, the minimize button tucks the window into the
     // tray instead of dropping it to the taskbar. (The X button always quits.)
-    void (getHideToTray() ? hideToTray() : minimizeWindow());
+    void (allowHideToTray && getHideToTray() ? hideToTray() : minimizeWindow());
   });
   wcMaxBtn?.addEventListener("click", async () => {
     await toggleMaximizeWindow();

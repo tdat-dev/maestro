@@ -63,6 +63,28 @@ pub fn pty_spawn(
     .map_err(CommandError::from)
 }
 
+/// Re-attach a running agent's output stream to a NEW channel (used when a tab
+/// is detached into another window: the PTY survives, only the consumer moves).
+/// The agent's buffered scrollback is replayed through the channel first.
+#[tauri::command]
+pub fn pty_attach(
+    state: State<'_, AppState>,
+    agent_id: String,
+    on_bytes: Channel<InvokeResponseBody>,
+) -> Result<(), CommandError> {
+    let reg = state
+        .registry
+        .lock()
+        .map_err(|_| CommandError::Failed("state poisoned".into()))?;
+    reg.attach(
+        &agent_id,
+        Box::new(move |bytes| {
+            let _ = on_bytes.send(InvokeResponseBody::Raw(bytes.to_vec()));
+        }),
+    )
+    .map_err(CommandError::from)
+}
+
 #[tauri::command]
 pub fn pty_input(
     state: State<'_, AppState>,

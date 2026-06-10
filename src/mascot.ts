@@ -28,6 +28,10 @@ interface AnimMeta {
   frameH: number;
   fps: number;
   loop: boolean;
+  /** true for high-res illustration strips (smooth scaling instead of pixelated) */
+  smooth?: boolean;
+  /** ping-pong the loop (forward then reverse) — hides a non-seamless wrap */
+  bounce?: boolean;
 }
 
 const META = manifest as Record<string, AnimMeta>;
@@ -37,6 +41,12 @@ function urlFor(name: string): string {
   const u = urls[key];
   if (!u) throw new Error(`mascot: missing sprite "${name}.png"`);
   return u;
+}
+
+/** Pixel sprites look best at integer scale; allow fractional down to 0.1 for smooth strips. */
+function clampScale(scale: number): number {
+  const s = Number.isFinite(scale) ? scale : 1;
+  return Math.max(0.1, Number.isInteger(s) ? s : Math.round(s * 100) / 100);
 }
 
 export interface MascotOptions {
@@ -52,14 +62,28 @@ export class Mascot {
   private current = '';
   private anim?: Animation;
   private idleName: string;
+  private facing: 'left' | 'right' = 'right';
+
+  /** Decode strips up front so swapping a (large) background-image is instant —
+   *  otherwise a big strip can flash blank for a frame while it decodes. */
+  static async preload(names: string[]): Promise<void> {
+    await Promise.all(
+      names
+        .filter((n) => META[n])
+        .map((n) => {
+          const img = new Image();
+          img.src = urlFor(n);
+          return img.decode().catch(() => {});
+        }),
+    );
+  }
 
   constructor(parent: HTMLElement, opts: MascotOptions = {}) {
-    this.scale = Math.max(1, Math.round(opts.scale ?? 2));
+    this.scale = clampScale(opts.scale ?? 2);
     this.idleName = META['idle'] ? 'idle' : Object.keys(META)[0];
     this.el = document.createElement('div');
     this.el.className = 'mascot';
     Object.assign(this.el.style, {
-      imageRendering: 'pixelated',
       backgroundRepeat: 'no-repeat',
       transformOrigin: 'bottom center',
     } as Partial<CSSStyleDeclaration>);
@@ -88,8 +112,9 @@ export class Mascot {
       width: `${frameW}px`,
       height: `${frameH}px`,
       backgroundImage: `url("${urlFor(name)}")`,
-      transform: `scale(${this.scale})`,
+      imageRendering: m.smooth ? 'auto' : 'pixelated',
     } as Partial<CSSStyleDeclaration>);
+    this.applyTransform(); // re-assert scale + facing (don't let a play() drop the flip)
 
     this.anim = this.el.animate(
       [
@@ -99,6 +124,7 @@ export class Mascot {
       {
         duration: (frames / fps) * 1000,
         iterations: loop ? Infinity : 1,
+        direction: m.bounce ? 'alternate' : 'normal',
         easing: `steps(${frames})`,
         fill: 'forwards',
       },
@@ -113,13 +139,18 @@ export class Mascot {
   }
 
   setScale(scale: number): void {
-    this.scale = Math.max(1, Math.round(scale));
-    this.el.style.transform = `scale(${this.scale})`;
+    this.scale = clampScale(scale);
+    this.applyTransform();
   }
 
-  /** Mirror horizontally (e.g. when walking left). */
+  /** Mirror horizontally (e.g. when walking left). Sprites face right by default. */
   setFacing(dir: 'left' | 'right'): void {
-    const flip = dir === 'left' ? ' scaleX(-1)' : '';
+    this.facing = dir;
+    this.applyTransform();
+  }
+
+  private applyTransform(): void {
+    const flip = this.facing === 'left' ? ' scaleX(-1)' : '';
     this.el.style.transform = `scale(${this.scale})${flip}`;
   }
 

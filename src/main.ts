@@ -3,6 +3,7 @@
 import { mountTerminal, type TerminalHandle } from "./terminal";
 import {
   spawnPty,
+  attachPty,
   sendInput,
   resizePty,
   killPty,
@@ -18,9 +19,20 @@ import {
   gitRepoRoot,
   worktreeAdd,
   onDragDrop,
+  openDetachWindow,
+  broadcastQuit,
+  onAppQuit,
 } from "./ipc";
 import { branchName } from "./worktree";
-import { getHideToTray, setHideToTray } from "./settings";
+import {
+  getHideToTray,
+  setHideToTray,
+  getMascotMode,
+  setMascotMode,
+  getMascotPos,
+  setMascotPos,
+  type MascotMode,
+} from "./settings";
 import { CLI_PRESETS, expandCrew, runLimited, launchSpec, effectiveArgs, type CrewState, type CliPreset } from "./crew";
 import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm } from "./workspaces";
 import { checkForUpdates } from "./updater";
@@ -29,6 +41,7 @@ import { initTitlebar } from "./titlebar";
 import { initIdleAnimationPause } from "./power";
 import { CLI_LOGOS } from "./logos";
 import { initAiCode, setActiveDirProvider } from "./aicode";
+import { Mascot } from "./mascot";
 
 /* Home launcher ⇄ Workspace grid.
  * Home is shown while there are 0 agents (the prominent "create" entry).
@@ -91,6 +104,12 @@ let activeWs: Workspace | null = null;
 let wsCounter = 0;
 let counter = 0;
 const enc = new TextEncoder();
+
+// A detached window (a tab dragged out of another Maestro window) boots with
+// ?detach=<key> pointing at its localStorage hand-off payload. It skips the
+// main window's app-global duties (kill-all, session restore, tray, updates).
+const DETACH_KEY = new URLSearchParams(location.search).get("detach");
+const isDetachedWindow = DETACH_KEY !== null;
 
 const homeEl = document.getElementById("home") as HTMLElement;
 const appEl = document.getElementById("app") as HTMLElement;
@@ -155,6 +174,7 @@ function createWorkspace(dir: string | null, name?: string): Workspace {
     `<span class="tdot"></span><span class="tname"></span><span class="tcount"></span>` +
     `<button class="tclose" aria-label="Close workspace">${KILL_SVG}</button>`;
   tabEl.querySelector(".tname")!.textContent = wsName;
+  tabEl.dataset.ws = id;
   tabstrip.insertBefore(tabEl, tabAdd);
 
   const ws: Workspace = { id, name: wsName, dir, repoRoot: null, isolated: false, gridEl, tabEl, panes: new Map() };
@@ -162,10 +182,15 @@ function createWorkspace(dir: string | null, name?: string): Workspace {
     if ((e.target as HTMLElement).closest(".tclose")) return;
     activateWorkspace(ws);
   });
+  tabEl.addEventListener("dblclick", (e) => {
+    if ((e.target as HTMLElement).closest(".tclose")) return;
+    startTabRename(ws);
+  });
   tabEl.querySelector(".tclose")!.addEventListener("click", (e) => {
     e.stopPropagation();
     void removeWorkspace(ws);
   });
+  wireTabDrag(ws);
 
   workspaces.set(id, ws);
   activateWorkspace(ws);
@@ -323,6 +348,195 @@ function commitPaneOrder(ws: Workspace) {
   saveSession();
 }
 
+/* ---------------- tab drag (reorder / detach) + rename ---------------- */
+// The whole tab is the drag handle. Dragging over a sibling live-reorders the
+// strip (committed + persisted on dragend); releasing OUTSIDE the window
+// detaches the workspace into a brand-new Maestro window (agents keep running).
+let tabDragSrc: Workspace | null = null;
+// Whether the drag pointer is currently over THIS window. dragend's
+// coordinates alone are unreliable for out-of-window drops in WebView2, so we
+// also track window enter/leave during the drag (leave → relatedTarget null).
+let tabDragInside = true;
+document.addEventListener("dragenter", () => {
+  if (tabDragSrc) tabDragInside = true;
+});
+document.addEventListener("dragleave", (e) => {
+  if (tabDragSrc && e.relatedTarget === null) tabDragInside = false;
+});
+function wireTabDrag(ws: Workspace) {
+  const el = ws.tabEl;
+  el.setAttribute("draggable", "true");
+  el.addEventListener("dragstart", (e) => {
+    // No dragging from the ✕ button or while the name is being edited.
+    if ((e.target as HTMLElement).closest(".tclose") || el.querySelector(".tname-edit")) {
+      e.preventDefault();
+      return;
+    }
+    tabDragSrc = ws;
+    tabDragInside = true;
+    el.classList.add("dragging");
+    tabstrip.classList.add("reordering");
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", ws.id);
+    }
+  });
+  el.addEventListener("dragend", (e) => {
+    el.classList.remove("dragging");
+    tabstrip.classList.remove("reordering");
+    const src = tabDragSrc;
+    tabDragSrc = null;
+    if (!src || !workspaces.has(src.id)) return;
+    // Released beyond the viewport → tear the tab out into its own window.
+    const out =
+      !tabDragInside ||
+      e.clientX < 0 ||
+      e.clientY < 0 ||
+      e.clientX > window.innerWidth ||
+      e.clientY > window.innerHeight;
+    if (out) void detachWorkspace(src);
+    else commitTabOrder();
+  });
+  el.addEventListener("dragover", (e) => {
+    if (!tabDragSrc || tabDragSrc === ws) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    const r = el.getBoundingClientRect();
+    const before = e.clientX - r.left < r.width / 2; // left half → drop before
+    tabstrip.insertBefore(tabDragSrc.tabEl, before ? el : el.nextSibling);
+  });
+  el.addEventListener("drop", (e) => e.preventDefault());
+}
+
+// Rebuild the workspaces Map to match the tabstrip's DOM order, then persist —
+// session save iterates the Map, so the order survives restarts.
+function commitTabOrder() {
+  const ordered: Workspace[] = [];
+  tabstrip.querySelectorAll<HTMLElement>(".tab").forEach((t) => {
+    const w = t.dataset.ws ? workspaces.get(t.dataset.ws) : undefined;
+    if (w) ordered.push(w);
+  });
+  for (const w of workspaces.values()) if (!ordered.includes(w)) ordered.push(w); // safety net
+  workspaces.clear();
+  for (const w of ordered) workspaces.set(w.id, w);
+  saveSession();
+}
+
+/** Double-click rename: swap the tab label for an inline input. Enter/blur
+ *  commits, Escape cancels. Dragging is suppressed while editing. */
+function startTabRename(ws: Workspace) {
+  const nameEl = ws.tabEl.querySelector<HTMLElement>(".tname");
+  if (!nameEl || nameEl.querySelector(".tname-edit")) return;
+  const input = document.createElement("input");
+  input.className = "tname-edit";
+  input.value = ws.name;
+  input.spellcheck = false;
+  nameEl.replaceChildren(input);
+  ws.tabEl.setAttribute("draggable", "false");
+  input.focus();
+  input.select();
+  let cancelled = false;
+  const done = () => {
+    const v = input.value.trim();
+    if (!cancelled && v) {
+      ws.name = v;
+      saveSession();
+    }
+    nameEl.replaceChildren();
+    nameEl.textContent = ws.name;
+    ws.tabEl.setAttribute("draggable", "true");
+  };
+  input.addEventListener("blur", done);
+  input.addEventListener("keydown", (e) => {
+    e.stopPropagation(); // keep workspace-level shortcuts out of the editor
+    if (e.key === "Enter") input.blur();
+    else if (e.key === "Escape") {
+      cancelled = true;
+      input.blur();
+    }
+  });
+  // The tab's click/dblclick handlers shouldn't re-fire while editing.
+  input.addEventListener("click", (e) => e.stopPropagation());
+  input.addEventListener("dblclick", (e) => e.stopPropagation());
+}
+
+/* ---------------- tab detach → new Maestro window ---------------- */
+
+// Hand-off payload written to localStorage (shared across this app's windows)
+// and consumed once by the new window's boot path.
+interface DetachAgent {
+  spec: AgentSpec;
+  id: string;
+  running: boolean;
+  spawnedAt: number | null;
+}
+interface DetachPayload {
+  name: string;
+  dir: string | null;
+  repoRoot: string | null;
+  isolated: boolean;
+  agents: DetachAgent[];
+}
+
+/** Move `ws` into a brand-new Maestro window. Running agents are NOT killed:
+ *  the new window re-attaches to their PTYs (`pty_attach`) and the backend
+ *  replays the recent scrollback. This window just drops its tab. */
+async function detachWorkspace(ws: Workspace) {
+  const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const payload: DetachPayload = {
+    name: ws.name,
+    dir: ws.dir,
+    repoRoot: ws.repoRoot,
+    isolated: ws.isolated,
+    agents: [...ws.panes.values()].map((p) => ({
+      spec: p.spec,
+      id: p.id,
+      running: p.running,
+      spawnedAt: p.spawnedAt,
+    })),
+  };
+  try {
+    localStorage.setItem(`maestro.detach.${key}`, JSON.stringify(payload));
+  } catch {
+    return; // storage unavailable — keep the tab here rather than lose it
+  }
+  try {
+    await openDetachWindow(key, `Maestro — ${ws.name}`);
+  } catch (e) {
+    localStorage.removeItem(`maestro.detach.${key}`);
+    console.warn("detach window failed:", e);
+    return;
+  }
+  // Hand-off succeeded: drop the tab locally WITHOUT killing its PTYs. Their
+  // output keeps flowing into the backend scrollback buffer until the new
+  // window attaches.
+  for (const p of ws.panes.values()) {
+    p.term.dispose();
+    p.el.remove();
+  }
+  ws.panes.clear();
+  dropWorkspace(ws);
+}
+
+/** Remove a (already emptied) workspace's DOM + map entry and refocus. Shared
+ *  by close (panes killed first) and detach (panes handed off first). */
+function dropWorkspace(ws: Workspace) {
+  const nextId = pickNextActive([...workspaces.keys()], ws.id);
+  ws.gridEl.remove();
+  ws.tabEl.remove();
+  workspaces.delete(ws.id);
+  if (activeWs === ws) {
+    const next = nextId ? workspaces.get(nextId) ?? null : null;
+    if (next) activateWorkspace(next);
+    else {
+      activeWs = null;
+      showView();
+    }
+  }
+  updateCount();
+  saveSession();
+}
+
 /** In-app confirm modal (unlike the native dialog, it can carry a "Don't ask
  *  again" checkbox). Resolves { ok, dontAsk }. */
 function confirmModal(opts: {
@@ -393,20 +607,7 @@ async function removeWorkspace(ws: Workspace) {
     if (dontAsk) localStorage.setItem(SKIP_WS_CLOSE, "1");
   }
   for (const id of [...ws.panes.keys()]) await removeAgent(ws, id);
-  const nextId = pickNextActive([...workspaces.keys()], ws.id);
-  ws.gridEl.remove();
-  ws.tabEl.remove();
-  workspaces.delete(ws.id);
-  if (activeWs === ws) {
-    const next = nextId ? workspaces.get(nextId) ?? null : null;
-    if (next) activateWorkspace(next);
-    else {
-      activeWs = null;
-      showView();
-    }
-  }
-  updateCount();
-  saveSession();
+  dropWorkspace(ws);
 }
 
 const RESTART_SVG =
@@ -507,8 +708,11 @@ function updateCount() {
   if (tot) tot.textContent = String(total);
   updateBcast();
   // Keep the tray tooltip in sync so a hidden window still shows it's alive.
-  const tip = totalRun > 0 ? `Maestro · ${totalRun} running` : "Maestro";
-  void setTrayTooltip(tip).catch(() => {});
+  // The tray belongs to the main window; detached windows leave it alone.
+  if (!isDetachedWindow) {
+    const tip = totalRun > 0 ? `Maestro · ${totalRun} running` : "Maestro";
+    void setTrayTooltip(tip).catch(() => {});
+  }
 }
 
 interface AgentSpec {
@@ -528,12 +732,20 @@ interface AgentSpec {
 // big fleet doesn't spike the CPU all at once.
 // When `restore` is true the pane is mounted in a STOPPED state (no PTY spawn) —
 // session restore uses this so reopening doesn't auto-launch a heavy fleet.
-function createAgent(ws: Workspace, spec: AgentSpec, restore = false): () => Promise<void> {
+// `attach` re-binds an ALREADY-RUNNING agent (tab detached from another window):
+// the pane keeps the original agent id and the thunk calls pty_attach instead
+// of spawning a new process.
+function createAgent(
+  ws: Workspace,
+  spec: AgentSpec,
+  restore = false,
+  attach?: { id: string; spawnedAt: number | null },
+): () => Promise<void> {
   // Make the (sized) workspace grid visible BEFORE mounting xterm, otherwise
   // fit() measures a display:none container as 0×0 and ConPTY paints the prompt
   // at the wrong size (blank pane).
   showWorkspace();
-  const id = newId();
+  const id = attach?.id ?? newId();
   const sub = spec.cwd ? basename(spec.cwd) : "";
   const el = buildPaneEl(id, spec.name, sub, spec.badge, spec.color, spec.mono);
   ws.gridEl.insertBefore(el, ws.gridEl.lastElementChild); // before the spawn tile
@@ -581,6 +793,33 @@ function createAgent(ws: Workspace, spec: AgentSpec, restore = false): () => Pro
 
   saveSession();
 
+  // Detach hand-off: the agent is already alive in the backend — just point
+  // its output at this window. The backend replays buffered scrollback first.
+  if (attach) {
+    return async () => {
+      if (!ws.panes.has(id)) return;
+      const { cols, rows } = term.fit();
+      try {
+        await attachPty(id, (bytes) => {
+          pane.lastOutputAt = Date.now();
+          if (ws.panes.has(id)) term.write(bytes);
+        });
+        pane.running = true;
+        pane.spawnedAt = attach.spawnedAt ?? Date.now();
+        pane.lastOutputAt = Date.now();
+        setStatus(pane, "running", "run");
+        updateCount();
+        void resizePty(id, cols, rows).catch(() => {});
+      } catch {
+        // Died between hand-off and attach — its pty-exit fired before we
+        // were listening, so park it the way a normal exit would.
+        pane.running = false;
+        setStatus(pane, "exited", "");
+        updateCount();
+      }
+    };
+  }
+
   return async () => {
     if (!ws.panes.has(id)) return; // killed before its turn to boot
     const { cols, rows } = term.fit();
@@ -606,7 +845,9 @@ function createAgent(ws: Workspace, spec: AgentSpec, restore = false): () => Pro
       const launch = launchSpec(spec.program, spec.args);
       await spawnPty(id, launch.program, launch.args, cwd, cols, rows, (bytes) => {
         pane.lastOutputAt = Date.now();
-        term.write(bytes);
+        // After a tab detach this xterm is disposed but the PTY lives on (the
+        // new window owns it) — never write into a dropped pane.
+        if (ws.panes.has(id)) term.write(bytes);
       });
       pane.running = true;
       pane.spawnedAt = Date.now();
@@ -645,7 +886,11 @@ async function removeAgent(ws: Workspace, id: string) {
 
 // Serialize every workspace + its agents' launch specs so the next launch can
 // restore the same tabs (as STOPPED panes). Cheap, called on any set change.
+// Detached windows save under their own key: if the whole app quits while they
+// are open, the next launch's main window sweeps those keys back into tabs.
 const SESSION_KEY = "maestro.session";
+const DETACH_SESSION_PREFIX = "maestro.session.detach.";
+const sessionKey = isDetachedWindow ? DETACH_SESSION_PREFIX + DETACH_KEY : SESSION_KEY;
 function saveSession() {
   try {
     const data = [...workspaces.values()].map((w) => ({
@@ -653,18 +898,35 @@ function saveSession() {
       dir: w.dir,
       agents: [...w.panes.values()].map((p) => p.spec),
     }));
-    localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+    localStorage.setItem(sessionKey, JSON.stringify(data));
   } catch {
     /* storage may be full/unavailable — best-effort only */
   }
 }
 
-// Recreate the previous session's tabs + panes as STOPPED (no PTY spawn). The
-// user resumes any pane via its ⟳ button. No-op when there's nothing saved.
-function restoreSession() {
+/** Total panes parked in detached windows' session keys — main's quit confirm
+ *  counts them so "N terminal(s) will be killed" covers the whole app. */
+function detachedSessionCount(): number {
+  let n = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k || !k.startsWith(DETACH_SESSION_PREFIX)) continue;
+    try {
+      const data = JSON.parse(localStorage.getItem(k) || "[]");
+      if (Array.isArray(data))
+        for (const w of data) n += Array.isArray(w?.agents) ? w.agents.length : 0;
+    } catch {
+      /* ignore */
+    }
+  }
+  return n;
+}
+
+// Recreate one saved session blob's tabs + panes as STOPPED (no PTY spawn).
+function restoreSessionBlob(raw: string | null) {
   let data: unknown;
   try {
-    data = JSON.parse(localStorage.getItem(SESSION_KEY) || "[]");
+    data = JSON.parse(raw || "[]");
   } catch {
     return; // invalid JSON — ignore
   }
@@ -678,6 +940,51 @@ function restoreSession() {
     const ws = createWorkspace(dir, name);
     for (const spec of agents) {
       if (spec && typeof spec.program === "string") createAgent(ws, spec, true); // stopped — don't boot
+    }
+  }
+}
+
+// Restore the previous session: the main window's own tabs, plus any leftover
+// detached-window sessions (the app quit/crashed while they were open). The
+// user resumes any pane via its ⟳ button. No-op when there's nothing saved.
+function restoreSession() {
+  restoreSessionBlob(localStorage.getItem(SESSION_KEY));
+  const leftovers: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(DETACH_SESSION_PREFIX)) leftovers.push(k);
+  }
+  for (const k of leftovers) {
+    restoreSessionBlob(localStorage.getItem(k));
+    localStorage.removeItem(k);
+  }
+}
+
+/* ---------------- detached-window boot ---------------- */
+// Consume the hand-off payload written by detachWorkspace() in the original
+// window: rebuild the workspace, re-attach to the still-running agents, and
+// park the stopped ones exactly like a session restore.
+function bootDetached(key: string) {
+  const storeKey = `maestro.detach.${key}`;
+  const raw = localStorage.getItem(storeKey);
+  localStorage.removeItem(storeKey); // consumed exactly once
+  if (!raw) return;
+  let payload: DetachPayload;
+  try {
+    payload = JSON.parse(raw) as DetachPayload;
+  } catch {
+    return;
+  }
+  const ws = createWorkspace(payload.dir ?? null, payload.name);
+  ws.repoRoot = typeof payload.repoRoot === "string" ? payload.repoRoot : null;
+  ws.isolated = !!payload.isolated;
+  const agents = Array.isArray(payload.agents) ? payload.agents : [];
+  for (const a of agents) {
+    if (!a?.spec || typeof a.spec.program !== "string") continue;
+    if (a.running && typeof a.id === "string") {
+      void createAgent(ws, a.spec, false, { id: a.id, spawnedAt: a.spawnedAt ?? null })();
+    } else {
+      createAgent(ws, a.spec, true); // was stopped — stays parked
     }
   }
 }
@@ -1097,8 +1404,162 @@ document.getElementById("btnQuick")?.addEventListener("click", () => {
   })();
 });
 
+/* ---------------- home mascot companion ---------------- */
+// A friendly character on the Home screen. Two modes (Settings → Mascot):
+//   • "move"  — strolls back and forth on its own
+//   • "still" — stays put, idle
+// In either mode it can be grabbed and dropped anywhere (position persists).
+// The wrapper (#homeMascot) is translate(x,y)-positioned; the Mascot instance
+// owns its own scale + facing flip. Strolling pauses when Home is off screen.
+function initHomeMascot(): void {
+  const host = document.getElementById("homeMascot");
+  const home = document.getElementById("home");
+  if (!host || !home || !Mascot.animations().includes("boy_idle")) return;
+
+  const SPEED = 78; // px/sec — tuned so feet roughly match ground travel (low slide)
+  const BOXW = 180,
+    BOXH = 262; // .home-mascot box size (keep in sync with home.css)
+  const rand = (a: number, b: number) => a + Math.random() * (b - a);
+  const m = new Mascot(host, { scale: 0.62, initial: "boy_idle" });
+  void Mascot.preload(["boy_idle", "boy_walk"]);
+
+  let mode: MascotMode = getMascotMode();
+  let dragging = false;
+  let moveAnim: Animation | null = null;
+  let strollTimer = 0;
+
+  const homeW = () => home.clientWidth || window.innerWidth;
+  const homeH = () => home.clientHeight || window.innerHeight;
+  const visible = () => !home.hidden && home.clientWidth > 0;
+  const clamp = (p: { x: number; y: number }) => ({
+    x: Math.min(Math.max(0, p.x), Math.max(0, homeW() - BOXW)),
+    y: Math.min(Math.max(0, p.y), Math.max(0, homeH() - BOXH)),
+  });
+  // default resting spot: lower-left, feet ~30px above the Home bottom
+  let pos = clamp(getMascotPos() ?? { x: 44, y: homeH() - BOXH - 30 });
+  const apply = () => (host.style.transform = `translate(${pos.x}px, ${pos.y}px)`);
+  apply();
+
+  const stopStroll = () => {
+    window.clearTimeout(strollTimer);
+    moveAnim?.cancel();
+    moveAnim = null;
+  };
+
+  const strollOnce = () => {
+    if (mode !== "move" || dragging) return;
+    if (!visible()) {
+      strollTimer = window.setTimeout(strollOnce, 1200);
+      return;
+    }
+    const maxX = Math.max(0, homeW() - BOXW);
+    // A believable hop (160–360px) toward the side with more room.
+    const dir = pos.x < maxX - pos.x ? 1 : -1;
+    const target = Math.max(0, Math.min(maxX, pos.x + rand(160, 360) * (Math.random() < 0.8 ? dir : -dir)));
+    const dist = Math.abs(target - pos.x);
+    if (dist < 40) {
+      strollTimer = window.setTimeout(strollOnce, 700);
+      return;
+    }
+    const dur = (dist / SPEED) * 1000;
+    m.setFacing(target < pos.x ? "left" : "right");
+    m.play("boy_walk");
+    // Walk along the current height (y): pre-set resting transform to the
+    // destination, then animate current → destination so the hand-off to idle is
+    // seamless (no fill-forwards pile-up).
+    const from = pos.x;
+    pos.x = target;
+    apply();
+    moveAnim = host.animate(
+      [
+        { transform: `translate(${from}px, ${pos.y}px)` },
+        { transform: `translate(${target}px, ${pos.y}px)` },
+      ],
+      { duration: dur, easing: "linear" },
+    );
+    moveAnim.finished
+      .then(() => {
+        if (mode !== "move" || dragging) return;
+        m.setFacing("right");
+        m.play("boy_idle");
+        strollTimer = window.setTimeout(strollOnce, rand(1800, 4200));
+      })
+      .catch(() => {}); // cancelled (drag / mode switch / teardown)
+  };
+
+  const applyMode = (next: MascotMode) => {
+    mode = next;
+    setMascotMode(next);
+    stopStroll();
+    m.setFacing("right");
+    m.play("boy_idle");
+    apply();
+    if (mode === "move") strollTimer = window.setTimeout(strollOnce, 500);
+  };
+
+  /* ---- drag to place ---- */
+  let grabDX = 0,
+    grabDY = 0,
+    grabPid = -1;
+  m.el.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    dragging = true;
+    stopStroll();
+    m.play("boy_idle"); // hold idle while being carried
+    grabDX = e.clientX - pos.x;
+    grabDY = e.clientY - pos.y;
+    grabPid = e.pointerId;
+    try {
+      m.el.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    host.classList.add("dragging");
+  });
+  m.el.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    pos = clamp({ x: e.clientX - grabDX, y: e.clientY - grabDY });
+    apply();
+  });
+  const endDrag = () => {
+    if (!dragging) return;
+    dragging = false;
+    host.classList.remove("dragging");
+    try {
+      m.el.releasePointerCapture(grabPid);
+    } catch {
+      /* ignore */
+    }
+    setMascotPos(pos.x, pos.y);
+    if (mode === "move") strollTimer = window.setTimeout(strollOnce, 500);
+  };
+  m.el.addEventListener("pointerup", endDrag);
+  m.el.addEventListener("pointercancel", endDrag);
+
+  /* ---- Settings → Mascot mode toggle ---- */
+  const seg = document.getElementById("setMascotMode");
+  const syncSeg = () =>
+    seg?.querySelectorAll<HTMLButtonElement>("button").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
+  seg?.querySelectorAll<HTMLButtonElement>("button").forEach((b) =>
+    b.addEventListener("click", () => {
+      applyMode((b.dataset.mode as MascotMode) ?? "move");
+      syncSeg();
+    }),
+  );
+  syncSeg();
+
+  // Keep the mascot on-screen if the window is resized.
+  window.addEventListener("resize", () => {
+    pos = clamp(pos);
+    if (!dragging && !moveAnim) apply();
+  });
+
+  if (mode === "move") strollTimer = window.setTimeout(strollOnce, 1500);
+}
+initHomeMascot();
+
 /* ---------------- frameless window controls ---------------- */
-initTitlebar();
+initTitlebar(!isDetachedWindow);
 
 /* ---------------- AI Code (read-only diff review) ---------------- */
 setActiveDirProvider(() => activeWs?.dir ?? null);
@@ -1243,13 +1704,19 @@ tick();
 setInterval(tick, 1000);
 
 /* ---------------- init ---------------- */
-// On a fresh frontend load we've lost track of any backend agents (e.g. after an
-// HMR reload), so clear them to avoid orphans + id collisions.
-void killAll().catch(() => {});
 renderRecents();
-// Recreate last session's tabs as STOPPED panes (no PTY spawn) before showing
-// the view, so reopening the app doesn't auto-launch a heavy fleet.
-restoreSession();
+if (isDetachedWindow) {
+  // A detached window must NOT kill-all (other windows' agents are alive) and
+  // boots from its hand-off payload instead of the saved session.
+  bootDetached(DETACH_KEY!);
+} else {
+  // On a fresh frontend load we've lost track of any backend agents (e.g. after
+  // an HMR reload), so clear them to avoid orphans + id collisions.
+  void killAll().catch(() => {});
+  // Recreate last session's tabs as STOPPED panes (no PTY spawn) before showing
+  // the view, so reopening the app doesn't auto-launch a heavy fleet.
+  restoreSession();
+}
 showView();
 
 /* Intro splash: plays once on first paint (CSS-driven), then we retire the
@@ -1262,12 +1729,14 @@ showView();
     document.body.classList.remove("boot");
     intro?.remove();
   };
-  window.setTimeout(clearIntro, 1850);
+  // A detached window should feel like a continuation, not a fresh app launch.
+  window.setTimeout(clearIntro, isDetachedWindow ? 0 : 1850);
 }
 
 // Silently check GitHub Releases for a newer signed build; prompts only if one
-// exists. No-op in dev / when offline.
-void checkForUpdates(true);
+// exists. No-op in dev / when offline. Main window only — a detached window
+// prompting in parallel would double the dialogs.
+if (!isDetachedWindow) void checkForUpdates(true);
 
 /* ---------------- file drag-drop → terminal ---------------- */
 // Drop a file (e.g. a PDF) onto a pane and its path is typed into that agent's
@@ -1367,12 +1836,18 @@ document.addEventListener("keydown", (e) => {
 /* ---------------- close / quit / hide-to-tray ---------------- */
 let closing = false;
 
-/** Full quit: confirm if terminals are running, kill them all, destroy the
- *  window. Used by the X button (when hide-to-tray is off) and the tray "Quit". */
-async function quitApp(): Promise<void> {
-  if (closing) return;
+function ownPaneCount(): number {
   let total = 0;
   for (const w of workspaces.values()) total += w.panes.size;
+  return total;
+}
+
+/** Full quit (MAIN window): confirm if terminals are running anywhere, kill
+ *  them all, tell detached windows to close, destroy. Used by the X button
+ *  (when hide-to-tray is off) and the tray "Quit". */
+async function quitApp(): Promise<void> {
+  if (closing) return;
+  const total = ownPaneCount() + detachedSessionCount();
   if (needsCloseConfirm(total)) {
     const ok = await confirmDialog(`${total} running terminal(s) will be killed. Quit Maestro?`, "Quit Maestro");
     if (!ok) return;
@@ -1383,23 +1858,59 @@ async function quitApp(): Promise<void> {
   } catch {
     /* ignore */
   }
+  // Detached windows die with the app (their agents were just killed).
+  try {
+    await broadcastQuit();
+  } catch {
+    /* ignore */
+  }
   await destroyWindow();
 }
 
-// The X button always quits (with a kill-all confirm when terminals run).
-// "Hide to tray" is bound to the minimize button instead — see titlebar.ts.
+/** Close a DETACHED window: kill only ITS agents, drop its session key, and
+ *  leave every other Maestro window untouched. */
+async function closeDetachedWindow(): Promise<void> {
+  if (closing) return;
+  const total = ownPaneCount();
+  if (needsCloseConfirm(total)) {
+    const ok = await confirmDialog(`${total} running terminal(s) will be killed. Close this window?`, "Close window");
+    if (!ok) return;
+  }
+  closing = true;
+  for (const w of workspaces.values()) {
+    for (const id of w.panes.keys()) {
+      try {
+        await killPty(id);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  localStorage.removeItem(sessionKey); // nothing to sweep on next launch
+  await destroyWindow();
+}
+
+// The X button always quits this window (with a kill confirm when terminals
+// run). "Hide to tray" is bound to the minimize button instead — see titlebar.ts.
 void onWindowClose(async (event) => {
   if (closing) return;
-  let total = 0;
-  for (const w of workspaces.values()) total += w.panes.size;
-  if (!needsCloseConfirm(total)) return; // nothing running — let it close
   event.preventDefault();
-  await quitApp();
+  await (isDetachedWindow ? closeDetachedWindow() : quitApp());
 }).catch((e) => console.warn("close handler unavailable:", e));
 
-// Tray "Quit" → same full-quit flow (Rust already re-showed the window so the
-// confirm dialog is visible).
-void onTrayQuit(() => quitApp()).catch((e) => console.warn("tray-quit listener unavailable:", e));
+if (isDetachedWindow) {
+  // Main quit (X / tray) broadcasts after its kill-all — just fold this window.
+  // The session key is left in place ON PURPOSE: the next launch's main window
+  // sweeps it back into a (stopped) tab, same as the main window's own tabs.
+  void onAppQuit(() => {
+    closing = true;
+    void destroyWindow();
+  }).catch((e) => console.warn("app-quit listener unavailable:", e));
+} else {
+  // Tray "Quit" → same full-quit flow (Rust already re-showed the window so the
+  // confirm dialog is visible).
+  void onTrayQuit(() => quitApp()).catch((e) => console.warn("tray-quit listener unavailable:", e));
 
-// Mirror the tray icon's visibility to the saved setting on boot.
-void setTrayVisible(getHideToTray()).catch((e) => console.warn("set tray visibility failed:", e));
+  // Mirror the tray icon's visibility to the saved setting on boot.
+  void setTrayVisible(getHideToTray()).catch((e) => console.warn("set tray visibility failed:", e));
+}

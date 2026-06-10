@@ -1,7 +1,8 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open, confirm, message } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 
@@ -24,6 +25,18 @@ export async function spawnPty(
   const ch = new Channel<ArrayBuffer>();
   ch.onmessage = (buf) => onBytes(new Uint8Array(buf));
   await invoke("pty_spawn", { agentId, program, args, cwd, cols, rows, onBytes: ch });
+}
+
+/** Re-attach a RUNNING agent's output to this window (tab detach hand-off).
+ *  The backend replays its buffered scrollback through the channel first, then
+ *  streams live output. Rejects if the agent no longer exists. */
+export async function attachPty(
+  agentId: string,
+  onBytes: (bytes: Uint8Array) => void,
+): Promise<void> {
+  const ch = new Channel<ArrayBuffer>();
+  ch.onmessage = (buf) => onBytes(new Uint8Array(buf));
+  await invoke("pty_attach", { agentId, onBytes: ch });
 }
 
 export async function sendInput(agentId: string, data: string): Promise<void> {
@@ -115,6 +128,39 @@ export async function notify(title: string, body: string): Promise<void> {
 /** Fire `cb` when the tray menu's "Quit" item is chosen. */
 export async function onTrayQuit(cb: () => void | Promise<void>): Promise<UnlistenFn> {
   return listen("tray-quit", () => void cb());
+}
+
+/* ---- detached (multi-window) support ---- */
+
+/** Open a new Maestro window that boots straight into a detached workspace.
+ *  `key` selects the localStorage hand-off payload (`maestro.detach.<key>`).
+ *  Resolves once the window exists; rejects if creation fails. */
+export async function openDetachWindow(key: string, title: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const w = new WebviewWindow(`detach-${key}`, {
+      url: `/?detach=${encodeURIComponent(key)}`,
+      title,
+      width: 1100,
+      height: 720,
+      minWidth: 760,
+      minHeight: 540,
+      resizable: true,
+      decorations: false,
+    });
+    void w.once("tauri://created", () => resolve());
+    void w.once("tauri://error", (e) => reject(e.payload));
+  });
+}
+
+/** App-wide "quit now" broadcast: the main window fires this after its kill-all
+ *  so detached windows close themselves too. */
+export async function broadcastQuit(): Promise<void> {
+  await emit("maestro-quit");
+}
+
+/** Fire `cb` when the main window broadcasts the app quit. */
+export async function onAppQuit(cb: () => void | Promise<void>): Promise<UnlistenFn> {
+  return listen("maestro-quit", () => void cb());
 }
 
 /* ---- custom title-bar window controls (frameless) ---- */

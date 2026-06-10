@@ -103,5 +103,22 @@
     "frameH": 123,
     "fps": 8,
     "loop": true
+  },
+  "boy_idle": {
+    "frames": 70,
+    "frameW": 162,
+    "frameH": 250,
+    "fps": 12,
+    "loop": true,
+    "smooth": true,
+    "bounce": true
+  },
+  "boy_walk": {
+    "frames": 52,
+    "frameW": 162,
+    "frameH": 250,
+    "fps": 24,
+    "loop": true,
+    "smooth": true
   }
 }

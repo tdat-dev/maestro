@@ -102,6 +102,9 @@
 
     <div class="home-foot"><b>Maestro</b> · M0 · multi-agent · native Windows</div>
   </div>
+
+  <!-- Mascot companion: idles on the home floor and strolls back and forth. -->
+  <div class="home-mascot" id="homeMascot" aria-hidden="true"><span class="hm-shadow"></span></div>
 </div>
 
 <!-- ===================== WORKSPACE ===================== -->
@@ -249,6 +252,16 @@
           <span>Minimizing tucks Maestro into the system tray (agents keep running) instead of dropping to the taskbar. The close button still quits.</span>
         </span>
       </label>
+      <div class="set-row">
+        <span class="pt-text">
+          <b>Mascot</b>
+          <span>How the Home character behaves. Drag the character to place it anywhere.</span>
+        </span>
+        <div class="set-seg" id="setMascotMode" role="group" aria-label="Mascot mode">
+          <button type="button" data-mode="move">Walk around</button>
+          <button type="button" data-mode="still">Stand still</button>
+        </div>
+      </div>
       <div class="set-update">
         <span class="pt-text">
           <b>Updates</b>

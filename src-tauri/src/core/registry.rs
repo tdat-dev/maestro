@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use anyhow::{anyhow, Result};
 use portable_pty::PtySize;
 
-use crate::core::agent::Agent;
+use crate::core::agent::{Agent, Sink};
 use crate::core::command_spec::CommandSpec;
 
 #[derive(Default)]
@@ -41,6 +41,16 @@ impl Registry {
         }
         let agent = Agent::spawn(spec, size, on_bytes, on_exit)?;
         self.agents.insert(id, agent);
+        Ok(())
+    }
+
+    /// Re-point a running agent's output at a new sink (window detach).
+    /// Replays the buffered scrollback through the new sink first.
+    pub fn attach(&self, id: &str, sink: Sink) -> Result<()> {
+        self.agents
+            .get(id)
+            .ok_or_else(|| anyhow!("no agent '{id}'"))?
+            .attach(sink);
         Ok(())
     }
 

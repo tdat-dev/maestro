@@ -8,7 +8,9 @@
 //!                 blocked read() gets EOF and the thread ends.
 //!   3. threads -> JoinHandles detach; both threads have already finished.
 
+use std::collections::VecDeque;
 use std::io::Read;
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
 use anyhow::{anyhow, Result};
@@ -19,6 +21,17 @@ use crate::core::command_spec::CommandSpec;
 use crate::core::job::Job;
 use crate::core::pty_session::PtySession;
 
+/// Where PTY output goes (e.g. a window's IPC channel). Swappable via `attach`.
+pub type Sink = Box<dyn FnMut(&[u8]) + Send>;
+
+/// Recent output kept for replay when a new window attaches (tab detach).
+const SCROLLBACK_CAP: usize = 512 * 1024;
+
+struct Output {
+    buf: VecDeque<u8>,
+    sink: Sink,
+}
+
 pub struct Agent {
     // NOTE: drop order = declaration order. Keep job first, session second.
     // job + threads are held purely for their drop side-effects / ownership.
@@ -26,6 +39,7 @@ pub struct Agent {
     #[allow(dead_code)]
     job: Job,
     session: PtySession,
+    output: Arc<Mutex<Output>>,
     #[allow(dead_code)]
     reader_thread: JoinHandle<()>,
     #[allow(dead_code)]
@@ -54,16 +68,36 @@ impl Agent {
             job
         };
 
-        let reader_thread = spawn_reader(reader, on_bytes);
+        let output = Arc::new(Mutex::new(Output {
+            buf: VecDeque::new(),
+            sink: Box::new(on_bytes),
+        }));
+        let reader_thread = spawn_reader(reader, output.clone());
         let wait_thread = spawn_waiter(child, on_exit);
 
         Ok(Agent {
             #[cfg(windows)]
             job,
             session,
+            output,
             reader_thread,
             wait_thread,
         })
+    }
+
+    /// Re-point output at a new sink (a freshly-detached window's channel).
+    /// The buffered scrollback is replayed through the new sink first, under
+    /// the same lock the reader thread uses, so the swap loses/dupes nothing.
+    pub fn attach(&self, mut sink: Sink) {
+        let mut o = self.output.lock().unwrap_or_else(|p| p.into_inner());
+        let (a, b) = o.buf.as_slices();
+        if !a.is_empty() {
+            sink(a);
+        }
+        if !b.is_empty() {
+            sink(b);
+        }
+        o.sink = sink;
     }
 
     pub fn write_input(&mut self, bytes: &[u8]) -> Result<()> {
@@ -75,16 +109,21 @@ impl Agent {
     }
 }
 
-fn spawn_reader(
-    mut reader: Box<dyn Read + Send>,
-    mut on_bytes: impl FnMut(&[u8]) + Send + 'static,
-) -> JoinHandle<()> {
+fn spawn_reader(mut reader: Box<dyn Read + Send>, output: Arc<Mutex<Output>>) -> JoinHandle<()> {
     thread::spawn(move || {
         let mut buf = [0u8; 16384];
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => break,
-                Ok(n) => on_bytes(&buf[..n]),
+                Ok(n) => {
+                    let mut o = output.lock().unwrap_or_else(|p| p.into_inner());
+                    o.buf.extend(&buf[..n]);
+                    let over = o.buf.len().saturating_sub(SCROLLBACK_CAP);
+                    if over > 0 {
+                        o.buf.drain(..over);
+                    }
+                    (o.sink)(&buf[..n]);
+                }
                 Err(_) => break,
             }
         }

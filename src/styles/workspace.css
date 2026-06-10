@@ -23,6 +23,12 @@
 .tab .tclose:hover{background:var(--surface-3);color:var(--err)}
 .tab-add{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--muted);flex:none}
 .tab-add:hover{background:var(--surface-1);color:var(--accent)}
+/* drag-reorder: the lifted tab ghosts; siblings shift live via DOM insert */
+.tab.dragging{opacity:.4}
+.tabstrip.reordering .tab{transition:none}
+/* dblclick inline rename */
+.tname-edit{background:var(--surface-3);border:1px solid var(--line-strong);color:var(--text);border-radius:5px;font:inherit;font-size:12px;padding:1px 6px;width:130px;outline:none}
+.tname-edit:focus{border-color:var(--accent-dim)}
 
 /* compact "+ Agent" button — secondary, lime on hover */
 .tb-btn{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text-2);font-weight:600;font-size:12.5px;flex:none;transition:border-color .15s,color .15s,background .15s}

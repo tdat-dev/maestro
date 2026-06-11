@@ -2,7 +2,7 @@
 name = "maestro"
 version = "0.1.7"
 description = "Maestro multi-agent CLI orchestrator"
-authors = ["whalelo"]
+authors = ["tdat-dev"]
 license = "MIT"
 repository = "https://github.com/tdat-dev/maestro"
 edition = "2021"

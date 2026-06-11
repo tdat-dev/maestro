@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🎼 Maestro
+<img src="design/logo.svg" width="110" alt="Maestro logo">
+
+# Maestro
 
 **Spawn & orchestrate fleets of AI agent CLIs — real terminals, real tree-kill.**
 
@@ -102,7 +104,7 @@ signed, publish a GitHub release with the installer + `latest.json`.
 
 ## License
 
-[MIT](LICENSE) © 2026 [whalelo (tdat-dev)](https://github.com/tdat-dev)
+[MIT](LICENSE) © 2026 [tdat-dev](https://github.com/tdat-dev)
 
 Built with [Tauri](https://tauri.app), [xterm.js](https://xtermjs.org), and
 [portable-pty](https://crates.io/crates/portable-pty).

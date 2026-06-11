@@ -4,7 +4,7 @@
   "version": "0.1.7",
   "description": "Spawn & orchestrate fleets of AI agent CLIs — real terminals, real tree-kill.",
   "license": "MIT",
-  "author": "whalelo (tdat-dev)",
+  "author": "tdat-dev",
   "repository": {
     "type": "git",
     "url": "https://github.com/tdat-dev/maestro.git"

@@ -1,0 +1,120 @@
+/* "Set up your workspace" wizard: stepper, layout-tile picker, recents/presets, agents. */
+/* Reuses modal.css classes (.backdrop, .crew, .crew-card, .stepper, .custom-row, .input,
+   .perm-toggle, .crew-total) unchanged — only wizard-specific chrome lives here. */
+
+/* panel */
+.wizard{width:680px;max-width:calc(100vw - 48px);max-height:calc(100vh - 56px);display:flex;flex-direction:column;position:relative;background:var(--surface-0);border:1px solid var(--line-strong);border-radius:14px;box-shadow:0 28px 80px rgba(0,0,0,.62);overflow:hidden}
+.backdrop.open .wizard{animation:wizIn .22s ease-out}
+@keyframes wizIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+
+/* close */
+.wiz-x{position:absolute;top:14px;right:14px;width:26px;height:26px;border-radius:6px;display:grid;place-items:center;color:var(--muted);z-index:2;transition:background .12s,color .12s}
+.wiz-x:hover{background:var(--surface-3);color:var(--text)}
+
+/* stepper (top) */
+.wiz-steps{display:flex;align-items:center;justify-content:center;gap:0;padding:22px 36px 4px}
+.wstep{display:flex;align-items:center;gap:9px}
+.ws-dot{width:26px;height:26px;border-radius:50%;border:1px solid var(--line-strong);background:var(--surface-2);color:var(--muted);font-size:11px;font-weight:700;display:grid;place-items:center;transition:background .16s,border-color .16s,color .16s,box-shadow .16s}
+.ws-label{font-size:11px;letter-spacing:.04em;color:var(--muted);transition:color .16s}
+.wstep.done .ws-dot{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.wstep.on .ws-dot{border-color:var(--accent);background:var(--accent-glow);color:var(--accent);box-shadow:0 0 0 4px var(--accent-glow)}
+.wstep.on .ws-label{color:var(--text)}
+.ws-line{width:56px;height:1px;background:var(--line-strong);margin:0 12px}
+
+/* body */
+.wiz-body{flex:1;overflow-y:auto;min-height:0;padding:8px 36px 28px}
+.wiz-step{display:flex;flex-direction:column;gap:22px}
+
+/* hero */
+.wiz-hero{text-align:center;padding:10px 0 4px}
+.wiz-hero h1{font-family:var(--display);font-style:italic;font-weight:800;font-size:26px}
+.wiz-hero p{font-size:13px;color:var(--muted);margin-top:6px}
+
+/* field + label */
+.wiz-field{display:flex;flex-direction:column;gap:9px}
+.wiz-label{display:flex;align-items:center;font-size:11px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;color:var(--text-2)}
+.wiz-label .wl-hint{text-transform:none;letter-spacing:0;font-size:11px;font-weight:400;color:var(--muted-2);margin-left:8px}
+.wiz-tile-info{margin-left:auto;display:inline-flex;align-items:center;gap:6px}
+.wiz-tile-info b{background:var(--accent);color:var(--accent-ink);border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700}
+.wiz-tile-info em{font-style:normal;font-size:10px;color:var(--muted-2)}
+
+/* directory row */
+.wiz-dir-row{display:flex;align-items:center;height:42px;padding:0 6px 0 12px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r3);transition:border-color .14s,box-shadow .14s}
+.wiz-dir-row:focus-within{border-color:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-glow)}
+.wd-ic{color:var(--muted-2);flex:none}
+.wiz-dir{flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--text);font-family:var(--mono);font-size:12.5px;padding:0 10px}
+/* the row's focus-within ring is the focus indicator — kill the global :focus-visible ring on the bare input */
+.wiz-dir:focus-visible{box-shadow:none}
+.wiz-dir::placeholder{color:var(--muted-2)}
+.wiz-browse{flex:none;width:30px;height:30px;border-radius:var(--r2);display:grid;place-items:center;color:var(--muted);transition:background .12s,color .12s}
+.wiz-browse:hover{background:var(--surface-3);color:var(--text)}
+
+/* layout tiles */
+.wiz-tiles{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.wiz-tile{aspect-ratio:1 / .86;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;border:1px solid var(--line);border-radius:var(--r3);background:var(--surface-1);transition:border-color .14s,background .14s,box-shadow .14s}
+.wiz-tile:hover{border-color:var(--line-strong);background:var(--surface-2)}
+.wiz-tile.on{border-color:var(--accent);background:var(--accent-glow);box-shadow:0 0 0 3px var(--accent-glow)}
+.wt-grid{display:grid;grid-template-columns:repeat(var(--c,1),1fr);gap:3px}
+.wt-grid i{width:6px;height:5px;border-radius:1.5px;background:var(--muted-2);opacity:.55;transition:background .14s,opacity .14s}
+.wiz-tile.on .wt-grid i{background:var(--accent);opacity:1}
+.wt-n{font-size:11px;font-weight:700;color:var(--muted)}
+.wiz-tile.on .wt-n{color:var(--accent)}
+
+/* section (recent / presets) */
+.wiz-sect{display:flex;flex-direction:column;gap:9px}
+.wiz-sect-head{display:flex;align-items:center;gap:7px}
+.ws-ic{color:var(--muted-2);flex:none}
+.ws-title{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--muted)}
+.wiz-sect-head b{font-size:10px;color:var(--muted-2);font-weight:600}
+.ws-side{margin-left:auto;font-size:10.5px;color:var(--muted-2)}
+
+/* recent cards */
+.wiz-recent{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.wiz-recent-card{display:flex;align-items:center;gap:10px;min-width:0;text-align:left;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r3);background:var(--surface-1);transition:border-color .14s,background .14s}
+.wiz-recent-card:hover{border-color:var(--line-strong);background:var(--surface-2)}
+.wr-ic{flex:none;width:28px;height:28px;border-radius:var(--r2);background:var(--surface-3);display:grid;place-items:center;color:var(--muted)}
+.wr-meta{flex:1;min-width:0;display:flex;flex-direction:column}
+.wr-meta b{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wr-meta span{font-family:var(--mono);font-size:10px;color:var(--muted-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wr-go{flex:none;color:var(--muted-2);opacity:0;transition:opacity .14s,color .14s}
+.wiz-recent-card:hover .wr-go{opacity:1;color:var(--accent)}
+
+/* presets */
+.wiz-presets{display:flex;flex-wrap:wrap;gap:8px}
+.wiz-preset{display:inline-flex;align-items:center;gap:8px;max-width:100%;min-width:0;padding:9px 13px;border:1px solid var(--line);border-radius:var(--r3);background:var(--surface-1);font-size:12px;font-weight:600;color:var(--text-2);cursor:pointer;user-select:none;transition:border-color .14s,color .14s}
+.wiz-preset:hover{border-color:var(--accent-dim);color:var(--text)}
+/* hover-revealed delete on saved presets */
+.wp-x{flex:none;width:16px;height:16px;margin:-2px -6px -2px -2px;border-radius:4px;display:grid;place-items:center;color:var(--muted-2);font-size:14px;line-height:1;opacity:0;transition:opacity .12s,background .12s,color .12s}
+.wiz-preset:hover .wp-x{opacity:1}
+.wp-x:hover{background:rgba(255,107,107,.16);color:var(--err)}
+.wp-dots{flex:none;display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
+.wp-dots i{width:4px;height:4px;border-radius:1px;background:var(--accent);opacity:.8}
+.wp-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wiz-preset.new{border-style:dashed;border-color:var(--line-strong);background:transparent;color:var(--muted)}
+.wiz-preset.new:hover{border-color:var(--accent-dim);color:var(--accent)}
+
+/* model multi-select (agents step): the whole card toggles; ×n shows its share
+   of the terminal count picked on the layout step */
+.crew-card.pick{cursor:pointer;font:inherit;text-align:left;width:100%}
+.crew-card.pick:hover{border-color:var(--accent-dim)}
+.crew-card.pick.on .cc-badge{color:var(--muted)}
+.wiz-share{flex:none;font-family:var(--mono);font-size:10px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--accent);background:var(--accent-glow);border:1px solid var(--accent-dim);border-radius:5px;padding:2px 6px}
+.custom-row .wiz-share{align-self:center}
+
+/* footer */
+.wiz-foot{display:flex;align-items:center;gap:9px;padding:14px 22px;border-top:1px solid var(--line);background:var(--surface-0)}
+.wf-spacer{flex:1}
+.wiz-back{display:inline-flex;align-items:center;gap:5px;padding:8px 10px;border-radius:var(--r2);color:var(--muted);font-size:12.5px;transition:background .12s,color .12s}
+.wiz-back:hover{background:var(--surface-2);color:var(--text)}
+.wiz-ghost{padding:8px 15px;border:1px solid var(--line-strong);border-radius:var(--r2);background:transparent;color:var(--text-2);font-size:12.5px;font-weight:500;transition:background .12s,color .12s}
+.wiz-ghost:hover{background:var(--surface-3);color:var(--text)}
+.wiz-next{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;border:1px solid var(--accent-dim);border-radius:var(--r2);background:var(--accent);color:var(--accent-ink);font-size:12.5px;font-weight:700;transition:background .12s,opacity .12s}
+.wiz-next:hover{background:#d3fc4d}
+.wiz-next:disabled{opacity:.45;cursor:default}
+
+/* narrow fallback */
+@media (max-width:640px){
+  .wiz-tiles{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .wiz-recent{grid-template-columns:1fr}
+  .wiz-body{padding:8px 20px 22px}
+}

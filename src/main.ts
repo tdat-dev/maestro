@@ -22,6 +22,9 @@ import {
   openDetachWindow,
   broadcastQuit,
   onAppQuit,
+  emitAppEvent,
+  onAppEvent,
+  focusThisWindow,
 } from "./ipc";
 import { branchName } from "./worktree";
 import {
@@ -34,6 +37,7 @@ import {
   type MascotMode,
 } from "./settings";
 import { CLI_PRESETS, expandCrew, runLimited, launchSpec, effectiveArgs, type CrewState, type CliPreset } from "./crew";
+import { TILE_OPTIONS, gridDims, countLabel, gridLabel, distributeCounts, sanitizeCount } from "./wizard";
 import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm } from "./workspaces";
 import { checkForUpdates } from "./updater";
 import { getVersion } from "@tauri-apps/api/app";
@@ -394,8 +398,16 @@ function wireTabDrag(ws: Workspace) {
       e.clientY < 0 ||
       e.clientX > window.innerWidth ||
       e.clientY > window.innerHeight;
-    if (out) void detachWorkspace(src);
-    else commitTabOrder();
+    if (out) {
+      // In a detached window, dragging a tab out first tries to fold it back
+      // into the main window; only if the main window is gone do we tear it out
+      // into a brand-new window (the original detach behaviour).
+      if (isDetachedWindow) {
+        void mergeWorkspaceToMain(src).then((ok) => {
+          if (!ok) void detachWorkspace(src);
+        });
+      } else void detachWorkspace(src);
+    } else commitTabOrder();
   });
   el.addEventListener("dragover", (e) => {
     if (!tabDragSrc || tabDragSrc === ws) return;
@@ -478,12 +490,11 @@ interface DetachPayload {
   agents: DetachAgent[];
 }
 
-/** Move `ws` into a brand-new Maestro window. Running agents are NOT killed:
- *  the new window re-attaches to their PTYs (`pty_attach`) and the backend
- *  replays the recent scrollback. This window just drops its tab. */
-async function detachWorkspace(ws: Workspace) {
-  const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const payload: DetachPayload = {
+/** Snapshot a workspace into a hand-off payload (running agents are referenced
+ *  by id so the receiver can re-attach via `pty_attach`; stopped ones stay
+ *  parked). Shared by detach (→ new window) and merge-back (→ main window). */
+function buildDetachPayload(ws: Workspace): DetachPayload {
+  return {
     name: ws.name,
     dir: ws.dir,
     repoRoot: ws.repoRoot,
@@ -495,6 +506,26 @@ async function detachWorkspace(ws: Workspace) {
       spawnedAt: p.spawnedAt,
     })),
   };
+}
+
+/** Hand-off done: drop `ws`'s tab locally WITHOUT killing its PTYs. Their output
+ *  keeps flowing into the backend scrollback buffer until the receiving window
+ *  attaches. Shared by detach and merge-back. */
+function releaseWorkspace(ws: Workspace) {
+  for (const p of ws.panes.values()) {
+    p.term.dispose();
+    p.el.remove();
+  }
+  ws.panes.clear();
+  dropWorkspace(ws);
+}
+
+/** Move `ws` into a brand-new Maestro window. Running agents are NOT killed:
+ *  the new window re-attaches to their PTYs (`pty_attach`) and the backend
+ *  replays the recent scrollback. This window just drops its tab. */
+async function detachWorkspace(ws: Workspace) {
+  const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const payload = buildDetachPayload(ws);
   try {
     localStorage.setItem(`maestro.detach.${key}`, JSON.stringify(payload));
   } catch {
@@ -507,15 +538,8 @@ async function detachWorkspace(ws: Workspace) {
     console.warn("detach window failed:", e);
     return;
   }
-  // Hand-off succeeded: drop the tab locally WITHOUT killing its PTYs. Their
-  // output keeps flowing into the backend scrollback buffer until the new
-  // window attaches.
-  for (const p of ws.panes.values()) {
-    p.term.dispose();
-    p.el.remove();
-  }
-  ws.panes.clear();
-  dropWorkspace(ws);
+  // Hand-off succeeded: drop the tab locally WITHOUT killing its PTYs.
+  releaseWorkspace(ws);
 }
 
 /** Remove a (already emptied) workspace's DOM + map entry and refocus. Shared
@@ -535,6 +559,63 @@ function dropWorkspace(ws: Workspace) {
   }
   updateCount();
   saveSession();
+}
+
+/* ---------------- merge back into the main window ---------------- */
+// The mirror of detach: a workspace in a DETACHED window can be folded BACK into
+// the main window. We use Tauri's app-global event bus (emit/listen) with an ack
+// handshake — the detached window only releases the tab once the main window
+// confirms it adopted it, so the workspace is never dropped if the main window
+// is gone (then we fall back to leaving the tab / detaching into a new window).
+const MERGE_EVT = "maestro://merge";
+const MERGE_ACK_EVT = "maestro://merge-ack";
+interface MergeMsg {
+  key: string;
+  ws: DetachPayload;
+}
+
+// Main-window side: adopt any workspace another window asks us to merge in, ack
+// it (keyed so the sender knows which request completed), and surface ourselves.
+if (!isDetachedWindow) {
+  void onAppEvent<MergeMsg>(MERGE_EVT, (m) => {
+    adoptWorkspace(m.ws);
+    void emitAppEvent(MERGE_ACK_EVT, { key: m.key });
+    void focusThisWindow().catch(() => {});
+  });
+}
+
+/** Detached-window side: hand `ws` back to the main window and (on success)
+ *  release the tab here. Returns false if the main window never acked within the
+ *  timeout (closed / not listening) — caller then leaves the tab untouched. */
+async function mergeWorkspaceToMain(ws: Workspace): Promise<boolean> {
+  const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const payload = buildDetachPayload(ws);
+
+  // The ack handler closes over this call's `resolve`/`timer`. We settle on the
+  // first of: a matching ack (success) or a ~2s timeout (main window gone).
+  let resolveAcked!: (ok: boolean) => void;
+  const ackedP = new Promise<boolean>((resolve) => (resolveAcked = resolve));
+  const timer = window.setTimeout(() => resolveAcked(false), 2000);
+
+  // Subscribe to the ack (filtered by our key) BEFORE emitting, so a fast main
+  // window can't ack into the void. Unlisten on every exit path.
+  const unlisten = await onAppEvent<{ key: string }>(MERGE_ACK_EVT, (a) => {
+    if (a?.key === key) {
+      window.clearTimeout(timer);
+      resolveAcked(true);
+    }
+  });
+  try {
+    void emitAppEvent(MERGE_EVT, { key, ws: payload } satisfies MergeMsg);
+    const acked = await ackedP;
+    if (!acked) return false; // main window gone — leave the tab where it is
+    releaseWorkspace(ws);
+    if (workspaces.size === 0) void destroyWindow(); // this window is now empty
+    return true;
+  } finally {
+    window.clearTimeout(timer);
+    unlisten();
+  }
 }
 
 /** In-app confirm modal (unlike the native dialog, it can carry a "Don't ask
@@ -975,6 +1056,13 @@ function bootDetached(key: string) {
   } catch {
     return;
   }
+  adoptWorkspace(payload);
+}
+
+/** Rebuild a workspace from a hand-off payload: re-attach to still-running
+ *  agents (`pty_attach`, backend replays scrollback) and park stopped ones —
+ *  exactly like a session restore. Shared by detach boot + merge-back. */
+function adoptWorkspace(payload: DetachPayload) {
   const ws = createWorkspace(payload.dir ?? null, payload.name);
   ws.repoRoot = typeof payload.repoRoot === "string" ? payload.repoRoot : null;
   ws.isolated = !!payload.isolated;
@@ -1022,10 +1110,7 @@ function renderRecents() {
     b.className = "recent-chip";
     b.title = dir;
     b.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>${dir}</span>`;
-    b.addEventListener("click", () => {
-      openModal();
-      mDir.value = dir;
-    });
+    b.addEventListener("click", () => openWizard(dir));
     list.appendChild(b);
   }
 }
@@ -1174,6 +1259,7 @@ async function spawnCrew(
   dir: string | null,
   skipPerms: boolean,
   mode: "new" | "current",
+  wantIsolate: boolean,
 ): Promise<void> {
   const fleet = expandCrew(crewState);
   if (fleet.length === 0) return;
@@ -1189,9 +1275,9 @@ async function spawnCrew(
 
   // Decide isolation once per spawn: only for a fresh git-repo workspace when
   // the modal's toggle is on. (Existing isolated workspaces keep their setting.)
-  if (!ws.isolated && dir) {
+  if (!ws.isolated && dir && wantIsolate) {
     const root = await gitRepoRoot(dir).catch(() => null);
-    if (root && !mIsolateRow.hidden && mIsolate.checked) {
+    if (root) {
       ws.repoRoot = root;
       ws.isolated = true;
     }
@@ -1235,7 +1321,7 @@ async function spawnFromModal() {
   if (dir) addRecent(dir);
   closeModal();
 
-  await spawnCrew(crew, dir, skipPerms, modalTarget);
+  await spawnCrew(crew, dir, skipPerms, modalTarget, !mIsolateRow.hidden && mIsolate.checked);
 }
 
 buildCrewGrid();
@@ -1294,79 +1380,20 @@ function templateSummary(t: Template): string {
   return parts.join(" · ");
 }
 
-const tplModal = document.getElementById("tplModal") as HTMLElement;
-const tplListEl = document.getElementById("tplList") as HTMLElement;
-
-function renderTemplates() {
-  const list = loadTemplates();
-  tplListEl.replaceChildren();
-  if (list.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "tpl-empty";
-    empty.textContent = "No templates yet — save one from the New workspace dialog.";
-    tplListEl.appendChild(empty);
-    return;
-  }
-  for (const t of list) {
-    const row = document.createElement("div");
-    row.className = "tpl-row";
-    row.innerHTML =
-      `<div class="tpl-meta"><span class="tpl-name"></span><span class="tpl-sum"></span></div>` +
-      `<div class="tpl-actions">` +
-      `<button class="btn tpl-spawn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Spawn</button>` +
-      `<button class="tpl-del" aria-label="Delete template">${KILL_SVG}</button>` +
-      `</div>`;
-    row.querySelector(".tpl-name")!.textContent = t.name;
-    const sumEl = row.querySelector<HTMLElement>(".tpl-sum")!;
-    const sum = templateSummary(t);
-    sumEl.textContent = sum;
-    sumEl.title = sum;
-    row.querySelector(".tpl-spawn")!.addEventListener("click", async () => {
-      closeTplModal();
-      await spawnCrew(
-        { counts: t.counts, custom: t.custom, customCount: t.customCount },
-        t.dir || null,
-        t.skipPerms,
-        "new",
-      );
-    });
-    row.querySelector(".tpl-del")!.addEventListener("click", () => {
-      saveTemplates(loadTemplates().filter((x) => x.id !== t.id));
-      renderTemplates();
-    });
-    tplListEl.appendChild(row);
-  }
-}
-
-function openTplModal() {
-  renderTemplates();
-  tplModal.classList.add("open");
-}
-function closeTplModal() {
-  tplModal.classList.remove("open");
-}
-
-document.getElementById("btnTemplates")?.addEventListener("click", openTplModal);
-document.getElementById("tplClose")?.addEventListener("click", closeTplModal);
-document.getElementById("tplCloseBtn")?.addEventListener("click", closeTplModal);
-tplModal.addEventListener("mousedown", (e) => {
-  if (e.target === tplModal) closeTplModal();
-});
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && tplModal.classList.contains("open")) closeTplModal();
-});
+// (The standalone Templates modal was retired — presets in the workspace
+// wizard are the one place to save, launch, and delete crew configurations.)
 
 document.getElementById("mSaveTpl")?.addEventListener("click", async () => {
   const dir = mDir.value.trim();
   crew.custom = mCustom.value;
   const skipPerms = mSkipPerms.checked;
   if (expandCrew(crew).length === 0) return;
-  const defName = (dir ? basename(dir) : "") || "Crew template";
+  const defName = (dir ? basename(dir) : "") || "Crew preset";
   const { ok, value } = await confirmModal({
-    title: "Save template",
-    message: "Name this crew template so you can spawn it again later.",
+    title: "Save preset",
+    message: "Name this crew preset — it shows up under PRESETS in the workspace wizard.",
     okLabel: "Save",
-    input: { placeholder: "Template name", value: defName },
+    input: { placeholder: "Preset name", value: defName },
   });
   if (!ok) return;
   const name = value.trim() || defName;
@@ -1382,11 +1409,466 @@ document.getElementById("mSaveTpl")?.addEventListener("click", async () => {
   saveTemplates([...loadTemplates(), tpl]);
 });
 
+/* ---------------- workspace wizard ---------------- */
+
+const WIZ_COUNT_KEY = "maestro.wizCount";
+const wizModal = document.getElementById("wizModal") as HTMLElement;
+const wizDir = document.getElementById("wizDir") as HTMLInputElement;
+const wizCustom = document.getElementById("wizCustom") as HTMLInputElement;
+const wizCrewGrid = document.getElementById("wizCrewGrid") as HTMLElement;
+const wizCrewTotal = document.getElementById("wizCrewTotal") as HTMLElement;
+const wizSpawnLabel = document.getElementById("wizSpawnLabel") as HTMLElement;
+const wizSkipPerms = document.getElementById("wizSkipPerms") as HTMLInputElement;
+const wizIsolate = document.getElementById("wizIsolate") as HTMLInputElement;
+const wizIsolateRow = document.getElementById("wizIsolateRow") as HTMLElement;
+const wizStepLayout = document.getElementById("wizStepLayout") as HTMLElement;
+const wizStepAgents = document.getElementById("wizStepAgents") as HTMLElement;
+const wizTilesEl = document.getElementById("wizTiles") as HTMLElement;
+const wizRecentWrap = document.getElementById("wizRecentWrap") as HTMLElement;
+const wizRecentEl = document.getElementById("wizRecent") as HTMLElement;
+const wizPresetsWrap = document.getElementById("wizPresetsWrap") as HTMLElement;
+const wizPresetsEl = document.getElementById("wizPresets") as HTMLElement;
+
+const FOLDER_SVG =
+  `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>`;
+const CHEVRON_SVG =
+  `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>`;
+
+let wizCount = sanitizeCount(localStorage.getItem(WIZ_COUNT_KEY));
+let wizStep: "layout" | "agents" = "layout";
+
+// Reveal the isolate toggle only when the working directory is a single git repo.
+async function refreshWizIsolate() {
+  const dir = wizDir.value.trim();
+  let isRepo = false;
+  if (dir) {
+    try {
+      isRepo = (await gitRepoRoot(dir)) !== null;
+    } catch {
+      isRepo = false;
+    }
+  }
+  if (wizDir.value.trim() !== dir) return; // dir changed while awaiting — drop stale result
+  wizIsolateRow.hidden = !isRepo;
+}
+
+function updateTileInfo() {
+  const tc = document.getElementById("wizTileCount");
+  const tg = document.getElementById("wizTileGrid");
+  if (tc) tc.textContent = countLabel(wizCount);
+  if (tg) tg.textContent = gridLabel(wizCount);
+}
+
+function renderWizTiles() {
+  wizTilesEl.replaceChildren();
+  for (const n of TILE_OPTIONS) {
+    const { cols, rows } = gridDims(n);
+    const b = document.createElement("button");
+    b.className = "wiz-tile";
+    b.dataset.n = String(n);
+    b.classList.toggle("on", n === wizCount);
+    const cells = Array.from({ length: n }, () => "<i></i>").join("");
+    b.innerHTML =
+      `<span class="wt-grid" style="--c:${cols};--r:${rows}">${cells}</span>` +
+      `<span class="wt-n">${n}</span>`;
+    b.addEventListener("click", () => {
+      wizCount = n;
+      localStorage.setItem(WIZ_COUNT_KEY, String(n));
+      wizTilesEl.querySelectorAll<HTMLElement>(".wiz-tile").forEach((t) =>
+        t.classList.toggle("on", t.dataset.n === String(n)),
+      );
+      updateTileInfo();
+    });
+    wizTilesEl.appendChild(b);
+  }
+  updateTileInfo();
+}
+
+function renderWizRecents() {
+  const r = getRecents();
+  if (r.length === 0) {
+    wizRecentWrap.hidden = true;
+    return;
+  }
+  wizRecentWrap.hidden = false;
+  const cnt = document.getElementById("wizRecentCount");
+  if (cnt) cnt.textContent = String(r.length);
+  wizRecentEl.replaceChildren();
+  for (const dir of r) {
+    const b = document.createElement("button");
+    b.className = "wiz-recent-card";
+    b.title = dir;
+    const ic = document.createElement("span");
+    ic.className = "wr-ic";
+    ic.innerHTML = FOLDER_SVG;
+    const meta = document.createElement("span");
+    meta.className = "wr-meta";
+    const name = document.createElement("b");
+    name.textContent = basename(dir) || dir;
+    const full = document.createElement("span");
+    full.textContent = dir;
+    meta.append(name, full);
+    const go = document.createElement("span");
+    go.className = "wr-go";
+    go.innerHTML = CHEVRON_SVG;
+    b.append(ic, meta, go);
+    b.addEventListener("click", () => {
+      wizDir.value = dir;
+      void refreshWizIsolate();
+    });
+    wizRecentEl.appendChild(b);
+  }
+}
+
+// Starter presets shown until the user saves their own. They spawn into the
+// folder currently picked in the wizard (no stored dir of their own).
+const STARTER_PRESETS: Array<{ name: string; counts: Record<string, number> }> = [
+  { name: "Claude ×2", counts: { claude: 2 } },
+  { name: "Claude ×4", counts: { claude: 4 } },
+  { name: "Claude + Codex", counts: { claude: 1, codex: 1 } },
+  { name: "Claude · Codex · Gemini", counts: { claude: 1, codex: 1, gemini: 1 } },
+];
+
+// A chip is a div (not a button) so the hover-revealed ✕ can be a real button.
+function wizPresetChip(name: string, title: string, total: number, onPick: () => void, onDelete?: () => void): HTMLElement {
+  const b = document.createElement("div");
+  b.className = "wiz-preset";
+  b.title = title;
+  b.tabIndex = 0;
+  b.setAttribute("role", "button");
+  const dots = document.createElement("span");
+  dots.className = "wp-dots";
+  dots.innerHTML = Array.from({ length: Math.min(total, 9) }, () => "<i></i>").join("");
+  const nameEl = document.createElement("span");
+  nameEl.className = "wp-name";
+  nameEl.textContent = name;
+  b.append(dots, nameEl);
+  if (onDelete) {
+    const x = document.createElement("button");
+    x.className = "wp-x";
+    x.setAttribute("aria-label", "Delete preset");
+    x.textContent = "×";
+    x.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onDelete();
+    });
+    b.appendChild(x);
+  }
+  b.addEventListener("click", onPick);
+  b.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onPick();
+    }
+  });
+  return b;
+}
+
+/** One-click launch: close the wizard and spawn `state` into the preset's own
+ *  saved folder — so a preset is folder + crew, done. Presets without a folder
+ *  (starters) use whatever the wizard's folder field holds. */
+function launchPreset(state: CrewState, presetDir: string, skipPerms: boolean) {
+  const dir = presetDir || wizDir.value.trim() || null;
+  if (dir) addRecent(dir);
+  closeWizard();
+  void spawnCrew(state, dir, skipPerms, "new", false);
+}
+
+function renderWizPresets() {
+  const list = loadTemplates();
+  wizPresetsWrap.hidden = false;
+  const cnt = document.getElementById("wizPresetCount");
+  if (cnt) cnt.textContent = list.length ? String(list.length) : "";
+  wizPresetsEl.replaceChildren();
+  if (list.length > 0) {
+    for (const t of list) {
+      const state: CrewState = { counts: t.counts, custom: t.custom, customCount: t.customCount };
+      const total = expandCrew(state).length;
+      wizPresetsEl.appendChild(
+        wizPresetChip(t.name, templateSummary(t), total, () => launchPreset(state, t.dir, t.skipPerms), () => {
+          saveTemplates(loadTemplates().filter((x) => x.id !== t.id));
+          renderWizPresets();
+        }),
+      );
+    }
+  } else {
+    for (const p of STARTER_PRESETS) {
+      const state: CrewState = { counts: p.counts, custom: "", customCount: 0 };
+      const total = expandCrew(state).length;
+      wizPresetsEl.appendChild(
+        wizPresetChip(p.name, `${p.name} — launches in the folder above`, total, () => launchPreset(state, "", false)),
+      );
+    }
+  }
+  const add = document.createElement("button");
+  add.className = "wiz-preset new";
+  add.textContent = "+ NEW";
+  add.title = "Build a preset: pick models on the next step, then save it";
+  add.addEventListener("click", () => {
+    wizPresetMode = true;
+    setWizStep("agents");
+  });
+  wizPresetsEl.appendChild(add);
+}
+
+// The Agents step is a multi-select: tap models on/off, no steppers. The
+// terminal count picked on the Layout step is split between the selected ids
+// (custom command included while it has text) via distributeCounts.
+let wizSel = new Set<string>(["claude"]);
+
+/** Selected ids in CLI_PRESETS order; the custom command (when filled) last. */
+function wizSelectedIds(): string[] {
+  const ids = CLI_PRESETS.filter((p) => wizSel.has(p.id)).map((p) => p.id);
+  if (wizSel.has("custom") && wizCustom.value.trim()) ids.push("custom");
+  return ids;
+}
+
+/** The wizard's effective crew: tile count split across the selection. */
+function wizCrewState(): CrewState {
+  const counts = distributeCounts(wizCount, wizSelectedIds());
+  const customCount = counts["custom"] ?? 0;
+  delete counts["custom"];
+  return { counts, custom: wizCustom.value, customCount };
+}
+
+function renderWizCrew() {
+  if (!wizCrewGrid) return;
+  const dist = distributeCounts(wizCount, wizSelectedIds());
+  const total = Object.values(dist).reduce((a, b) => a + b, 0);
+  if (wizCrewTotal) wizCrewTotal.textContent = String(total);
+  if (wizSpawnLabel) wizSpawnLabel.textContent = total > 0 ? `Spawn ${total} agent${total > 1 ? "s" : ""}` : "Spawn";
+  const sp = document.getElementById("wizSpawn") as HTMLButtonElement | null;
+  if (sp) sp.disabled = total === 0;
+  const ac = document.getElementById("wizAgentCount");
+  if (ac) ac.textContent = countLabel(wizCount);
+  wizCrewGrid.querySelectorAll<HTMLElement>(".crew-card").forEach((card) => {
+    const id = card.dataset.id!;
+    const on = wizSel.has(id);
+    card.classList.toggle("on", on);
+    const share = card.querySelector<HTMLElement>("[data-share]");
+    if (share) {
+      share.hidden = !on;
+      share.textContent = `×${dist[id] ?? 0}`;
+    }
+  });
+  const cs = document.getElementById("wizCustomShare");
+  if (cs) {
+    const on = wizSel.has("custom") && wizCustom.value.trim() !== "";
+    cs.hidden = !on;
+    cs.textContent = `×${dist["custom"] ?? 0}`;
+  }
+}
+
+function buildWizCrewGrid() {
+  wizCrewGrid.replaceChildren();
+  for (const p of CLI_PRESETS) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "crew-card pick";
+    card.dataset.id = p.id;
+    const cmd = [p.program, ...p.args].join(" ");
+    card.innerHTML = `
+      <div class="cc-meta">
+        <span class="cc-name">${p.label}</span>
+        <span class="cc-badge" title="${cmd}">${cmd}</span>
+      </div>
+      <span class="wiz-share" data-share hidden>×0</span>`;
+    card.addEventListener("click", () => {
+      if (wizSel.has(p.id)) wizSel.delete(p.id);
+      else wizSel.add(p.id);
+      renderWizCrew();
+    });
+    wizCrewGrid.appendChild(card);
+  }
+}
+
+// "+ NEW" preset flow: the Agents step doubles as the preset builder. In
+// preset mode the Spawn button hides and "Save preset" becomes the primary CTA.
+let wizPresetMode = false;
+
+function setWizStep(step: "layout" | "agents") {
+  wizStep = step;
+  if (step === "layout") wizPresetMode = false;
+  wizStepLayout.hidden = step !== "layout";
+  wizStepAgents.hidden = step !== "agents";
+  const onLayout = step === "layout";
+  (document.getElementById("wizNext") as HTMLElement).hidden = !onLayout;
+  (document.getElementById("wizNoAi") as HTMLElement).hidden = !onLayout;
+  (document.getElementById("wizSpawn") as HTMLElement).hidden = onLayout || wizPresetMode;
+  const saveTpl = document.getElementById("wizSaveTpl") as HTMLElement;
+  saveTpl.hidden = onLayout;
+  saveTpl.classList.toggle("wiz-next", wizPresetMode);
+  saveTpl.classList.toggle("wiz-ghost", !wizPresetMode);
+  // The step doubles as the preset builder — retitle it accordingly.
+  const heroH = wizStepAgents.querySelector<HTMLElement>(".wiz-hero h1");
+  const heroP = wizStepAgents.querySelector<HTMLElement>(".wiz-hero p");
+  if (heroH) heroH.textContent = wizPresetMode ? "Build a preset" : "Add AI agents";
+  if (heroP)
+    heroP.textContent = wizPresetMode
+      ? "Pick the models (and count above) for this preset, then hit Save preset."
+      : "Select one or more models — your terminals are split between them.";
+  const stepLayout = document.querySelector<HTMLElement>('.wiz-steps .wstep[data-step="layout"]');
+  const stepAgents = document.querySelector<HTMLElement>('.wiz-steps .wstep[data-step="agents"]');
+  const stepStart = document.querySelector<HTMLElement>('.wiz-steps .wstep[data-step="start"]');
+  if (stepStart) stepStart.classList.add("done");
+  if (stepLayout) {
+    stepLayout.classList.toggle("on", onLayout);
+    stepLayout.classList.toggle("done", !onLayout);
+  }
+  if (stepAgents) stepAgents.classList.toggle("on", !onLayout);
+  if (!onLayout) renderWizCrew();
+}
+
+function openWizard(dir?: string) {
+  const saved = loadCrew();
+  wizDir.value = dir ?? saved.dir;
+  wizCustom.value = saved.custom;
+  wizSkipPerms.checked = saved.skipPerms;
+  wizCount = sanitizeCount(localStorage.getItem(WIZ_COUNT_KEY));
+  // Last session's crew → which models start selected (default: Claude).
+  wizSel = new Set(CLI_PRESETS.filter((p) => (saved.counts[p.id] ?? 0) > 0).map((p) => p.id));
+  if (saved.customCount > 0 && saved.custom.trim()) wizSel.add("custom");
+  if (wizSel.size === 0) wizSel.add("claude");
+  renderWizTiles();
+  renderWizRecents();
+  renderWizPresets();
+  renderWizCrew();
+  setWizStep("layout");
+  wizModal.classList.add("open");
+  wizDir.focus();
+  wizDir.select();
+  void refreshWizIsolate();
+}
+
+function closeWizard() {
+  wizModal.classList.remove("open");
+}
+
+buildWizCrewGrid();
+
+wizDir.addEventListener("change", () => void refreshWizIsolate());
+
+// Typing a custom command opts it into the split; clearing it opts out.
+wizCustom.addEventListener("input", () => {
+  if (wizCustom.value.trim()) wizSel.add("custom");
+  else wizSel.delete("custom");
+  renderWizCrew();
+});
+
+document.getElementById("wizBrowse")?.addEventListener("click", async () => {
+  const picked = await pickFolder(wizDir.value || undefined);
+  if (picked) {
+    wizDir.value = picked;
+    wizDir.focus();
+    void refreshWizIsolate();
+  }
+});
+
+document.getElementById("wizBack")?.addEventListener("click", () => {
+  if (wizStep === "agents") setWizStep("layout");
+  else closeWizard();
+});
+
+document.getElementById("wizNext")?.addEventListener("click", () => setWizStep("agents"));
+
+document.getElementById("wizNoAi")?.addEventListener("click", () => {
+  const dir = wizDir.value.trim() || null;
+  if (dir) addRecent(dir);
+  closeWizard();
+  void spawnCrew({ counts: { powershell: wizCount }, custom: "", customCount: 0 }, dir, false, "new", false);
+});
+
+document.getElementById("wizSpawn")?.addEventListener("click", () => void spawnFromWizard());
+
+async function spawnFromWizard() {
+  const dir = wizDir.value.trim() || null;
+  const skipPerms = wizSkipPerms.checked;
+  const state = wizCrewState();
+  if (expandCrew(state).length === 0) return;
+  localStorage.setItem(
+    STORE_KEY,
+    JSON.stringify({
+      counts: state.counts,
+      custom: state.custom,
+      customCount: state.customCount,
+      dir: dir ?? "",
+      skipPerms,
+    }),
+  );
+  if (dir) addRecent(dir);
+  closeWizard();
+  await spawnCrew(state, dir, skipPerms, "new", !wizIsolateRow.hidden && wizIsolate.checked);
+}
+
+/** Save the wizard's current setup (tile count split over the selected models)
+ *  as a named preset. Shared by the Agents-step button and the + NEW chip. */
+async function saveWizTemplate() {
+  const dir = wizDir.value.trim();
+  const skipPerms = wizSkipPerms.checked;
+  const state = wizCrewState();
+  if (expandCrew(state).length === 0) {
+    setWizStep("agents"); // nothing selected — let the user compose a crew first
+    return;
+  }
+  const defName = (dir ? basename(dir) : "") || "Crew preset";
+  const summary = templateSummary({ id: "", name: "", counts: state.counts, custom: state.custom, customCount: state.customCount, dir, skipPerms });
+  const { ok, value } = await confirmModal({
+    title: "Save preset",
+    message: dir
+      ? `Save "${summary}" as a one-click preset — it remembers this folder, so later one tap spawns everything.`
+      : `Save "${summary}" as a one-click preset. Tip: pick a working folder first and the preset will remember it.`,
+    okLabel: "Save",
+    input: { placeholder: "Preset name", value: defName },
+  });
+  if (!ok) return;
+  const name = value.trim() || defName;
+  const tpl: Template = {
+    id: "tpl-" + Math.random().toString(36).slice(2, 9),
+    name,
+    counts: { ...state.counts },
+    custom: state.custom,
+    customCount: state.customCount,
+    dir,
+    skipPerms,
+  };
+  saveTemplates([...loadTemplates(), tpl]);
+  renderWizPresets();
+  // Came here via "+ NEW" → hop back to the layout step to show the new chip.
+  if (wizPresetMode) setWizStep("layout");
+}
+
+document.getElementById("wizSaveTpl")?.addEventListener("click", () => void saveWizTemplate());
+
+document.getElementById("wizClose")?.addEventListener("click", closeWizard);
+wizModal.addEventListener("mousedown", (e) => {
+  if (e.target === wizModal) closeWizard();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && wizModal.classList.contains("open")) closeWizard();
+});
+
 /* ---------------- home + workspace triggers ---------------- */
 
-document.getElementById("btnNewWorkspace")?.addEventListener("click", () => openModal("new"));
+document.getElementById("btnNewWorkspace")?.addEventListener("click", () => openWizard());
 document.getElementById("btnNewAgent")?.addEventListener("click", () => openModal("current"));
-tabAdd?.addEventListener("click", () => openModal("new"));
+tabAdd?.addEventListener("click", () => openWizard());
+
+// Explicit merge-back affordance — only meaningful (and only shown) in a
+// detached window: folds every workspace here back into the main window,
+// stopping early if the main window stops acking (closed / not listening).
+{
+  const btnMerge = document.getElementById("btnMergeMain") as HTMLButtonElement | null;
+  if (btnMerge && isDetachedWindow) {
+    btnMerge.hidden = false;
+    btnMerge.addEventListener("click", () => {
+      void (async () => {
+        for (const w of [...workspaces.values()]) {
+          if (!(await mergeWorkspaceToMain(w))) break;
+        }
+      })();
+    });
+  }
+}
 document.getElementById("btnHome")?.addEventListener("click", goHome);
 document.getElementById("homeResume")?.addEventListener("click", resumeWorkspace);
 

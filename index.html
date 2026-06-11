@@ -88,11 +88,6 @@
         <b>Quick terminal</b>
         <span>One shell, right now</span>
       </button>
-      <button class="card" id="btnTemplates">
-        <span class="c-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>
-        <b>Templates</b>
-        <span>Spawn a saved crew in one click</span>
-      </button>
     </div>
 
     <div class="recents" id="recents" hidden>
@@ -115,6 +110,7 @@
       <button class="tab-add" id="tabAdd" aria-label="New workspace"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
     </nav>
     <div class="spacer" data-tauri-drag-region></div>
+    <button class="tb-btn" id="btnMergeMain" hidden title="Move this workspace back into the main Maestro window"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M14 12H3M10 8l4 4-4 4M21 3v18"/></svg> Merge</button>
     <button class="tb-btn" id="btnAiCode" title="AI Code — review agent changes"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg> AI Code</button>
     <button class="tb-btn" id="btnNewAgent"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Agent</button>
     <div class="stats" data-tauri-drag-region>
@@ -191,10 +187,128 @@
       <div class="crew-total">Total: <b id="crewTotal">0</b> agents</div>
     </div>
     <div class="modal-foot">
-      <button class="btn-ghost" id="mSaveTpl">Save template</button>
+      <button class="btn-ghost" id="mSaveTpl">Save preset</button>
       <button class="btn-ghost" id="mCancel">Cancel</button>
       <button class="btn" id="mSpawn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> <span id="mSpawnLabel">Spawn</span></button>
     </div>
+  </div>
+</div>
+
+<!-- ===================== WORKSPACE WIZARD ===================== -->
+<div class="backdrop wiz-backdrop" id="wizModal">
+  <div class="wizard" role="dialog" aria-modal="true" aria-label="Set up your workspace">
+    <button class="wiz-x" id="wizClose" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+
+    <div class="wiz-steps" aria-hidden="true">
+      <span class="wstep done" data-step="start">
+        <span class="ws-dot"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.2 5 8.6 9.5 3.6"/></svg></span>
+        <span class="ws-label">Start</span>
+      </span>
+      <span class="ws-line"></span>
+      <span class="wstep on" data-step="layout">
+        <span class="ws-dot">2</span>
+        <span class="ws-label">Layout</span>
+      </span>
+      <span class="ws-line"></span>
+      <span class="wstep" data-step="agents">
+        <span class="ws-dot">3</span>
+        <span class="ws-label">Agents</span>
+      </span>
+    </div>
+
+    <div class="wiz-body">
+      <!-- step: layout -->
+      <section class="wiz-step" id="wizStepLayout">
+        <header class="wiz-hero">
+          <h1>Set up your workspace</h1>
+          <p>Pick a folder to work in and choose how many terminals you want.</p>
+        </header>
+
+        <div class="wiz-field">
+          <div class="wiz-label">Working folder <span class="wl-hint">Where your terminals will start</span></div>
+          <div class="wiz-dir-row">
+            <span class="wd-ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
+            <input class="wiz-dir" id="wizDir" placeholder="e.g. D:\projects\app" spellcheck="false" autocapitalize="off" autocomplete="off">
+            <button class="wiz-browse" id="wizBrowse" aria-label="Browse for folder" title="Browse…"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+          </div>
+        </div>
+
+        <div class="wiz-field">
+          <div class="wiz-label">How many terminals? <span class="wl-hint">Tap a tile to choose a layout</span>
+            <span class="wiz-tile-info"><b id="wizTileCount">1 terminal</b><em id="wizTileGrid">1×1 grid</em></span>
+          </div>
+          <div class="wiz-tiles" id="wizTiles" role="group" aria-label="How many terminals"></div>
+        </div>
+
+        <div class="wiz-sect" id="wizRecentWrap" hidden>
+          <div class="wiz-sect-head">
+            <span class="ws-ic"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+            <span class="ws-title">Recent</span><b id="wizRecentCount"></b>
+            <span class="ws-side">Last opened workspaces</span>
+          </div>
+          <div class="wiz-recent" id="wizRecent"></div>
+        </div>
+
+        <div class="wiz-sect" id="wizPresetsWrap" hidden>
+          <div class="wiz-sect-head">
+            <span class="ws-ic"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+            <span class="ws-title">Presets</span><b id="wizPresetCount"></b>
+            <span class="ws-side">One-click launch</span>
+          </div>
+          <div class="wiz-presets" id="wizPresets"></div>
+        </div>
+      </section>
+
+      <!-- step: agents -->
+      <section class="wiz-step" id="wizStepAgents" hidden>
+        <header class="wiz-hero">
+          <h1>Add AI agents</h1>
+          <p>Select one or more models — your terminals are split between them.</p>
+        </header>
+
+        <div class="wiz-field">
+          <div class="wiz-label">Models <span class="wl-hint">Tap to select — ×n shows each model's share</span>
+            <span class="wiz-tile-info"><b id="wizAgentCount">1 terminal</b></span>
+          </div>
+          <div class="crew" id="wizCrewGrid"></div>
+        </div>
+
+        <div class="wiz-field">
+          <div class="wiz-label">Custom command <span class="wl-hint">Counts as a model while filled in</span></div>
+          <div class="custom-row">
+            <input class="input" id="wizCustom" placeholder="e.g. ollama run llama3" spellcheck="false" autocapitalize="off" autocomplete="off">
+            <span class="wiz-share" id="wizCustomShare" hidden>×0</span>
+          </div>
+        </div>
+
+        <label class="perm-toggle" for="wizSkipPerms">
+          <input type="checkbox" id="wizSkipPerms">
+          <span class="pt-sw"></span>
+          <span class="pt-text">
+            <b>Skip permission prompts <em>full access</em></b>
+            <span>Auto-adds the skip-permission flag for: Claude, Codex, Gemini, Qwen, Aider, Copilot</span>
+          </span>
+        </label>
+        <label class="perm-toggle" for="wizIsolate" id="wizIsolateRow" hidden>
+          <input type="checkbox" id="wizIsolate" checked>
+          <span class="pt-sw"></span>
+          <span class="pt-text">
+            <b>Isolate each agent in its own git worktree</b>
+            <span>Each agent works on its own branch off HEAD, so changes are reviewable per agent. Only available when the folder is a git repo.</span>
+          </span>
+        </label>
+        <div class="crew-total">Total: <b id="wizCrewTotal">0</b> agents</div>
+      </section>
+    </div>
+
+    <footer class="wiz-foot">
+      <button class="wiz-back" id="wizBack"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg> Back</button>
+      <span class="wf-spacer"></span>
+      <button class="wiz-ghost" id="wizSaveTpl" hidden>Save preset</button>
+      <button class="wiz-ghost" id="wizNoAi">Open without AI</button>
+      <button class="wiz-next" id="wizNext">Next: Add AI agents <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      <button class="wiz-next" id="wizSpawn" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> <span id="wizSpawnLabel">Spawn</span></button>
+    </footer>
   </div>
 </div>
 
@@ -216,22 +330,6 @@
     <div class="modal-foot">
       <button class="btn-ghost" id="cfCancel">Cancel</button>
       <button class="btn danger" id="cfOk">Confirm</button>
-    </div>
-  </div>
-</div>
-
-<!-- ===================== TEMPLATES ===================== -->
-<div class="backdrop" id="tplModal">
-  <div class="modal" role="dialog" aria-modal="true" aria-label="Templates">
-    <div class="modal-head">
-      <span class="t">Templates</span>
-      <button class="x" id="tplClose" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-    </div>
-    <div class="modal-body">
-      <div class="tpl-list" id="tplList"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn-ghost" id="tplCloseBtn">Close</button>
     </div>
   </div>
 </div>

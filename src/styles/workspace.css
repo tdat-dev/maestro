@@ -45,36 +45,36 @@
 .clock{font-family:var(--mono);font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--muted-2);flex:none;padding-left:13px;border-left:1px solid var(--line)}
 
 /* ---------- workspace area ---------- */
-.main{overflow:hidden;padding:10px;
-  background:
-    radial-gradient(760px 340px at 12% -10%, rgba(198,241,53,.05), transparent 60%),
-    radial-gradient(680px 460px at 100% 112%, rgba(94,194,240,.04), transparent 62%),
-    radial-gradient(circle at 1px 1px, rgba(255,255,255,.02) 1px, transparent 0);
-  background-size:auto,auto,22px 22px}
+/* Frameless: terminals run edge-to-edge; the 1px grid gap is the only divider. */
+.main{overflow:hidden;padding:0;background:var(--bg)}
 /* dynamic tiling — panes fill the whole area; --cols/--rows set per pane count */
-.grid{display:grid;grid-template-columns:repeat(var(--cols,1),minmax(0,1fr));grid-template-rows:repeat(var(--rows,1),minmax(0,1fr));gap:10px;height:100%}
+.grid{display:grid;grid-template-columns:repeat(var(--cols,1),minmax(0,1fr));grid-template-rows:repeat(var(--rows,1),minmax(0,1fr));gap:1px;height:100%;background:var(--line)}
 
-/* ---------- pane ---------- */
-.pane{position:relative;display:flex;flex-direction:column;background:var(--surface-1);border:1px solid var(--line);border-radius:var(--r3);overflow:hidden;transition:border-color .15s,box-shadow .15s;animation:paneIn .3s cubic-bezier(.2,.7,.2,1) both}
-.pane:hover{border-color:var(--line-strong)}
-.pane.run{border-color:rgba(58,210,159,.26)}
+/* ---------- pane (frameless: the pill header floats INSIDE the terminal) ---------- */
+.pane{position:relative;display:flex;flex-direction:column;background:#000;overflow:hidden;transition:box-shadow .15s;animation:paneIn .3s cubic-bezier(.2,.7,.2,1) both}
 /* highlighted while a file is dragged over it (drop → path typed into the PTY) */
-.pane.drop-target{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim),inset 0 0 44px -12px rgba(198,241,53,.3)}
+.pane.drop-target{box-shadow:inset 0 0 0 2px var(--accent-dim),inset 0 0 44px -12px rgba(198,241,53,.3)}
 .pane.drop-target::after{content:"Drop file to attach path";position:absolute;inset:0;display:grid;place-items:center;background:rgba(13,16,20,.5);color:var(--accent);font-size:13px;font-weight:600;letter-spacing:.02em;pointer-events:none;z-index:5}
-.pane.run::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:linear-gradient(90deg,transparent,var(--run),transparent);opacity:.55}
-.pane.err{border-color:rgba(255,107,107,.4)}
-.pane.stopped{opacity:.66;transition:opacity .15s,border-color .15s,box-shadow .15s}
+.pane.run::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:linear-gradient(90deg,transparent,var(--run),transparent);opacity:.55;z-index:7;pointer-events:none}
+.pane.err{box-shadow:inset 0 0 0 1px rgba(255,107,107,.4)}
+.pane.stopped{opacity:.66;transition:opacity .15s,box-shadow .15s}
 .pane.stopped:hover{opacity:1}
-.pane-head{display:flex;align-items:center;gap:9px;padding:7px 8px 7px 9px;background:var(--surface-2);border-bottom:1px solid var(--line);flex:none;cursor:grab}
+/* floating pill: small rounded capsule hovering centered at the top, overlaying
+   the terminal content itself — fades way down until the pane is hovered */
+.pane-head{position:absolute;top:6px;left:50%;transform:translateX(-50%);z-index:6;width:max-content;max-width:calc(100% - 24px);display:flex;align-items:center;gap:7px;padding:4px 6px 4px 5px;background:rgba(28,35,44,.9);backdrop-filter:blur(8px);border:1px solid var(--line-strong);border-radius:999px;box-shadow:0 4px 18px rgba(0,0,0,.45);flex:none;cursor:grab;opacity:.5;transition:opacity .15s}
 .pane-head:active{cursor:grabbing}
+.pane:hover .pane-head,.pane-head:hover{opacity:1}
 .pane-head .mono,.pane-head .pctrl{cursor:pointer}
-.mono{width:24px;height:24px;border-radius:6px;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:12.5px;color:#0d1014;background:var(--c,#c6f135);box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.mono{width:20px;height:20px;border-radius:6px;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:11px;color:#0d1014;background:var(--c,#c6f135);box-shadow:0 0 0 1px rgba(0,0,0,.25)}
 .mono svg{display:block}
-.pane-id{display:flex;flex-direction:column;gap:0;min-width:0;flex:1}
-.pane-name{font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
-.pane-sub{font-family:var(--mono);font-size:9.5px;color:var(--muted-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
-.uptime{font-family:var(--mono);font-size:10px;font-variant-numeric:tabular-nums;color:var(--muted);flex:none}
-.pane-stat{flex:none;font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 7px;border-radius:5px;background:var(--surface-3);color:var(--muted-2);white-space:nowrap}
+.pane-id{display:flex;flex-direction:column;gap:0;min-width:0}
+.pane-name{font-weight:600;font-size:12.5px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
+/* compact by default — sub + uptime appear only on hover so the pill stays tiny */
+.pane-sub{display:none;font-family:var(--mono);font-size:9.5px;color:var(--muted-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
+.uptime{display:none;font-family:var(--mono);font-size:10px;font-variant-numeric:tabular-nums;color:var(--muted);flex:none}
+.pane-head:hover .pane-sub{display:block}
+.pane-head:hover .uptime{display:inline}
+.pane-stat{flex:none;font-size:8px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:5px;background:var(--surface-3);color:var(--muted-2);white-space:nowrap}
 .pane-stat.run{background:rgba(58,210,159,.13);color:var(--run)}
 .pane-stat.idle{background:rgba(94,194,240,.12);color:var(--info)}
 .pane-stat.err{background:rgba(255,107,107,.13);color:var(--err)}
@@ -82,14 +82,13 @@
 .pctrl{width:22px;height:22px;border-radius:5px;display:grid;place-items:center;color:var(--muted-2);transition:background .14s,color .14s}
 .pctrl:hover{background:var(--surface-3);color:var(--text)}
 .pctrl.danger:hover{background:rgba(255,107,107,.16);color:var(--err)}
-.term-host{flex:1;min-height:0;background:var(--surface-0);padding:10px 6px 8px 13px;overflow:hidden}
+.term-host{flex:1;min-height:0;background:#000;padding:6px 6px 6px 10px;overflow:hidden}
 .term-host .xterm{height:100%}
 .term-host .xterm-viewport{overflow-y:auto}
 
 /* ---------- maximize / focus one pane ---------- */
 .grid.has-max .pane{display:none}
 .grid.has-max .pane.maxed{display:flex;grid-column:1 / -1 !important;grid-row:1 / -1 !important;animation:none}
-.pane.maxed{border-color:var(--accent-dim)}
 .pctrl.on{background:var(--accent-glow);color:var(--accent)}
 
 /* ---------- drag-reorder ---------- */
@@ -99,7 +98,8 @@
 .grid.reordering .pane{transition:transform .12s ease}
 
 /* ---------- find in output ---------- */
-.pane-find{display:flex;align-items:center;gap:5px;padding:6px 8px;background:var(--surface-2);border-bottom:1px solid var(--line);flex:none}
+/* floating overlay too — sits below the pill, top-right, over the terminal */
+.pane-find{position:absolute;top:46px;right:10px;z-index:6;width:min(320px,calc(100% - 20px));display:flex;align-items:center;gap:5px;padding:6px 8px;background:rgba(28,35,44,.95);backdrop-filter:blur(8px);border:1px solid var(--line-strong);border-radius:9px;box-shadow:0 4px 18px rgba(0,0,0,.45);flex:none}
 .pane-find[hidden]{display:none}
 .pane-find-in{flex:1;min-width:0;background:var(--surface-0);border:1px solid var(--line-strong);border-radius:6px;padding:5px 9px;color:var(--text);font-family:var(--mono);font-size:11.5px}
 .pane-find-in:focus{outline:none;border-color:var(--accent-dim);box-shadow:0 0 0 2px var(--accent-glow)}
@@ -108,8 +108,8 @@
 .pane-find-btn{width:24px;height:24px;border-radius:5px;display:grid;place-items:center;color:var(--muted-2);font-size:16px;line-height:1;flex:none;transition:background .14s,color .14s}
 .pane-find-btn:hover{background:var(--surface-3);color:var(--text)}
 
-/* empty workspace → centered spawn prompt */
-.tile-spawn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;border:1.5px dashed var(--line-strong);border-radius:var(--r3);color:var(--muted);background:rgba(255,255,255,.008);transition:border-color .18s,color .18s,background .18s}
+/* empty workspace → centered spawn prompt (solid bg: the grid behind is line-colored) */
+.tile-spawn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;border:1.5px dashed var(--line-strong);border-radius:0;color:var(--muted);background:var(--bg);transition:border-color .18s,color .18s,background .18s}
 .tile-spawn:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--accent-glow)}
 .tile-spawn .ic{width:44px;height:44px;border-radius:50%;border:1.5px solid currentColor;display:grid;place-items:center}
 .tile-spawn .t{font-weight:600;font-size:13px}

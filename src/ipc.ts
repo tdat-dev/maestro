@@ -163,6 +163,23 @@ export async function onAppQuit(cb: () => void | Promise<void>): Promise<Unliste
   return listen("maestro-quit", () => void cb());
 }
 
+/** Broadcast an app-wide event to every Maestro window. */
+export async function emitAppEvent(name: string, payload: unknown): Promise<void> {
+  await emit(name, payload);
+}
+
+/** Listen for an app-wide event; resolves to an unlisten fn. */
+export async function onAppEvent<T>(name: string, cb: (payload: T) => void): Promise<() => void> {
+  return listen<T>(name, (e) => cb(e.payload));
+}
+
+/** Bring this window to the front (restore + focus). */
+export async function focusThisWindow(): Promise<void> {
+  const w = getCurrentWindow();
+  await w.unminimize().catch(() => {});
+  await w.setFocus();
+}
+
 /* ---- custom title-bar window controls (frameless) ---- */
 export async function minimizeWindow(): Promise<void> {
   await getCurrentWindow().minimize();

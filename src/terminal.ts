@@ -16,6 +16,8 @@ export interface TerminalHandle {
   findPrev(q: string): void;
   /** Drop all search highlights. */
   clearSearch(): void;
+  /** Live-change the font size (px) and refit the viewport to the new metrics. */
+  setFontSize(n: number): void;
   /** Subscribe to result-count changes (current index is 1-based, 0 = none). */
   onSearchResults(cb: (current: number, total: number) => void): void;
 }
@@ -51,13 +53,13 @@ export function mountTerminal(
   container: HTMLElement,
   onInput: (data: string) => void,
   onResize: (cols: number, rows: number) => void,
-  opts: { webgl?: boolean; openLink?: (url: string) => void } = {},
+  opts: { webgl?: boolean; openLink?: (url: string) => void; fontSize?: number } = {},
 ): TerminalHandle {
   const term = new Terminal({
     convertEol: false, // ConPTY already emits \r\n
     cursorBlink: true,
     fontFamily: "Consolas, 'Cascadia Mono', monospace",
-    fontSize: 15,
+    fontSize: opts.fontSize ?? 15,
     lineHeight: 1.15,
     scrollback: 5000, // generous history so search/scroll can reach older output
   });
@@ -181,6 +183,13 @@ export function mountTerminal(
       if (q) search.findPrevious(q, SEARCH_OPTS);
     },
     clearSearch: () => search.clearDecorations(),
+    setFontSize: (n) => {
+      term.options.fontSize = n;
+      // New glyph metrics → reflow to fit the container, mirroring the
+      // ResizeObserver so the PTY learns the new cols/rows.
+      fit.fit();
+      onResize(term.cols, term.rows);
+    },
     onSearchResults: (cb) =>
       search.onDidChangeResults((r) => {
         // xterm reports resultIndex (0-based, -1 = none) + resultCount.

@@ -44,6 +44,29 @@ export function setMascotPos(x: number, y: number): void {
   localStorage.setItem(MASCOT_POS_KEY, JSON.stringify({ x: Math.round(x), y: Math.round(y) }));
 }
 
+/* ---------------- terminal font size ---------------- */
+
+const TERM_FONT_SIZE_KEY = "maestro.termFontSize";
+const TERM_FONT_MIN = 11;
+const TERM_FONT_MAX = 20;
+const TERM_FONT_DEFAULT = 15;
+
+function clampFont(n: number): number {
+  if (!Number.isFinite(n)) return TERM_FONT_DEFAULT;
+  return Math.min(TERM_FONT_MAX, Math.max(TERM_FONT_MIN, Math.round(n)));
+}
+
+/** Terminal font size in px. Defaults to 15, clamped to 11..20. */
+export function getTermFontSize(): number {
+  const raw = localStorage.getItem(TERM_FONT_SIZE_KEY);
+  if (raw === null) return TERM_FONT_DEFAULT;
+  return clampFont(Number(raw));
+}
+
+export function setTermFontSize(n: number): void {
+  localStorage.setItem(TERM_FONT_SIZE_KEY, String(clampFont(n)));
+}
+
 const TRAY_NOTICE_KEY = "maestro.trayNoticeShown";
 
 /** Whether the "still running in the tray" notice has been shown before — it

@@ -27,6 +27,7 @@ import {
   focusThisWindow,
   openExternal,
   notify,
+  programsOnPath,
 } from "./ipc";
 import { branchName } from "./worktree";
 import {
@@ -36,6 +37,8 @@ import {
   setMascotMode,
   getMascotPos,
   setMascotPos,
+  getTermFontSize,
+  setTermFontSize,
   type MascotMode,
 } from "./settings";
 import { CLI_PRESETS, expandCrew, runLimited, launchSpec, effectiveArgs, type CrewState, type CliPreset } from "./crew";
@@ -855,7 +858,7 @@ function createAgent(
     (cols, rows) => {
       if (ws.panes.has(id)) void resizePty(id, cols, rows).catch(() => {});
     },
-    { openLink: (url) => void openExternal(url).catch(() => {}) },
+    { openLink: (url) => void openExternal(url).catch(() => {}), fontSize: getTermFontSize() },
   );
 
   const pane: Pane = { id, el, term, running: false, spawnedAt: null, lastOutputAt: 0, lastInputAt: 0, attention: false, attentionClearedAt: 0, attentionNotified: false, color: spec.color, spec };
@@ -1192,6 +1195,11 @@ function renderCrew() {
   (document.getElementById("mSpawn") as HTMLButtonElement).disabled = total === 0;
   crewGrid.querySelectorAll<HTMLElement>(".crew-card").forEach((card) => {
     const id = card.dataset.id!;
+    const preset = CLI_PRESETS.find((p) => p.id === id);
+    const missing = preset ? !isPresetAvailable(preset.program) : false;
+    card.classList.toggle("missing", missing);
+    if (missing && preset) card.title = `${preset.program} not found on PATH`;
+    else card.removeAttribute("title");
     const n = crew.counts[id] ?? 0;
     card.classList.toggle("on", n > 0);
     const nEl = card.querySelector<HTMLElement>("[data-n]");
@@ -1223,6 +1231,7 @@ function buildCrewGrid() {
       renderCrew();
     });
     card.querySelector("[data-inc]")?.addEventListener("click", () => {
+      if (!isPresetAvailable(p.program)) return; // can't add an uninstalled CLI
       crew.counts[p.id] = Math.min(32, (crew.counts[p.id] ?? 0) + 1);
       renderCrew();
     });
@@ -1244,6 +1253,7 @@ function openModal(mode: "new" | "current" = "new") {
   modal.classList.add("open");
   mDir.focus();
   mDir.select();
+  refreshCliAvailability(); // gray out CLIs that aren't installed
 }
 function closeModal() {
   modal.classList.remove("open");
@@ -1428,6 +1438,41 @@ document.getElementById("mSaveTpl")?.addEventListener("click", async () => {
 });
 
 /* ---------------- workspace wizard ---------------- */
+
+// Which preset binaries actually resolve on PATH. Null until the first probe
+// lands; filled by refreshCliAvailability() (fire-and-forget, once per wizard /
+// spawn-modal open). Presets whose program is missing get grayed out + made
+// unselectable in both the wizard and the old spawn modal's crew grids.
+let cliAvailable: Record<string, boolean> | null = null;
+
+/** True unless we've confirmed this program is NOT on PATH. Treated as present
+ *  while availability is still unknown so nothing flickers/dims prematurely. */
+function isPresetAvailable(program: string): boolean {
+  return cliAvailable === null || cliAvailable[program] !== false;
+}
+
+/** Batch-probe every preset's binary once and re-render both crew grids when it
+ *  lands. Fire-and-forget: failures leave everything treated as available. */
+function refreshCliAvailability(): void {
+  const programs = CLI_PRESETS.map((p) => p.program);
+  void programsOnPath(programs)
+    .then((results) => {
+      const map: Record<string, boolean> = {};
+      programs.forEach((prog, i) => {
+        map[prog] = results[i] ?? true;
+      });
+      cliAvailable = map;
+      // Drop any stale saved selection that points at a now-missing CLI.
+      for (const p of CLI_PRESETS) {
+        if (!isPresetAvailable(p.program)) wizSel.delete(p.id);
+      }
+      renderWizCrew();
+      renderCrew();
+    })
+    .catch(() => {
+      /* probe failed — leave everything as "available" */
+    });
+}
 
 const WIZ_COUNT_KEY = "maestro.wizCount";
 const wizModal = document.getElementById("wizModal") as HTMLElement;
@@ -1661,11 +1706,16 @@ function renderWizCrew() {
   if (ac) ac.textContent = countLabel(wizCount);
   wizCrewGrid.querySelectorAll<HTMLElement>(".crew-card").forEach((card) => {
     const id = card.dataset.id!;
-    const on = wizSel.has(id);
+    const preset = CLI_PRESETS.find((p) => p.id === id);
+    const missing = preset ? !isPresetAvailable(preset.program) : false;
+    const on = !missing && wizSel.has(id);
+    card.classList.toggle("missing", missing);
     card.classList.toggle("on", on);
+    if (missing && preset) card.title = `${preset.program} not found on PATH`;
+    else card.removeAttribute("title");
     const share = card.querySelector<HTMLElement>("[data-share]");
     if (share) {
-      share.hidden = !on;
+      share.hidden = missing || !on;
       share.textContent = `×${dist[id] ?? 0}`;
     }
   });
@@ -1692,6 +1742,8 @@ function buildWizCrewGrid() {
       </div>
       <span class="wiz-share" data-share hidden>×0</span>`;
     card.addEventListener("click", () => {
+      // A CLI that isn't installed can't be selected.
+      if (!isPresetAvailable(p.program)) return;
       if (wizSel.has(p.id)) wizSel.delete(p.id);
       else wizSel.add(p.id);
       renderWizCrew();
@@ -1756,6 +1808,7 @@ function openWizard(dir?: string) {
   wizDir.focus();
   wizDir.select();
   void refreshWizIsolate();
+  refreshCliAvailability(); // gray out CLIs that aren't installed
 }
 
 function closeWizard() {
@@ -2447,8 +2500,34 @@ setCheckUpdate?.addEventListener("click", async () => {
   }
 });
 
+/* ---- terminal font size stepper ---- */
+const setFontN = document.getElementById("setFontN");
+const TERM_FONT_MIN = 11;
+const TERM_FONT_MAX = 20;
+
+function syncFontLabel() {
+  if (setFontN) setFontN.textContent = String(getTermFontSize());
+}
+
+function applyTermFontSize(n: number) {
+  const clamped = Math.min(TERM_FONT_MAX, Math.max(TERM_FONT_MIN, n));
+  setTermFontSize(clamped);
+  syncFontLabel();
+  // Live-apply to every running pane across all workspaces.
+  for (const w of workspaces.values())
+    for (const pane of w.panes.values()) pane.term.setFontSize(clamped);
+}
+
+document.querySelector("#setFontStepper [data-dec]")?.addEventListener("click", () => {
+  applyTermFontSize(getTermFontSize() - 1);
+});
+document.querySelector("#setFontStepper [data-inc]")?.addEventListener("click", () => {
+  applyTermFontSize(getTermFontSize() + 1);
+});
+
 function openSettings() {
   if (setHideTray) setHideTray.checked = getHideToTray();
+  syncFontLabel();
   settingsModal?.classList.add("open");
 }
 function closeSettings() {

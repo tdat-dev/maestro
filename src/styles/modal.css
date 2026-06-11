@@ -32,6 +32,10 @@
 .crew-card .cc-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .crew-card.on .cc-name{color:var(--accent)}
 .crew-card .cc-badge{font-family:var(--mono);font-size:8.5px;color:var(--muted-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* CLI whose binary isn't on PATH: dimmed + unselectable. */
+.crew-card.missing{opacity:.45;cursor:not-allowed}
+.crew-card.missing:hover{border-color:var(--line)}
+.crew-card.missing .cc-badge{color:var(--err)}
 .stepper{display:flex;align-items:center;gap:2px;flex:none}
 .stepper button{width:21px;height:21px;border-radius:5px;background:var(--surface-3);color:var(--text-2);display:grid;place-items:center;font-size:15px;line-height:1;transition:background .12s,color .12s}
 .stepper button:hover{background:var(--line-strong);color:var(--text)}

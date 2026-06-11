@@ -284,3 +284,10 @@ export async function reviewRemoveWorktree(
 ): Promise<void> {
   await invoke("review_remove_worktree", { repoRoot, worktreePath, branch: branch ?? null });
 }
+
+/** Batch-check whether each program name resolves on PATH (Windows
+ *  CreateProcess / PATHEXT semantics). Result is index-aligned with the input.
+ *  Used to gray out CLI presets whose binary isn't installed. */
+export async function programsOnPath(programs: string[]): Promise<boolean[]> {
+  return invoke<boolean[]>("programs_on_path", { programs });
+}

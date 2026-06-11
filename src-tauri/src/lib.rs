@@ -82,6 +82,7 @@ pub fn run() {
             commands::pty_kill_all,
             commands::set_tray_visible,
             commands::set_tray_tooltip,
+            commands::programs_on_path,
             worktree::git_repo_root,
             worktree::worktree_add,
             worktree::worktree_remove,

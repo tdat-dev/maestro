@@ -7,10 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-06-11
+
 ### Added
 
+- **AI Code Slice 2** — commit an agent's worktree changes, merge its branch
+  into the main repo (`--no-ff`, conflicts abort and report the files), discard
+  uncommitted work, and clean up the worktree + branch after a merge.
+- **"Needs you" attention alerts** — a running agent whose output goes silent
+  flags amber on its pane pill and workspace tab, with an OS notification when
+  the window is unfocused.
+- **Keyboard shortcuts** — Alt+1–9 focus pane, Ctrl(+Shift)+Tab cycle
+  workspaces, Ctrl+Shift+T new workspace, Ctrl+Shift+F find in pane,
+  Ctrl+Shift+B broadcast.
 - Ctrl+Click on a terminal link opens it in the default browser.
+- CLIs not found on PATH are grayed out in the spawn wizard and modal.
+- Terminal font size setting (Settings → applies live to every pane).
 - README and MIT LICENSE; repository metadata and project logo.
+- CI (typecheck, tests, cargo) and tag-triggered signed release workflows.
 
 ## [0.1.7]
 

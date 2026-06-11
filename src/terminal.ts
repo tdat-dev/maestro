@@ -1,6 +1,7 @@
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 
 export interface TerminalHandle {
@@ -50,7 +51,7 @@ export function mountTerminal(
   container: HTMLElement,
   onInput: (data: string) => void,
   onResize: (cols: number, rows: number) => void,
-  opts: { webgl?: boolean } = {},
+  opts: { webgl?: boolean; openLink?: (url: string) => void } = {},
 ): TerminalHandle {
   const term = new Terminal({
     convertEol: false, // ConPTY already emits \r\n
@@ -64,6 +65,16 @@ export function mountTerminal(
   term.loadAddon(fit);
   const search = new SearchAddon();
   term.loadAddon(search);
+  // URLs in output become links, opened with Ctrl+Click only (like Windows
+  // Terminal) so a plain click can't hijack focus or fire by accident.
+  if (opts.openLink) {
+    const openLink = opts.openLink;
+    term.loadAddon(
+      new WebLinksAddon((e, uri) => {
+        if (e.ctrlKey) openLink(uri);
+      }),
+    );
+  }
   term.open(container);
   fit.fit();
 

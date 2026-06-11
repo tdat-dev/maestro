@@ -5,6 +5,13 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open, confirm, message } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
+import { openUrl } from "@tauri-apps/plugin-opener";
+
+/** Open an http(s) link in the user's default browser. */
+export async function openExternal(url: string): Promise<void> {
+  if (!/^https?:\/\//i.test(url)) return; // scheme allowlist matches the capability
+  await openUrl(url);
+}
 
 /**
  * Thin wrappers around the Tauri pty_* commands. Every call is addressed to a

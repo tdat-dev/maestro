@@ -3,6 +3,8 @@ name = "maestro"
 version = "0.1.7"
 description = "Maestro multi-agent CLI orchestrator"
 authors = ["whalelo"]
+license = "MIT"
+repository = "https://github.com/tdat-dev/maestro"
 edition = "2021"
 rust-version = "1.77.2"
 
@@ -19,6 +21,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
 portable-pty = "0.9.0"
 windows = { version = "0.62", features = [
     "Win32_Foundation",

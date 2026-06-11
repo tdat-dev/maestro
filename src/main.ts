@@ -25,6 +25,7 @@ import {
   emitAppEvent,
   onAppEvent,
   focusThisWindow,
+  openExternal,
 } from "./ipc";
 import { branchName } from "./worktree";
 import {
@@ -844,6 +845,7 @@ function createAgent(
     (cols, rows) => {
       if (ws.panes.has(id)) void resizePty(id, cols, rows).catch(() => {});
     },
+    { openLink: (url) => void openExternal(url).catch(() => {}) },
   );
 
   const pane: Pane = { id, el, term, running: false, spawnedAt: null, lastOutputAt: 0, color: spec.color, spec };

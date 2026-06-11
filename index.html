@@ -134,7 +134,16 @@
 <div id="aicode" aria-hidden="true">
   <div class="mc">
     <aside class="fleet"><div class="fleet-head"><span class="ft">Changes</span><span class="fcount" id="aiRepoCount"></span></div><div class="fleet-scroll" id="aiFleet"></div></aside>
-    <section class="dock" id="aiDock"><div class="dock-body" id="aiDockBody"></div></section>
+    <section class="dock" id="aiDock"><div class="dock-body" id="aiDockBody"></div>
+      <footer class="dock-foot" id="aiActions" hidden>
+        <div class="da-status" id="aiActionStatus"></div>
+        <div class="da-btns">
+          <button class="da-btn" id="aiBtnDiscard" title="Discard all uncommitted changes in this worktree"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg> Discard</button>
+          <button class="da-btn" id="aiBtnCommit" title="Stage all changes and commit on this branch"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 12h6m6 0h6"/></svg> Commit</button>
+          <button class="da-btn primary" id="aiBtnMerge" title="Merge this branch into the repo's current branch"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6m0 0a9 9 0 0 0 9-9h3"/></svg> Merge to main</button>
+        </div>
+      </footer>
+    </section>
   </div>
 </div>
 

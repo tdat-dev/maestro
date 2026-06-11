@@ -87,6 +87,11 @@ pub fn run() {
             worktree::worktree_remove,
             review::git_repos_under,
             review::repo_diff,
+            review::review_repo_info,
+            review::review_commit,
+            review::review_merge,
+            review::review_discard,
+            review::review_remove_worktree,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

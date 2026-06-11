@@ -1,4 +1,15 @@
-import { reposUnder, repoDiff, type RepoRef } from "./ipc";
+import {
+  reposUnder,
+  repoDiff,
+  reviewRepoInfo,
+  reviewCommit,
+  reviewMerge,
+  reviewDiscard,
+  reviewRemoveWorktree,
+  confirmDialog,
+  type RepoRef,
+  type RepoInfo,
+} from "./ipc";
 import { parseDiff, type DiffFile } from "./diff";
 
 const enc = (s: string) =>
@@ -22,10 +33,13 @@ interface RepoView {
   files: DiffFile[];
   additions: number;
   deletions: number;
+  info: RepoInfo | null; // branch / worktree status for the action bar
+  committed: boolean; // a commit happened this session → Merge becomes available
 }
 
 let views: RepoView[] = [];
 let selected = 0;
+let busy = false; // a write op (commit/merge/discard) is in flight
 const collapsed = new Set<string>(); // file keys "<repoIdx>:<fileIdx>" currently collapsed
 const seeded = new Set<number>(); // repos whose large-file defaults have been applied
 
@@ -92,10 +106,12 @@ function renderDock() {
   const v = views[selected];
   if (!v) {
     b.innerHTML = `<div class="filehdr"><span class="fp">No changes.</span></div>`;
+    renderActions();
     return;
   }
   if (v.files.length === 0) {
     b.innerHTML = `<div class="filehdr"><span class="fp">${enc(v.ref.name)} — working tree clean</span></div>`;
+    renderActions();
     return;
   }
   // First time we show a repo, collapse its large files by default.
@@ -109,6 +125,64 @@ function renderDock() {
     `<div class="filehdr" style="background:var(--surface-2)"><span class="fp"><b>${enc(v.ref.name)}</b></span><span class="fbadge">+${v.additions} −${v.deletions}</span></div>` +
     v.files.map((file, i) => renderFile(file, `${selected}:${i}`)).join("");
   b.scrollTop = 0;
+  renderActions();
+}
+
+/* ============================ action bar (Slice 2) ============================ */
+
+/** A readable agent name for the commit message, derived from the branch
+ *  (`maestro/<agent>-<id>` → "<agent>") or the repo folder name as a fallback. */
+function agentLabel(v: RepoView): string {
+  const br = v.info?.branch ?? "";
+  const m = br.match(/^maestro\/(.+?)-[0-9a-z]+$/i);
+  if (m) return m[1];
+  if (br) return br.replace(/^maestro\//, "");
+  return v.ref.name;
+}
+
+function setStatus(text: string, cls: "" | "ok" | "err" | "busy" = "") {
+  const el = byId("aiActionStatus");
+  if (!el) return;
+  el.textContent = text;
+  el.className = "da-status" + (cls ? ` ${cls}` : "");
+}
+
+/** Show/configure the dock action bar for the selected repo:
+ *  - non-worktree repo → Commit only (into the repo itself), no Merge.
+ *  - worktree → Discard / Commit / Merge-to-main.
+ *  Buttons reflect dirtiness, the commit-this-session flag, and busy state. */
+function renderActions() {
+  const foot = byId("aiActions") as HTMLElement | null;
+  if (!foot) return;
+  const v = views[selected];
+  const info = v?.info ?? null;
+  if (!v || !info) {
+    foot.hidden = true;
+    return;
+  }
+  foot.hidden = false;
+  const isWt = info.isWorktree && !!info.mainRoot;
+  const dirty = info.dirty;
+
+  const discard = byId("aiBtnDiscard") as HTMLButtonElement | null;
+  const commit = byId("aiBtnCommit") as HTMLButtonElement | null;
+  const merge = byId("aiBtnMerge") as HTMLButtonElement | null;
+
+  // Discard + Merge only make sense for an isolated worktree.
+  if (discard) discard.hidden = !isWt;
+  if (merge) merge.hidden = !isWt;
+
+  if (discard) discard.disabled = busy || !dirty;
+  if (commit) commit.disabled = busy || !dirty;
+  // Merge is enabled once the branch has a commit beyond its base (committed this
+  // session) AND the tree is clean (nothing uncommitted left to lose).
+  if (merge) merge.disabled = busy || !v.committed || dirty;
+
+  if (!busy) {
+    if (!dirty && v.committed && isWt) setStatus(`committed on ${info.branch} — ready to merge`, "ok");
+    else if (!dirty) setStatus(info.branch ? `clean · ${info.branch}` : "clean");
+    else setStatus(`${v.files.length} file${v.files.length === 1 ? "" : "s"} changed on ${info.branch || "this branch"}`);
+  }
 }
 
 /** Toggle one file's collapsed state in place (no full re-render → keeps scroll). */
@@ -160,11 +234,14 @@ async function render() {
     // Drop no-op entries (mode-only / empty) that git emits with no hunks and no
     // line changes; keep real text diffs and binary files (shown with a label).
     const files = parseDiff(raw).filter((f) => f.binary || f.hunks.length > 0);
+    const info = await reviewRepoInfo(ref.path).catch(() => null);
     views.push({
       ref,
       files,
       additions: files.reduce((n, x) => n + x.additions, 0),
       deletions: files.reduce((n, x) => n + x.deletions, 0),
+      info,
+      committed: false,
     });
   }
   const firstChanged = views.findIndex((v) => v.files.length > 0);
@@ -173,8 +250,112 @@ async function render() {
   renderDock();
 }
 
+/** Re-fetch the selected repo's diff + info in place (after a write op), keeping
+ *  the selection. Resets the per-file collapse seeding so big files re-collapse. */
+async function refreshSelected() {
+  const v = views[selected];
+  if (!v) return;
+  const raw = await repoDiff(v.ref.path).catch(() => "");
+  v.files = parseDiff(raw).filter((f) => f.binary || f.hunks.length > 0);
+  v.additions = v.files.reduce((n, x) => n + x.additions, 0);
+  v.deletions = v.files.reduce((n, x) => n + x.deletions, 0);
+  v.info = await reviewRepoInfo(v.ref.path).catch(() => v.info);
+  seeded.delete(selected);
+  renderRail();
+  renderDock();
+}
+
+/** Run an async write op with shared busy-state + inline status, then refresh. */
+async function runAction(
+  label: string,
+  fn: () => Promise<void>,
+  refresh = true,
+): Promise<void> {
+  if (busy) return;
+  busy = true;
+  renderActions();
+  setStatus(`${label}…`, "busy");
+  try {
+    await fn();
+    if (refresh) await refreshSelected();
+  } catch (e) {
+    busy = false;
+    if (refresh) await refreshSelected();
+    setStatus(errMsg(e), "err");
+    return;
+  }
+  busy = false;
+  renderActions();
+}
+
+function errMsg(e: unknown): string {
+  if (typeof e === "string") return e;
+  if (e && typeof e === "object") {
+    // Tauri serializes CommandError as { Failed: "…" }.
+    const f = (e as { Failed?: unknown }).Failed;
+    if (typeof f === "string") return f;
+    if (e instanceof Error) return e.message;
+  }
+  return "operation failed";
+}
+
+async function onCommit() {
+  const v = views[selected];
+  if (!v?.info) return;
+  const msg = `maestro: ${agentLabel(v)} changes`;
+  await runAction("Committing", async () => {
+    await reviewCommit(v.ref.path, msg);
+    v.committed = true;
+  });
+}
+
+async function onDiscard() {
+  const v = views[selected];
+  if (!v?.info) return;
+  const ok = await confirmDialog(
+    `Discard ALL uncommitted changes in “${v.ref.name}”? This cannot be undone.`,
+    "Discard changes",
+  );
+  if (!ok) return;
+  await runAction("Discarding", () => reviewDiscard(v.ref.path));
+}
+
+async function onMerge() {
+  const v = views[selected];
+  const info = v?.info;
+  if (!v || !info || !info.mainRoot || !info.branch) return;
+  const mainRoot = info.mainRoot;
+  const branch = info.branch;
+  await runAction("Merging", async () => {
+    await reviewMerge(mainRoot, branch);
+  });
+  // runAction surfaces a conflict/failure as the inline error status; only
+  // offer cleanup when the merge actually succeeded.
+  if (byId("aiActionStatus")?.classList.contains("err")) return;
+  setStatus(`merged ${branch} → main`, "ok");
+  const cleanup = await confirmDialog(
+    `Merged “${branch}”. Remove its worktree and delete the branch?`,
+    "Clean up worktree",
+  );
+  if (!cleanup) return;
+  await runAction(
+    "Cleaning up",
+    async () => {
+      await reviewRemoveWorktree(mainRoot, v.ref.path, branch);
+    },
+    false,
+  );
+  if (!byId("aiActionStatus")?.classList.contains("err")) {
+    setStatus(`removed worktree for ${branch}`, "ok");
+    await render(); // the repo is gone — rebuild the whole view
+  }
+}
+
 /** Wire the topbar toggle + delegated rail/file clicks. Call once at startup. */
 export function initAiCode() {
+  byId("aiBtnCommit")?.addEventListener("click", () => void onCommit());
+  byId("aiBtnDiscard")?.addEventListener("click", () => void onDiscard());
+  byId("aiBtnMerge")?.addEventListener("click", () => void onMerge());
   const btn = byId("btnAiCode");
   btn?.addEventListener("click", () => {
     const p = byId("aicode")!;

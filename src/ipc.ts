@@ -237,3 +237,50 @@ export async function reposUnder(dir: string): Promise<RepoRef[]> {
 export async function repoDiff(repoRoot: string): Promise<string> {
   return invoke<string>("repo_diff", { repoRoot });
 }
+
+/* ---- AI Code Slice 2: write side (commit / merge / discard) ---- */
+
+export interface RepoInfo {
+  /** Current branch name (empty for detached HEAD). */
+  branch: string;
+  /** True when this path is a linked worktree, not the main checkout. */
+  isWorktree: boolean;
+  /** The main repo's working dir when `isWorktree` — where a merge runs. */
+  mainRoot: string | null;
+  /** True when there are uncommitted changes to commit. */
+  dirty: boolean;
+}
+
+/** Describe a reviewed repo: branch, worktree status, main root, dirtiness. */
+export async function reviewRepoInfo(repoPath: string): Promise<RepoInfo> {
+  const r = await invoke<{ branch: string; isWorktree: boolean; mainRoot: string | null; dirty: boolean }>(
+    "review_repo_info",
+    { repoPath },
+  );
+  return { branch: r.branch, isWorktree: r.isWorktree, mainRoot: r.mainRoot, dirty: r.dirty };
+}
+
+/** Stage all + commit in `worktreePath`. Returns the new commit SHA. */
+export async function reviewCommit(worktreePath: string, message: string): Promise<string> {
+  return invoke<string>("review_commit", { worktreePath, message });
+}
+
+/** Merge `branch` into the current branch of `repoRoot` (--no-ff). Returns the
+ *  merge commit SHA; rejects with a structured conflict error on conflict. */
+export async function reviewMerge(repoRoot: string, branch: string): Promise<string> {
+  return invoke<string>("review_merge", { repoRoot, branch });
+}
+
+/** Discard all uncommitted changes in `worktreePath` (revert + clean). */
+export async function reviewDiscard(worktreePath: string): Promise<void> {
+  await invoke("review_discard", { worktreePath });
+}
+
+/** Remove a linked worktree (and optionally delete its branch). Not forced. */
+export async function reviewRemoveWorktree(
+  repoRoot: string,
+  worktreePath: string,
+  branch?: string,
+): Promise<void> {
+  await invoke("review_remove_worktree", { repoRoot, worktreePath, branch: branch ?? null });
+}

@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a problem with Maestro
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to file a bug report.
+
+  - type: input
+    id: maestro-version
+    attributes:
+      label: Maestro version
+      description: See the app's Settings or title bar (e.g. 0.1.7).
+      placeholder: "0.1.7"
+    validations:
+      required: true
+
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows version
+      description: Run `winver` (e.g. Windows 11 Pro 23H2).
+      placeholder: "Windows 11 Pro 23H2"
+    validations:
+      required: true
+
+  - type: input
+    id: cli-agents
+    attributes:
+      label: CLI agents involved
+      description: Which agent CLIs were running (e.g. claude, codex, aider)?
+      placeholder: "claude, codex"
+    validations:
+      required: false
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: What did you do, step by step?
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include any error messages or screenshots.
+    validations:
+      required: true

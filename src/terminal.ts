@@ -127,6 +127,22 @@ export function mountTerminal(
     if (e.type === "keydown" && e.ctrlKey && !e.altKey && e.key.toLowerCase() === "v") {
       return false;
     }
+    // Let the app's global shortcuts win: return false so xterm skips the key
+    // WITHOUT cancelling it, and the document-level keydown handler fires.
+    //   Alt+1..9           pane focus
+    //   Ctrl+Tab / +Shift  workspace cycling
+    //   Ctrl+Shift+T/F/B   new workspace / find / broadcast
+    if (e.type === "keydown") {
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && /^Digit[1-9]$/.test(e.code)) {
+        return false;
+      }
+      if (e.ctrlKey && !e.altKey && !e.metaKey && e.key === "Tab") {
+        return false;
+      }
+      if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && ["t", "f", "b"].includes(e.key.toLowerCase())) {
+        return false;
+      }
+    }
     return true;
   });
 

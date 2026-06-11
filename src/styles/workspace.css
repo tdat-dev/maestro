@@ -16,6 +16,8 @@
 .tab.active{background:var(--surface-2);color:var(--text)}
 .tab .tdot{width:6px;height:6px;border-radius:50%;background:var(--idle);flex:none}
 .tab.live .tdot{background:var(--run);box-shadow:0 0 6px var(--run)}
+/* a workspace with any "needs you" pane → amber dot (wins over live green) */
+.tab.attn .tdot{background:#ffb84c;box-shadow:0 0 6px #ffb84c}
 .tab .tname{max-width:170px;overflow:hidden;text-overflow:ellipsis}
 .tab .tcount{font-family:var(--mono);font-size:10px;font-variant-numeric:tabular-nums;color:var(--muted-2);background:var(--surface-3);border-radius:4px;padding:1px 5px}
 .tab.active .tcount{color:var(--text-2)}
@@ -78,6 +80,10 @@
 .pane-stat.run{background:rgba(58,210,159,.13);color:var(--run)}
 .pane-stat.idle{background:rgba(94,194,240,.12);color:var(--info)}
 .pane-stat.err{background:rgba(255,107,107,.13);color:var(--err)}
+/* "needs you" — the agent went quiet after output, probably waiting on the user */
+.pane-stat.wait{background:rgba(255,184,76,.15);color:#ffb84c}
+/* a flagged pane keeps its pill fully visible + amber-glows it so it's spottable */
+.pane.attention .pane-head{opacity:1;border-color:rgba(255,184,76,.55);box-shadow:0 4px 18px rgba(0,0,0,.45),0 0 12px rgba(255,184,76,.35)}
 .ctrls{display:flex;gap:1px;flex:none}
 .pctrl{width:22px;height:22px;border-radius:5px;display:grid;place-items:center;color:var(--muted-2);transition:background .14s,color .14s}
 .pctrl:hover{background:var(--surface-3);color:var(--text)}

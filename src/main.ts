@@ -26,6 +26,7 @@ import {
   onAppEvent,
   focusThisWindow,
   openExternal,
+  notify,
 } from "./ipc";
 import { branchName } from "./worktree";
 import {
@@ -60,8 +61,13 @@ interface Pane {
   running: boolean;
   spawnedAt: number | null;
   lastOutputAt: number; // ms of the last PTY output — drives the active/idle status
+  lastInputAt: number;  // ms of the last user keystroke into this pane (attention reset)
+  attention: boolean;   // agent went silent after output → probably waiting on the user
+  attentionClearedAt: number; // ms attention was last cleared (so a quiet prompt can't re-flag)
+  attentionNotified: boolean; // OS notification already fired for the current flag
   color: string;
   spec: AgentSpec; // the launch recipe — kept so the session can be serialized + re-booted
+  toggleFind?: () => void; // open/close this pane's find bar (set by wirePaneSearch)
 }
 
 // No PTY output for this long while alive ⇒ the agent is idle (waiting at a prompt).
@@ -280,7 +286,9 @@ function wirePaneSearch(pane: Pane) {
   pane.term.onSearchResults((cur, total) => {
     if (count) count.textContent = total ? `${cur}/${total}` : input.value ? "0/0" : "";
   });
-  el.querySelector("[data-search]")?.addEventListener("click", () => (bar.hidden ? open() : close()));
+  const toggle = () => (bar.hidden ? open() : close());
+  pane.toggleFind = toggle; // lets the Ctrl+Shift+F shortcut drive it externally
+  el.querySelector("[data-search]")?.addEventListener("click", toggle);
   el.querySelector("[data-find-close]")?.addEventListener("click", close);
   el.querySelector("[data-find-next]")?.addEventListener("click", () => pane.term.findNext(input.value));
   el.querySelector("[data-find-prev]")?.addEventListener("click", () => pane.term.findPrev(input.value));
@@ -763,7 +771,7 @@ function buildPaneEl(
   return el;
 }
 
-function setStatus(p: Pane, text: string, cls: "" | "run" | "err") {
+function setStatus(p: Pane, text: string, cls: "" | "run" | "err" | "wait") {
   const s = p.el.querySelector<HTMLElement>("[data-status]");
   if (s) {
     s.textContent = text;
@@ -841,6 +849,8 @@ function createAgent(
       // as the pane still exists — never gate on `running`, or the early reply is
       // dropped and ConPTY stalls (blank pane).
       if (ws.panes.has(id)) void sendInput(id, data).catch(() => {});
+      pane.lastInputAt = Date.now();
+      clearAttention(pane); // the user is interacting → not waiting on them
     },
     (cols, rows) => {
       if (ws.panes.has(id)) void resizePty(id, cols, rows).catch(() => {});
@@ -848,7 +858,7 @@ function createAgent(
     { openLink: (url) => void openExternal(url).catch(() => {}) },
   );
 
-  const pane: Pane = { id, el, term, running: false, spawnedAt: null, lastOutputAt: 0, color: spec.color, spec };
+  const pane: Pane = { id, el, term, running: false, spawnedAt: null, lastOutputAt: 0, lastInputAt: 0, attention: false, attentionClearedAt: 0, attentionNotified: false, color: spec.color, spec };
   ws.panes.set(id, pane);
   layoutGrid(ws);
   updateCount();
@@ -873,6 +883,9 @@ function createAgent(
   });
   wirePaneSearch(pane);
   wirePaneDrag(ws, pane);
+  // Clicking / focusing into a flagged pane means the user is now looking at it.
+  el.addEventListener("pointerdown", () => clearAttention(pane));
+  el.addEventListener("focusin", () => clearAttention(pane));
 
   saveSession();
 
@@ -885,6 +898,7 @@ function createAgent(
       try {
         await attachPty(id, (bytes) => {
           pane.lastOutputAt = Date.now();
+          if (pane.attention) clearAttention(pane); // agent is producing output again
           if (ws.panes.has(id)) term.write(bytes);
         });
         pane.running = true;
@@ -928,6 +942,7 @@ function createAgent(
       const launch = launchSpec(spec.program, spec.args);
       await spawnPty(id, launch.program, launch.args, cwd, cols, rows, (bytes) => {
         pane.lastOutputAt = Date.now();
+        if (pane.attention) clearAttention(pane); // agent is producing output again
         // After a tab detach this xterm is disposed but the PTY lives on (the
         // new window owns it) — never write into a dropped pane.
         if (ws.panes.has(id)) term.write(bytes);
@@ -962,6 +977,7 @@ async function removeAgent(ws: Workspace, id: string) {
   ws.panes.delete(id);
   layoutGrid(ws);
   updateCount();
+  refreshAttnTabs(); // the removed pane may have been the tab's only alert
   saveSession();
 }
 
@@ -2159,6 +2175,142 @@ bcastInput.addEventListener("keydown", (e) => {
 });
 bcastSend.addEventListener("click", broadcast);
 
+/* ---------------- keyboard shortcuts ---------------- */
+// Windows-Terminal-ish chords, chosen to avoid keys the CLIs themselves use
+// (no bare Ctrl+letter). All shortcuts are inert while a modal/wizard is open.
+//   Alt+1..9            focus the nth pane (DOM order) of the active workspace
+//   Ctrl+Tab            next workspace tab (cycles)
+//   Ctrl+Shift+Tab      previous workspace tab (cycles)
+//   Ctrl+Shift+T        open the new-workspace wizard
+//   Ctrl+Shift+F        toggle the find bar of the focused pane
+//   Ctrl+Shift+B        focus the broadcast input
+
+/** Cycle the active workspace tab by ±1 (wraps). Only meaningful in app view. */
+function cycleWorkspace(dir: 1 | -1) {
+  const list = [...workspaces.values()];
+  if (list.length < 2 || !activeWs) return;
+  const i = list.indexOf(activeWs);
+  if (i < 0) return;
+  activateWorkspace(list[(i + dir + list.length) % list.length]);
+}
+
+/** The pane whose terminal currently holds focus (xterm focuses a textarea
+ *  inside .pane); falls back to the active workspace's first pane. */
+function focusedPane(): Pane | null {
+  if (!activeWs) return null;
+  const host = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>(".pane");
+  if (host) {
+    for (const p of activeWs.panes.values()) if (p.el === host) return p;
+  }
+  return activeWs.panes.values().next().value ?? null;
+}
+
+document.addEventListener("keydown", (e) => {
+  // Any open backdrop (spawn / wizard / confirm / settings) swallows shortcuts.
+  if (document.querySelector(".backdrop.open")) return;
+
+  // Alt+1..9 → focus that pane (no other modifiers).
+  if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code.startsWith("Digit")) {
+    const n = Number(e.code.slice(5));
+    if (n >= 1 && n <= 9 && activeWs) {
+      const pane = [...activeWs.panes.values()][n - 1];
+      if (pane) {
+        e.preventDefault();
+        pane.term.focus();
+      }
+    }
+    return;
+  }
+
+  if (!e.ctrlKey || e.metaKey || e.altKey) return;
+
+  // Ctrl+Tab / Ctrl+Shift+Tab → cycle tabs (only when the app view is showing).
+  if (e.key === "Tab") {
+    if (!appEl.hidden) {
+      e.preventDefault();
+      cycleWorkspace(e.shiftKey ? -1 : 1);
+    }
+    return;
+  }
+
+  if (!e.shiftKey) return;
+  const k = e.key.toLowerCase();
+  if (k === "t") {
+    e.preventDefault();
+    openWizard();
+  } else if (k === "f") {
+    e.preventDefault();
+    focusedPane()?.toggleFind?.();
+  } else if (k === "b") {
+    e.preventDefault();
+    bcastInput.focus();
+    bcastInput.select();
+  }
+});
+
+/* ---------------- attention ---------------- */
+// Heuristic "agent needs you": a RUNNING pane that produced output recently and
+// then went silent is probably waiting at a prompt for the user. We flag it,
+// light up the pill + tab, and (if the window is in the background) fire one OS
+// notification. The flag clears when the user types/clicks into the pane or the
+// agent starts producing output again. attentionClearedAt stops a quiet shell
+// prompt from re-flagging forever: only a NEW burst of output (after the clear)
+// that then goes silent can flag again.
+const ATTN_SILENCE_MS = 10_000; // output, then this much quiet ⇒ probably waiting
+
+/** Drop a pane's attention flag and restore its normal pill/tab styling. */
+function clearAttention(pane: Pane) {
+  if (!pane.attention) return;
+  pane.attention = false;
+  pane.attentionNotified = false;
+  pane.attentionClearedAt = Date.now();
+  pane.el.classList.remove("attention");
+  // Let the next tick re-derive the run/idle status; set a sane default now.
+  setStatus(pane, pane.running ? "running" : "idle", pane.running ? "run" : "");
+  refreshAttnTabs();
+}
+
+/** Raise a pane's attention flag (pill + tab + optional OS notification). */
+function setAttention(pane: Pane, ws: Workspace) {
+  if (pane.attention) return;
+  pane.attention = true;
+  pane.el.classList.add("attention");
+  setStatus(pane, "needs you", "wait");
+  refreshAttnTabs();
+  // Notify only while the window is unattended, once per flag.
+  if (!pane.attentionNotified && (document.hidden || !document.hasFocus())) {
+    pane.attentionNotified = true;
+    void notify(`${pane.spec.name} needs you`, ws.name).catch(() => {});
+  }
+}
+
+/** Tab dot turns amber when any of its panes is asking for attention. */
+function refreshAttnTabs() {
+  for (const w of workspaces.values()) {
+    const want = [...w.panes.values()].some((p) => p.attention);
+    w.tabEl.classList.toggle("attn", want);
+  }
+}
+
+/** Per-tick attention sweep. Cheap no-op when nothing is running. */
+function updateAttention(now: number) {
+  for (const w of workspaces.values())
+    for (const pane of w.panes.values()) {
+      if (!pane.running || pane.attention) continue;
+      // Flag when: had output, that output is now stale, and it arrived AFTER
+      // both the last user input and the last clear (so a parked prompt that
+      // we already dismissed can't immediately re-flag).
+      if (
+        pane.lastOutputAt > 0 &&
+        now - pane.lastOutputAt > ATTN_SILENCE_MS &&
+        pane.lastOutputAt > pane.lastInputAt &&
+        pane.lastOutputAt > pane.attentionClearedAt
+      ) {
+        setAttention(pane, w);
+      }
+    }
+}
+
 /* ---------------- clock ---------------- */
 const clk = document.getElementById("clock");
 function tick() {
@@ -2167,11 +2319,13 @@ function tick() {
   if (clk) clk.textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
   // Live uptime + active/idle activity on every running pane, across all workspaces.
   const now = Date.now();
+  updateAttention(now);
   for (const w of workspaces.values())
     for (const pane of w.panes.values()) {
       if (pane.running && pane.spawnedAt != null) {
         const u = pane.el.querySelector<HTMLElement>("[data-uptime]");
         if (u) u.textContent = fmtUptime(now - pane.spawnedAt);
+        if (pane.attention) continue; // the pill is owned by the attention flag
         // active (output flowing) vs idle (quiet, waiting at a prompt)
         const idle = now - pane.lastOutputAt > IDLE_MS;
         pane.el.classList.toggle("run", !idle);
@@ -2260,6 +2414,7 @@ onExit((id, code) => {
     if (p) {
       p.running = false;
       p.spawnedAt = null;
+      clearAttention(p); // a dead agent isn't waiting on anyone
       setStatus(p, `exited (${code})`, "");
       updateCount();
       break;

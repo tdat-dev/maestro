@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-06-15
+
+### Fixed
+
+- **Killing a maximized pane no longer blanks the whole workspace** — the ⤢
+  maximize state (`.has-max` on the grid) was left behind when its pane was
+  closed/killed, so `.grid.has-max .pane{display:none}` hid every remaining
+  pane with nothing maximized to show. `layoutGrid` now drops `has-max`
+  whenever no `.maxed` pane remains.
+
 ## [0.1.9] - 2026-06-15
 
 ### Fixed

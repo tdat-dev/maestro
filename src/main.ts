@@ -227,6 +227,13 @@ function activateWorkspace(ws: Workspace) {
  *  The spawn tile only appears when the workspace is empty. */
 function layoutGrid(ws: Workspace) {
   const n = ws.panes.size;
+  // If the maximized pane is gone (killed / detached while maxed), drop the
+  // has-max state. Otherwise `.grid.has-max .pane{display:none}` keeps hiding
+  // every remaining pane with no `.maxed` pane to show — the workspace renders
+  // blank (the "maximize a pane → X it → all panes vanish" bug).
+  if (ws.gridEl.classList.contains("has-max") && !ws.gridEl.querySelector(".pane.maxed")) {
+    ws.gridEl.classList.remove("has-max");
+  }
   const tile = ws.gridEl.querySelector<HTMLElement>(".tile-spawn");
   if (tile) tile.style.display = n > 0 ? "none" : "";
   const cols = n <= 1 ? 1 : Math.ceil(Math.sqrt(n));

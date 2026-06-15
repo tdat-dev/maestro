@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-06-15
+
+### Fixed
+
+- **Browser zoom no longer breaks the terminal panes** — WebView2's built-in
+  zoom (Ctrl+scroll / Ctrl +/-/0) is now blocked. Zooming scaled the whole page
+  and corrupted xterm's DOM-renderer glyph metrics, so clicking WebView2's
+  "Reset" toast left every pane blank/off-screen. Use Settings → terminal font
+  size to resize terminal text instead.
+
 ## [0.1.8] - 2026-06-11
 
 ### Added

@@ -2429,6 +2429,28 @@ showView();
 // prompting in parallel would double the dialogs.
 if (!isDetachedWindow) void checkForUpdates(true);
 
+/* ---------------- block WebView2 browser zoom ---------------- */
+// Maestro has its own terminal font-size control (Settings → terminal font
+// size), so WebView2's built-in browser zoom is pure footgun here: Ctrl+scroll
+// scales the whole page, and xterm's DOM renderer caches glyph metrics at the
+// zoomed scale. Clicking WebView2's "Reset" toast snaps zoom back to 100% but
+// the cached cell geometry is stale, so every pane renders blank/off-screen
+// until a full reflow (the "zoom out → Reset → panes vanish" bug). Cancel the
+// zoom gestures before WebView2 acts on them: Ctrl+wheel (the actual trigger of
+// the bug) plus the Ctrl +/-/0 keyboard accelerators.
+addEventListener(
+  "wheel",
+  (e) => {
+    if (e.ctrlKey) e.preventDefault();
+  },
+  { passive: false },
+);
+addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && ["+", "-", "=", "0"].includes(e.key)) {
+    e.preventDefault();
+  }
+});
+
 /* ---------------- file drag-drop → terminal ---------------- */
 // Drop a file (e.g. a PDF) onto a pane and its path is typed into that agent's
 // terminal — so you can then ask the AI to read it. The pane under the cursor

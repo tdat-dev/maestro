@@ -111,7 +111,6 @@
     </nav>
     <div class="spacer" data-tauri-drag-region></div>
     <button class="tb-btn" id="btnMergeMain" hidden title="Move this workspace back into the main Maestro window"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M14 12H3M10 8l4 4-4 4M21 3v18"/></svg> Merge</button>
-    <button class="tb-btn" id="btnAiCode" title="AI Code — review agent changes"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg> AI Code</button>
     <button class="tb-btn" id="btnNewAgent"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Agent</button>
     <div class="stats" data-tauri-drag-region>
       <span class="stat live"><span class="pip"></span><b id="runCount">0</b> live</span>
@@ -120,6 +119,22 @@
     <span class="clock" id="clock" data-tauri-drag-region>--:--:--</span>
   </header>
   <main class="main" id="workspaces"></main>
+
+  <!-- Tool dock rail (right edge): Kanban / Pomodoro / Diff. The sliding panel
+       is built by src/dock.ts; these buttons toggle it. -->
+  <nav class="dock-rail" id="dockRail" role="tablist" aria-label="Tools">
+    <button class="dr-btn" data-tool="kanban" id="drKanban" role="tab" aria-selected="false" title="Board — Kanban (Ctrl+Shift+K)" aria-label="Kanban board">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="11" rx="1"/><rect x="17" y="4" width="4" height="14" rx="1"/></svg>
+    </button>
+    <button class="dr-btn" data-tool="pomodoro" id="drPomodoro" role="tab" aria-selected="false" title="Pomodoro timer (Ctrl+Shift+J)" aria-label="Pomodoro timer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 13V9M12 5V3M9 3h6"/></svg>
+      <span class="dr-timer" hidden></span>
+    </button>
+    <button class="dr-btn" data-tool="diff" id="drDiff" role="tab" aria-selected="false" title="Changes — git diff (Ctrl+Shift+D)" aria-label="Git changes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="8" r="3"/><path d="M6 9v6m12-4a6 6 0 0 1-6 6H9"/></svg>
+    </button>
+  </nav>
+
   <div class="bcast" id="bcast">
     <span class="bcast-emitter" id="bcastEmitter" title="Broadcast"><span class="be-core"></span></span>
     <span class="bcast-caret">&#10095;</span>
@@ -127,23 +142,6 @@
     <div class="bcast-targets" id="bcastTargets"></div>
     <span class="bcast-count" id="bcastCount">0 agents</span>
     <button class="bcast-send" id="bcastSend" disabled><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg> Broadcast <kbd>&#9166;</kbd></button>
-  </div>
-</div>
-
-<!-- ===================== AI CODE (diff review) ===================== -->
-<div id="aicode" aria-hidden="true">
-  <div class="mc">
-    <aside class="fleet"><div class="fleet-head"><span class="ft">Changes</span><span class="fcount" id="aiRepoCount"></span></div><div class="fleet-scroll" id="aiFleet"></div></aside>
-    <section class="dock" id="aiDock"><div class="dock-body" id="aiDockBody"></div>
-      <footer class="dock-foot" id="aiActions" hidden>
-        <div class="da-status" id="aiActionStatus"></div>
-        <div class="da-btns">
-          <button class="da-btn" id="aiBtnDiscard" title="Discard all uncommitted changes in this worktree"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg> Discard</button>
-          <button class="da-btn" id="aiBtnCommit" title="Stage all changes and commit on this branch"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 12h6m6 0h6"/></svg> Commit</button>
-          <button class="da-btn primary" id="aiBtnMerge" title="Merge this branch into the repo's current branch"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6m0 0a9 9 0 0 0 9-9h3"/></svg> Merge to main</button>
-        </div>
-      </footer>
-    </section>
   </div>
 </div>
 

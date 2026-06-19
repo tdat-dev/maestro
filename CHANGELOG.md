@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-19
+
+### Added
+
+- **Tool dock** — a permanent icon rail on the right edge of the workspace that
+  toggles slide-in panels, so the side tools are always one click (or one
+  shortcut) away instead of buried in the top bar. Press `Esc` to close.
+- **Kanban board** (`Ctrl+Shift+K`) — a Trello-style board scoped to each
+  workspace folder: add/rename/delete/reorder lists, drag cards within and
+  across lists, and a card detail view with description, colour labels, due
+  date, and a checklist. Drag uses Pointer Events (HTML5 drag-and-drop is
+  swallowed by the WebView2 OS drag-drop handler). Boards persist per folder.
+- **Pomodoro timer** (`Ctrl+Shift+J`) — a per-folder focus/break timer with a
+  progress ring, configurable focus/break lengths, session tracking, and an OS
+  notification when a phase ends. A live `mm:ss` badge shows on the rail while
+  running, and timers keep ticking across tab switches.
+
+### Changed
+
+- **Git diff review moved into the dock** (`Ctrl+Shift+D`) — the old top-bar
+  "AI Code" overlay was redesigned as a dock panel with a cleaner diff view,
+  repo selector, branch/worktree badge, and commit / discard / merge actions.
+  The top-bar "AI Code" button was removed.
+
 ## [0.1.10] - 2026-06-15
 
 ### Fixed

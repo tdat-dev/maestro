@@ -49,7 +49,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { initTitlebar } from "./titlebar";
 import { initIdleAnimationPause } from "./power";
 import { CLI_LOGOS } from "./logos";
-import { initAiCode, setActiveDirProvider } from "./aicode";
+import { initDock, dockSetContext, dockToggle } from "./dock";
 import { Mascot } from "./mascot";
 
 /* Home launcher ⇄ Workspace grid.
@@ -221,6 +221,8 @@ function activateWorkspace(ws: Workspace) {
   }
   showWorkspace();
   updateBcast();
+  // Re-scope the tool dock (board / timer / diff) to this workspace's folder.
+  dockSetContext({ key: ws.dir || ws.id, dir: ws.dir });
 }
 
 /** Tile a workspace's panes to fill the whole area (1→full, 2→split, 4→2×2, …).
@@ -2121,9 +2123,11 @@ initHomeMascot();
 /* ---------------- frameless window controls ---------------- */
 initTitlebar(!isDetachedWindow);
 
-/* ---------------- AI Code (read-only diff review) ---------------- */
-setActiveDirProvider(() => activeWs?.dir ?? null);
-initAiCode();
+/* ---------------- Tool dock (Kanban / Pomodoro / Diff) ---------------- */
+// No workspace is active yet at init; session restore (below) activates one and
+// activateWorkspace() re-scopes the dock to its folder.
+initDock();
+dockSetContext(null);
 
 /* Pause decorative animations when the window is hidden/unfocused (saves GPU).
  * On resume, repaint everything: after a long idle / display sleep / tray stint,
@@ -2305,6 +2309,15 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     bcastInput.focus();
     bcastInput.select();
+  } else if (k === "k") {
+    e.preventDefault();
+    dockToggle("kanban");
+  } else if (k === "j") {
+    e.preventDefault();
+    dockToggle("pomodoro");
+  } else if (k === "d") {
+    e.preventDefault();
+    dockToggle("diff");
   }
 });
 

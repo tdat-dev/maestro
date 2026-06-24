@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-24
+
+### Fixed
+
+- **opencode panes no longer render blank** — opencode's OpenTUI front-end only
+  performs its first paint after receiving a terminal resize event, so a freshly
+  spawned pane whose size never changed stayed black. Maestro now fires a one-off
+  resize "jiggle" on the pane's first byte of output (when the process is up and
+  listening), forcing the initial render. Scoped to OpenTUI-style CLIs.
+
 ## [0.2.0] - 2026-06-19
 
 ### Added

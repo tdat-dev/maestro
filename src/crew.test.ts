@@ -6,6 +6,7 @@ import {
   runLimited,
   launchSpec,
   effectiveArgs,
+  needsResizeKick,
   type CrewState,
 } from "./crew";
 
@@ -23,6 +24,19 @@ describe("CLI registry", () => {
     expect(ps?.program).toBe("powershell.exe");
     expect(ps?.args).toEqual(["-NoLogo"]);
     expect(ps?.shell).toBe(true);
+  });
+});
+
+describe("needsResizeKick", () => {
+  it("flags opencode (OpenTUI) so it gets a first-paint resize kick", () => {
+    expect(needsResizeKick("opencode")).toBe(true);
+    expect(needsResizeKick("OpenCode")).toBe(true);
+    expect(needsResizeKick("C:\\tools\\opencode.cmd")).toBe(true);
+  });
+  it("leaves well-behaved CLIs alone", () => {
+    expect(needsResizeKick("claude")).toBe(false);
+    expect(needsResizeKick("codex")).toBe(false);
+    expect(needsResizeKick("powershell.exe")).toBe(false);
   });
 });
 

@@ -28,6 +28,13 @@ export const CLI_PRESETS: CliPreset[] = [
   { id: "cmd", label: "CMD", program: "cmd.exe", args: [], badge: "cmd", shell: true },
 ];
 
+/** CLIs whose TUI performs its FIRST paint only after receiving a terminal
+ *  resize event (OpenTUI-based, e.g. opencode). Until kicked they render a
+ *  black/blank pane — the caller forces a one-off resize once they're alive. */
+export function needsResizeKick(program: string): boolean {
+  return /opencode/i.test(program);
+}
+
 /** Args to launch a preset with, optionally appending its skip-permissions
  *  flag. CLIs without such a flag are returned unchanged. */
 export function effectiveArgs(preset: CliPreset, skipPerms: boolean): string[] {

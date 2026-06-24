@@ -41,7 +41,7 @@ import {
   setTermFontSize,
   type MascotMode,
 } from "./settings";
-import { CLI_PRESETS, expandCrew, runLimited, launchSpec, effectiveArgs, type CrewState, type CliPreset } from "./crew";
+import { CLI_PRESETS, expandCrew, runLimited, launchSpec, effectiveArgs, needsResizeKick, type CrewState, type CliPreset } from "./crew";
 import { TILE_OPTIONS, gridDims, countLabel, gridLabel, distributeCounts, sanitizeCount } from "./wizard";
 import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm } from "./workspaces";
 import { checkForUpdates } from "./updater";
@@ -952,12 +952,21 @@ function createAgent(
       // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows
       // can actually launch them — see launchSpec.
       const launch = launchSpec(spec.program, spec.args);
+      // OpenTUI CLIs (opencode) only do their first paint after a resize event;
+      // kick one off on their first byte of output — by then the process is up
+      // and listening, so it repaints instead of leaving a black pane.
+      const wantsKick = needsResizeKick(spec.program);
+      let kicked = false;
       await spawnPty(id, launch.program, launch.args, cwd, cols, rows, (bytes) => {
         pane.lastOutputAt = Date.now();
         if (pane.attention) clearAttention(pane); // agent is producing output again
         // After a tab detach this xterm is disposed but the PTY lives on (the
         // new window owns it) — never write into a dropped pane.
         if (ws.panes.has(id)) term.write(bytes);
+        if (wantsKick && !kicked) {
+          kicked = true;
+          kickPaint(id, term);
+        }
       });
       pane.running = true;
       pane.spawnedAt = Date.now();
@@ -974,6 +983,16 @@ function createAgent(
       term.write(enc.encode(`\r\n\x1b[31m[spawn failed: ${errMsg(e)}]\x1b[0m\r\n`));
     }
   };
+}
+
+/** Force a one-off resize "jiggle" (shrink a row, then back) so an OpenTUI CLI
+ *  performs its first paint — see needsResizeKick. The momentary off-by-one is
+ *  invisible because the TUI hasn't rendered anything yet. */
+function kickPaint(id: string, term: TerminalHandle): void {
+  const s = term.fit();
+  void resizePty(id, s.cols, Math.max(1, s.rows - 1))
+    .then(() => resizePty(id, s.cols, s.rows))
+    .catch(() => {});
 }
 
 async function removeAgent(ws: Workspace, id: string) {

@@ -7,7 +7,25 @@ until tests pass and the Reviewer approves.
 
 ## Install
 
+For development, inside this repo:
+
     python -m pip install -e ".[dev]"
+
+To use it on **any repo from anywhere**, install it as a global tool (isolated
+env, adds an `orchestrator` command to PATH):
+
+    uv tool install <path-to-this-repo>      # or: pipx install <path-to-this-repo>
+
+Then run it from any directory and point `--repo` at the target project:
+
+    orchestrator run --repo C:\code\my-api --goal "add a /health endpoint with a test" --cli claude
+
+`--repo` accepts any path:
+- an existing **git repo** → the agents work in an isolated worktree off HEAD,
+  so your working copy is never touched;
+- a non-git folder with code → it is snapshotted first, then worked on in a
+  worktree;
+- an **empty folder** → a new project is scaffolded in place.
 
 ## Run
 

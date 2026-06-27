@@ -52,5 +52,14 @@ def main(argv: list[str]) -> int:
     return 0 if outcome == "success" else 1
 
 
+def cli() -> int:
+    """Console-script entry point (see [project.scripts] in pyproject.toml).
+
+    Lets the tool be invoked as ``orchestrator ...`` from any directory once
+    installed, instead of only ``python -m orchestrator`` inside the package.
+    """
+    return main(sys.argv[1:])
+
+
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    raise SystemExit(cli())

@@ -1,6 +1,19 @@
 import sys
 
-from orchestrator.__main__ import main
+from orchestrator.__main__ import cli, main
+
+
+def test_cli_wrapper_passes_argv(monkeypatch):
+    captured = {}
+
+    def fake_main(argv):
+        captured["argv"] = argv
+        return 0
+
+    monkeypatch.setattr("orchestrator.__main__.main", fake_main)
+    monkeypatch.setattr(sys, "argv", ["orchestrator", "run", "--repo", "x", "--goal", "y"])
+    assert cli() == 0
+    assert captured["argv"] == ["run", "--repo", "x", "--goal", "y"]
 
 
 def test_main_runs_end_to_end(tmp_path, monkeypatch, capsys):

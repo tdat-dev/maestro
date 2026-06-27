@@ -32,7 +32,7 @@ class Config:
 def default_config() -> Config:
     return Config(
         agents={
-            "scout": AgentConfig(args=["claude", "-p", "--dangerously-skip-permissions"]),
+            "scout": AgentConfig(args=["claude", "-p"]),
             "builder": AgentConfig(args=["codex", "exec"]),
             "reviewer": AgentConfig(args=["gemini", "-p"]),
         },

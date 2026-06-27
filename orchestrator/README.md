@@ -20,7 +20,7 @@ Options: `--config cfg.yaml`, `--max-iters N`, `--branch NAME`.
     max_iterations: 6
     test_command: [python, -m, pytest, -q]   # omit to auto-detect
     agents:
-      scout:    { args: [claude, -p, --dangerously-skip-permissions] }
+      scout:    { args: [claude, -p] }
       builder:  { args: [codex, exec] }
       reviewer: { args: [gemini, -p] }
     sentry:
@@ -32,6 +32,15 @@ Options: `--config cfg.yaml`, `--max-iters N`, `--branch NAME`.
 
 Each role maps to any CLI. Prompts go via stdin (`prompt_via: stdin`) by
 default; use `prompt_via: arg` to pass the prompt as the final argument.
+
+## Worktree lifecycle
+
+The agent worktree is intentionally **not** auto-deleted after a run — the diff
+it contains is the product of the agent's work and the user should be able to
+inspect it. Re-running the orchestrator on the same repo/branch reuses and
+resets the worktree. Call `teardown_worktree` explicitly if you want to discard
+it. This diverges from the original spec's "always teardown in finally" on
+purpose.
 
 ## Tests
 

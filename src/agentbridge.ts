@@ -19,3 +19,24 @@ export function sendToAgent(text: string, submit: boolean): boolean {
 export function hasAgent(): boolean {
   return sender !== null;
 }
+
+/* ---- host hooks the board uses to drive the rest of the UI ---- */
+
+let fileOpener: ((path: string) => void) | null = null;
+let diffOpener: (() => void) | null = null;
+
+/** main.ts registers how to reveal a file in the code panel. */
+export function setFileOpener(fn: (path: string) => void): void {
+  fileOpener = fn;
+}
+export function openFileInPanel(path: string): void {
+  fileOpener?.(path);
+}
+
+/** main.ts registers how to open the dock's Changes (diff) viewer. */
+export function setDiffOpener(fn: () => void): void {
+  diffOpener = fn;
+}
+export function openDiff(): void {
+  diffOpener?.();
+}

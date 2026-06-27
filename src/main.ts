@@ -49,12 +49,12 @@ import { getVersion } from "@tauri-apps/api/app";
 import { initTitlebar } from "./titlebar";
 import { initIdleAnimationPause } from "./power";
 import { CLI_LOGOS } from "./logos";
-import { initDock, dockSetContext, dockToggle } from "./dock";
+import { initDock, dockSetContext, dockToggle, dockOpen } from "./dock";
 import { Mascot } from "./mascot";
 import { initPanels } from "./panels";
 import { initFileTree } from "./filetree";
 import { initEditor } from "./editor";
-import { setAgentSender } from "./agentbridge";
+import { setAgentSender, setFileOpener, setDiffOpener } from "./agentbridge";
 
 /* Home launcher ⇄ Workspace grid.
  * Home is shown while there are 0 agents (the prominent "create" entry).
@@ -2154,6 +2154,14 @@ fileTree = initFileTree({
   host: document.getElementById("fileTree") as HTMLElement,
   onOpenFile: (rel) => void editor.open(rel),
 });
+// Let the board reveal an evidence file in the code panel, or open the diff.
+setFileOpener((path) => {
+  appEl.classList.remove("code-hidden");
+  localStorage.setItem("maestro.codeHidden", "0");
+  document.getElementById("btnToggleCode")?.classList.add("on");
+  void editor.open(path);
+});
+setDiffOpener(() => dockOpen("diff"));
 
 /* Pause decorative animations when the window is hidden/unfocused (saves GPU).
  * On resume, repaint everything: after a long idle / display sleep / tray stint,

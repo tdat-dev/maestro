@@ -5,15 +5,25 @@
  * the active workspace. Rendered inside a dock panel; see dock.ts. */
 
 import { loadJSON, saveJSON, type DockContext } from "./dockstore";
-import { fsReadFile, fsStat, fsWriteFile, fsCreateFile, fsCreateDir } from "./ipc";
-import { sendToAgent } from "./agentbridge";
+import {
+  fsReadFile,
+  fsStat,
+  fsWriteFile,
+  fsCreateFile,
+  fsCreateDir,
+  reposUnder,
+  gitChangedFiles,
+} from "./ipc";
+import { sendToAgent, openFileInPanel, openDiff } from "./agentbridge";
 import { parsePlan, type PlanTask } from "./planparse";
 
 /* ---- agent ⇄ board plan gate ---- */
 const PLAN_REL = ".maestro\\plan.json";
+const DONE_REL = ".maestro\\done.json";
 const RULES_DIR = ".maestro";
 const RULES_REL = ".maestro\\AGENTS.md";
 const PROPOSED_TITLE = "Proposed";
+const DONE_TITLE = "Done";
 
 // Written into the workspace so every agent session follows plan-first.
 const RULES_TEXT = `# Maestro — plan-first protocol
@@ -26,6 +36,10 @@ For ANY task in this workspace, do NOT implement immediately.
    (label is optional: green | yellow | orange | red | purple | blue)
 3. STOP and wait. The tasks appear on the Maestro board for review.
 4. Only implement the tasks I confirm as approved.
+5. When you FINISH a task, append it to \`.maestro/done.json\` (a JSON array):
+   [{"title":"<the exact task title>","summary":"one line on what changed"}]
+   Keep titles identical to the plan so the board can match and move the card
+   to Done automatically. Do not remove earlier entries.
 `;
 
 // Typed into the focused agent; the user appends their actual task, then Enter.
@@ -37,6 +51,13 @@ interface ChecklistItem {
   text: string;
   done: boolean;
 }
+/** Evidence attached when a task is finished: which files changed + a summary. */
+interface DoneInfo {
+  repoRoot: string;
+  files: string[]; // paths relative to repoRoot
+  summary?: string; // optional agent-written note
+  at: number; // ms timestamp
+}
 interface Card {
   id: string;
   title: string;
@@ -44,6 +65,7 @@ interface Card {
   labels: string[]; // label colour keys
   due: string | null; // ISO date (yyyy-mm-dd) or null
   checklist: ChecklistItem[];
+  done?: DoneInfo; // present once the task is marked Done (code evidence)
 }
 interface List {
   id: string;
@@ -123,7 +145,7 @@ function normalize(raw: unknown, ctxKey: string): Board {
 }
 
 function normalizeCard(c: Partial<Card>): Card {
-  return {
+  const card: Card = {
     id: c.id || uid("c"),
     title: typeof c.title === "string" ? c.title : "",
     desc: typeof c.desc === "string" ? c.desc : "",
@@ -131,6 +153,16 @@ function normalizeCard(c: Partial<Card>): Card {
     due: typeof c.due === "string" ? c.due : null,
     checklist: Array.isArray(c.checklist) ? c.checklist : [],
   };
+  const d = c.done;
+  if (d && typeof d === "object" && Array.isArray(d.files) && typeof d.repoRoot === "string") {
+    card.done = {
+      repoRoot: d.repoRoot,
+      files: d.files.filter((f): f is string => typeof f === "string"),
+      summary: typeof d.summary === "string" ? d.summary : undefined,
+      at: typeof d.at === "number" ? d.at : 0,
+    };
+  }
+  return card;
 }
 function mkCard(title: string): Card {
   return { id: uid("c"), title, desc: "", labels: [], due: null, checklist: [] };
@@ -154,13 +186,19 @@ export function createKanban() {
   /* ---- agent plan bridge ---- */
   let dir: string | null = null; // active workspace folder, for the plan file
   let planMtime = 0; // last-seen mtime of .maestro/plan.json (auto-watch)
+  let doneMtime = 0; // last-seen mtime of .maestro/done.json (auto-watch)
   let watchTimer: number | null = null;
   let seen = new Set<string>(); // task titles already imported (survives deletes)
+  let doneSeen = new Set<string>(); // done.json titles already moved to Done
 
   const seenKey = (k: string) => `maestro.kanban.planseen.${k}`;
+  const doneSeenKey = (k: string) => `maestro.kanban.doneseen.${k}`;
   const loadSeen = (k: string) => new Set(loadJSON<string[]>(seenKey(k), []));
   const saveSeen = () => {
     if (ctx) saveJSON(seenKey(ctx.key), [...seen]);
+  };
+  const saveDoneSeen = () => {
+    if (ctx) saveJSON(doneSeenKey(ctx.key), [...doneSeen]);
   };
 
   function findOrCreateList(title: string): List {
@@ -254,6 +292,109 @@ export function createKanban() {
     sendToAgent(msg, true);
   }
 
+  /* ---- A: code evidence when a task reaches Done ---- */
+  const fileBase = (p: string) => {
+    const i = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"));
+    return i < 0 ? p : p.slice(i + 1);
+  };
+
+  async function resolveRepoRoot(): Promise<string | null> {
+    if (!dir) return null;
+    try {
+      const repos = await reposUnder(dir);
+      if (repos.length) return repos[0].path;
+    } catch {
+      /* git missing */
+    }
+    return dir;
+  }
+
+  /** Attach "what changed" (git) to a finished card, then re-render. */
+  async function attachDoneEvidence(card: Card, summary?: string): Promise<void> {
+    const repoRoot = (await resolveRepoRoot()) ?? dir ?? "";
+    let files: string[] = [];
+    if (repoRoot) {
+      try {
+        files = (await gitChangedFiles(repoRoot)).map((f) => f.path);
+      } catch {
+        /* not a repo */
+      }
+    }
+    card.done = { repoRoot, files, summary, at: Date.now() };
+    persist();
+    render();
+  }
+
+  /** After a drag: if a card just landed in Done, capture its code evidence. */
+  function maybeFireDone(cardId: string, fromListId: string | null): void {
+    const found = findCard(cardId);
+    if (!found) return;
+    const nowDone = found.list.title.toLowerCase() === DONE_TITLE.toLowerCase();
+    const wasDone =
+      !!fromListId &&
+      board.lists.find((l) => l.id === fromListId)?.title.toLowerCase() === DONE_TITLE.toLowerCase();
+    if (nowDone && !wasDone && !found.card.done) void attachDoneEvidence(found.card);
+  }
+
+  /* ---- B: agent reports a finished task → auto-move the card to Done ---- */
+  function findCardByTitle(title: string): { list: List; idx: number; card: Card } | null {
+    const t = title.trim().toLowerCase();
+    for (const list of board.lists) {
+      const idx = list.cards.findIndex((c) => c.title.trim().toLowerCase() === t);
+      if (idx >= 0) return { list, idx, card: list.cards[idx] };
+    }
+    return null;
+  }
+
+  async function importDone(): Promise<void> {
+    if (!dir) return;
+    const entries: { title: string; summary?: string }[] = [];
+    try {
+      const f = await fsReadFile(dir, DONE_REL);
+      doneMtime = f.mtime;
+      const parsed: unknown = JSON.parse(f.content);
+      for (const e of Array.isArray(parsed) ? parsed : []) {
+        if (e && typeof e === "object" && typeof (e as { title?: unknown }).title === "string") {
+          const o = e as { title: string; summary?: unknown };
+          entries.push({
+            title: o.title,
+            summary: typeof o.summary === "string" ? o.summary : undefined,
+          });
+        }
+      }
+    } catch {
+      return; // no done file / invalid JSON
+    }
+    const doneList = findOrCreateList(DONE_TITLE);
+    let changed = false;
+    for (const entry of entries) {
+      const key = entry.title.trim().toLowerCase();
+      if (doneSeen.has(key)) continue;
+      doneSeen.add(key);
+      changed = true;
+      const found = findCardByTitle(entry.title);
+      const card = found ? found.card : mkCard(entry.title);
+      if (found) found.list.cards.splice(found.idx, 1);
+      doneList.cards.push(card);
+      void attachDoneEvidence(card, entry.summary);
+    }
+    if (changed) {
+      saveDoneSeen();
+      persist();
+      render();
+    }
+  }
+
+  async function pollDone(): Promise<void> {
+    if (!dir) return;
+    try {
+      const s = await fsStat(dir, DONE_REL);
+      if (s.mtime !== doneMtime) await importDone();
+    } catch {
+      /* not written yet */
+    }
+  }
+
   // Drag uses POINTER EVENTS, not HTML5 drag-and-drop. Maestro runs in a Tauri
   // WebView2 window with OS drag-drop enabled (the "drop a file on a pane"
   // feature), which swallows HTML5 dragstart/drop inside the webview. Pointer
@@ -305,7 +446,9 @@ export function createKanban() {
 
   function onPointerUp() {
     if (!drag) return;
-    const { el, pid, started } = drag;
+    const { el, pid, started, type } = drag;
+    const cardId = type === "card" ? el.dataset.card ?? null : null;
+    const fromListId = el.dataset.list ?? null;
     try {
       el.releasePointerCapture(pid);
     } catch {
@@ -315,6 +458,7 @@ export function createKanban() {
     if (started) {
       el.classList.remove("dragging", "list-dragging");
       commitFromDom();
+      if (cardId) maybeFireDone(cardId, fromListId);
       render();
     }
   }
@@ -451,14 +595,43 @@ export function createKanban() {
       );
     }
 
+    const doneFooter = card.done
+      ? `<div class="kb-done">` +
+        `<span class="kb-done-tag">✓ done</span>` +
+        card.done.files
+          .slice(0, 5)
+          .map(
+            (f) =>
+              `<button class="kb-file" data-f="${enc(f)}" title="${enc(f)}">${enc(fileBase(f))}</button>`,
+          )
+          .join("") +
+        (card.done.files.length > 5
+          ? `<button class="kb-file kb-diff">+${card.done.files.length - 5}</button>`
+          : "") +
+        `<button class="kb-file kb-diff">diff</button>` +
+        `</div>`
+      : "";
+
     node.innerHTML =
       labels +
       `<span class="kb-card-title">${enc(card.title)}</span>` +
-      (badges.length ? `<div class="kb-badges">${badges.join("")}</div>` : "");
+      (badges.length ? `<div class="kb-badges">${badges.join("")}</div>` : "") +
+      doneFooter;
 
-    node.addEventListener("pointerdown", (e) => beginDrag(e, "card", node));
+    node.addEventListener("pointerdown", (e) => {
+      if ((e.target as HTMLElement).closest(".kb-done")) return; // chips aren't drag handles
+      beginDrag(e, "card", node);
+    });
     // A real drag sets `dragged`, which suppresses this click-to-open.
-    node.addEventListener("click", () => {
+    node.addEventListener("click", (e) => {
+      const fileBtn = (e.target as HTMLElement).closest<HTMLElement>(".kb-file");
+      if (fileBtn) {
+        e.stopPropagation();
+        if (fileBtn.classList.contains("kb-diff")) openDiff();
+        else if (card.done && fileBtn.dataset.f)
+          openFileInPanel(`${card.done.repoRoot}\\${fileBtn.dataset.f}`);
+        return;
+      }
       if (!dragged) openCard(card.id);
     });
     return node;
@@ -751,8 +924,12 @@ export function createKanban() {
         mkBtn("Send approved", "Tell the agent to implement the To do list", sendApproved);
       }
 
-      // Auto-watch the plan file so an agent write lands on the board on its own.
-      if (watchTimer === null) watchTimer = window.setInterval(() => void pollPlan(), 3500);
+      // Auto-watch plan.json + done.json so agent writes land on the board.
+      if (watchTimer === null)
+        watchTimer = window.setInterval(() => {
+          void pollPlan();
+          void pollDone();
+        }, 3500);
       render();
     },
     setContext(next: DockContext | null) {
@@ -760,10 +937,13 @@ export function createKanban() {
       openCardId = null;
       dir = next?.dir ?? null;
       planMtime = 0;
+      doneMtime = 0;
       seen = next ? loadSeen(next.key) : new Set();
+      doneSeen = next ? new Set(loadJSON<string[]>(doneSeenKey(next.key), [])) : new Set();
       board = ctx ? normalize(loadJSON<unknown>(keyFor(ctx.key), null), ctx.key) : defaultBoard();
       render();
       void importFromFile(); // pull any existing plan for this folder
+      void importDone(); // and any already-reported done tasks
     },
   };
 }

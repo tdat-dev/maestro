@@ -238,6 +238,13 @@ export async function repoDiff(repoRoot: string): Promise<string> {
   return invoke<string>("repo_diff", { repoRoot });
 }
 
+export interface ChangedFile { path: string; status: string }
+
+/** Files changed vs HEAD (incl. untracked), as {path, status} pairs. */
+export async function gitChangedFiles(repoRoot: string): Promise<ChangedFile[]> {
+  return invoke<ChangedFile[]>("git_changed_files", { repoRoot });
+}
+
 /* ---- AI Code Slice 2: write side (commit / merge / discard) ---- */
 
 export interface RepoInfo {

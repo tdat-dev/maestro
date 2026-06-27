@@ -88,6 +88,7 @@ pub fn run() {
             worktree::worktree_remove,
             review::git_repos_under,
             review::repo_diff,
+            review::git_changed_files,
             review::review_repo_info,
             review::review_commit,
             review::review_merge,

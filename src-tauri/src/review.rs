@@ -83,6 +83,41 @@ pub fn repo_diff(repo_root: String) -> Result<String, CommandError> {
     Ok(diff)
 }
 
+#[derive(Serialize)]
+pub struct ChangedFile {
+    pub path: String,
+    pub status: String,
+}
+
+/// Files changed in the working tree vs HEAD (including untracked), as porcelain
+/// status pairs. Used to attach "what changed" evidence to a finished task.
+#[tauri::command]
+pub fn git_changed_files(repo_root: String) -> Result<Vec<ChangedFile>, CommandError> {
+    let _ = git(&["add", "-N", "--", "."], &repo_root); // surface untracked files
+    let out = git(
+        &["-c", "core.quotepath=false", "status", "--porcelain"],
+        &repo_root,
+    )
+    .unwrap_or_default();
+    let mut files = Vec::new();
+    for line in out.lines() {
+        if line.len() < 4 {
+            continue;
+        }
+        let status = line[..2].trim().to_string();
+        let mut path = line[3..].trim().to_string();
+        // For renames git prints "old -> new"; keep the new path.
+        if let Some(idx) = path.find(" -> ") {
+            path = path[idx + 4..].to_string();
+        }
+        files.push(ChangedFile {
+            path: path.replace('/', "\\"),
+            status,
+        });
+    }
+    Ok(files)
+}
+
 // ===================== Slice 2: write side (commit / merge / discard) =====================
 
 /// Guard: the path must exist and be inside a git work tree. Returns a typed

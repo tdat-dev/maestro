@@ -291,3 +291,42 @@ export async function reviewRemoveWorktree(
 export async function programsOnPath(programs: string[]): Promise<boolean[]> {
   return invoke<boolean[]>("programs_on_path", { programs });
 }
+
+/* ---- general filesystem (code panel) ---- */
+
+/** A directory entry from the backend `fs_read_dir`. */
+export interface FsEntry {
+  name: string;
+  is_dir: boolean;
+  size: number;
+}
+
+/** List one directory level under `root` (path is relative to root, or "."). */
+export async function fsReadDir(root: string, path: string): Promise<FsEntry[]> {
+  return invoke<FsEntry[]>("fs_read_dir", { root, path });
+}
+
+/** Read a text file (rejects binary/oversize). Returns content + mtime (ms). */
+export async function fsReadFile(
+  root: string,
+  path: string,
+): Promise<{ content: string; mtime: number }> {
+  return invoke<{ content: string; mtime: number }>("fs_read_file", { root, path });
+}
+
+/** Modified-time (ms) probe for external-change detection. */
+export async function fsStat(root: string, path: string): Promise<{ mtime: number }> {
+  return invoke<{ mtime: number }>("fs_stat", { root, path });
+}
+
+/** Write a text file. Pass the last-read mtime to guard against clobbering an
+ *  external edit; rejects with a `Conflict` error (carrying the current mtime)
+ *  on mismatch. Pass `null` to force-write. Returns the new mtime. */
+export async function fsWriteFile(
+  root: string,
+  path: string,
+  content: string,
+  expectedMtime: number | null,
+): Promise<{ mtime: number }> {
+  return invoke<{ mtime: number }>("fs_write_file", { root, path, content, expectedMtime });
+}

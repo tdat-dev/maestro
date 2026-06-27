@@ -336,3 +336,23 @@ export async function fsWriteFile(
 export async function fsReadDataUrl(root: string, path: string): Promise<string> {
   return invoke<string>("fs_read_data_url", { root, path });
 }
+
+/** Create a new empty file (rejects if it already exists). */
+export async function fsCreateFile(root: string, path: string): Promise<void> {
+  await invoke("fs_create_file", { root, path });
+}
+
+/** Create a new directory (rejects if it already exists). */
+export async function fsCreateDir(root: string, path: string): Promise<void> {
+  await invoke("fs_create_dir", { root, path });
+}
+
+/** Rename / move within the workspace root. */
+export async function fsRename(root: string, from: string, to: string): Promise<void> {
+  await invoke("fs_rename", { root, from, to });
+}
+
+/** Delete a file, or a directory and everything under it. */
+export async function fsDelete(root: string, path: string): Promise<void> {
+  await invoke("fs_delete", { root, path });
+}

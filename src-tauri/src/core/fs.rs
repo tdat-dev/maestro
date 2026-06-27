@@ -137,6 +137,79 @@ pub fn fs_write_file(
     })
 }
 
+/// Validate a target that may not exist yet (create / rename destination): its
+/// parent must already exist inside `root`, and the final name must be a plain
+/// component (no path separators, no `..`).
+fn scoped_new(root: &str, path: &str) -> Result<PathBuf, CommandError> {
+    let p = Path::new(path);
+    let name = p
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| CommandError::Failed("invalid name".into()))?;
+    if name == ".." || name.contains('/') || name.contains('\\') {
+        return Err(CommandError::Failed("invalid name".into()));
+    }
+    let parent_rel = p.parent().map(|x| x.to_path_buf()).unwrap_or_default();
+    let root_c = std::fs::canonicalize(root)
+        .map_err(|e| CommandError::Failed(format!("bad root: {e}")))?;
+    let parent_join = if parent_rel.as_os_str().is_empty() {
+        root_c.clone()
+    } else if parent_rel.is_absolute() {
+        parent_rel.clone()
+    } else {
+        root_c.join(&parent_rel)
+    };
+    let parent_c = std::fs::canonicalize(&parent_join)
+        .map_err(|e| CommandError::Failed(format!("no such folder: {e}")))?;
+    if !parent_c.starts_with(&root_c) {
+        return Err(CommandError::Failed("path escapes workspace root".into()));
+    }
+    Ok(parent_c.join(name))
+}
+
+/// Create a new empty file. Fails if a file already exists at the path.
+#[tauri::command]
+pub fn fs_create_file(root: String, path: String) -> Result<(), CommandError> {
+    let target = scoped_new(&root, &path)?;
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&target)
+        .map_err(|e| CommandError::Failed(e.to_string()))?;
+    Ok(())
+}
+
+/// Create a new directory. Fails if it already exists.
+#[tauri::command]
+pub fn fs_create_dir(root: String, path: String) -> Result<(), CommandError> {
+    let target = scoped_new(&root, &path)?;
+    std::fs::create_dir(&target).map_err(|e| CommandError::Failed(e.to_string()))?;
+    Ok(())
+}
+
+/// Rename / move within the workspace. `from` must exist; `to`'s parent must
+/// exist and stay inside the root.
+#[tauri::command]
+pub fn fs_rename(root: String, from: String, to: String) -> Result<(), CommandError> {
+    let src = scoped(&root, &from)?;
+    let dst = scoped_new(&root, &to)?;
+    std::fs::rename(&src, &dst).map_err(|e| CommandError::Failed(e.to_string()))?;
+    Ok(())
+}
+
+/// Delete a file, or a directory and all its contents.
+#[tauri::command]
+pub fn fs_delete(root: String, path: String) -> Result<(), CommandError> {
+    let target = scoped(&root, &path)?;
+    let meta = std::fs::symlink_metadata(&target).map_err(|e| CommandError::Failed(e.to_string()))?;
+    if meta.is_dir() {
+        std::fs::remove_dir_all(&target).map_err(|e| CommandError::Failed(e.to_string()))?;
+    } else {
+        std::fs::remove_file(&target).map_err(|e| CommandError::Failed(e.to_string()))?;
+    }
+    Ok(())
+}
+
 /// Refuse to inline images bigger than this as a data URL (base64 is +33%).
 pub const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024; // 25 MiB
 
@@ -253,6 +326,29 @@ mod tests {
             std::fs::read_to_string(tmp.path().join("a.txt")).unwrap(),
             "new"
         );
+    }
+
+    #[test]
+    fn create_rename_delete_round_trip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_string_lossy().to_string();
+        fs_create_dir(root.clone(), "src".into()).unwrap();
+        assert!(tmp.path().join("src").is_dir());
+        fs_create_file(root.clone(), "src\\a.txt".into()).unwrap();
+        assert!(tmp.path().join("src").join("a.txt").is_file());
+        fs_rename(root.clone(), "src\\a.txt".into(), "src\\b.txt".into()).unwrap();
+        assert!(!tmp.path().join("src").join("a.txt").exists());
+        assert!(tmp.path().join("src").join("b.txt").is_file());
+        fs_delete(root.clone(), "src".into()).unwrap();
+        assert!(!tmp.path().join("src").exists());
+    }
+
+    #[test]
+    fn create_rejects_bad_name_and_escape() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_string_lossy().to_string();
+        assert!(fs_create_file(root.clone(), "..\\evil.txt".into()).is_err());
+        assert!(fs_create_dir(root.clone(), "a\\..\\..\\b".into()).is_err());
     }
 
     #[test]

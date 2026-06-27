@@ -98,6 +98,10 @@ pub fn run() {
             core::fs::fs_stat,
             core::fs::fs_write_file,
             core::fs::fs_read_data_url,
+            core::fs::fs_create_file,
+            core::fs::fs_create_dir,
+            core::fs::fs_rename,
+            core::fs::fs_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

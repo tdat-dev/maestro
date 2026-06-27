@@ -4,6 +4,10 @@ use serde::Serialize;
 pub enum CommandError {
     #[error("{0}")]
     Failed(String),
+    /// A write was rejected because the file changed on disk since it was read.
+    /// Carries the current on-disk mtime (ms) so the UI can offer reload/overwrite.
+    #[error("file changed on disk")]
+    Conflict(i64),
 }
 
 impl From<anyhow::Error> for CommandError {

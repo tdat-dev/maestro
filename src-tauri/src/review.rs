@@ -387,7 +387,9 @@ mod tests {
         git(&["commit", "-qam", "main edit"], &root).unwrap();
 
         let err = review_merge(root.clone(), "feat".into()).unwrap_err();
-        let CommandError::Failed(msg) = err;
+        let CommandError::Failed(msg) = err else {
+            panic!("expected Failed, got {err:?}");
+        };
         assert!(msg.contains("conflict"), "should report a conflict: {msg}");
         assert!(msg.contains("a.txt"), "should name the conflicting file: {msg}");
         // Merge was aborted → tree is clean, no merge in progress.

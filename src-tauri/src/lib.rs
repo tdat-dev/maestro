@@ -93,6 +93,10 @@ pub fn run() {
             review::review_merge,
             review::review_discard,
             review::review_remove_worktree,
+            core::fs::fs_read_dir,
+            core::fs::fs_read_file,
+            core::fs::fs_stat,
+            core::fs::fs_write_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

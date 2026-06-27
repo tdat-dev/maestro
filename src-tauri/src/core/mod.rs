@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod command_spec;
+pub mod fs;
 #[cfg(windows)]
 pub mod job;
 pub mod pty_session;

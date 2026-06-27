@@ -49,27 +49,50 @@ def run_agent(role: str, prompt: str, cwd: str, config: Config) -> AgentResult:
     command, stdin_text = _build_command(ac.args, prompt, ac.prompt_via)
 
     result = _invoke(command, stdin_text, cwd, ac.timeout)
-    if result.returncode != 0 or result.timed_out:
-        result = _invoke(command, stdin_text, cwd, ac.timeout)  # retry once
+    # Retry only on non-zero exit code; never retry a timeout (would double latency).
+    if result.returncode != 0 and not result.timed_out:
+        result = _invoke(command, stdin_text, cwd, ac.timeout)
     result.role = role
     return result
 
 
-_FENCE = re.compile(r"```json\s*(\{.*?\})\s*```", re.DOTALL)
+_FENCE_RE = re.compile(r"```json\s*\{", re.DOTALL)
 
 
 def extract_json_block(text: str) -> dict | None:  # type: ignore[type-arg]
-    candidates: list[str] = _FENCE.findall(text)
-    if not candidates:
-        start = text.rfind("{")
-        end = text.rfind("}")
-        if start != -1 and end > start:
-            candidates = [text[start:end + 1]]
-    for raw in reversed(candidates):
+    """Return the last valid JSON object in *text*.
+
+    Strategy:
+    1. Prefer fence-anchored positions (```json fences always point at the
+       outermost ``{``); try them last-to-first so the last fence wins when
+       multiple fences are present.
+    2. Fallback: try every bare ``{`` in the text last-to-first.
+
+    ``json.JSONDecoder.raw_decode`` handles nested braces and ``}`` inside
+    strings correctly, so the full object is always returned regardless of
+    how many closing braces appear inside string values.
+    """
+    decoder = json.JSONDecoder()
+
+    # --- Pass 1: fence-anchored positions (preferred) ---
+    fence_positions = [m.end() - 1 for m in _FENCE_RE.finditer(text)]
+    for idx in reversed(fence_positions):
         try:
-            value = json.loads(raw)
+            value, _ = decoder.raw_decode(text, idx)
             if isinstance(value, dict):
                 return value
         except json.JSONDecodeError:
             continue
+
+    # --- Pass 2: bare '{' positions (fallback, last-to-first) ---
+    for idx in range(len(text) - 1, -1, -1):
+        if text[idx] != "{":
+            continue
+        try:
+            value, _ = decoder.raw_decode(text, idx)
+            if isinstance(value, dict):
+                return value
+        except json.JSONDecodeError:
+            continue
+
     return None

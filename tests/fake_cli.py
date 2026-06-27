@@ -5,9 +5,11 @@ Usage in tests:
   command = [sys.executable, "tests/fake_cli.py", "--emit", "<text>"]
   command = [sys.executable, "tests/fake_cli.py", "--fail"]
   command = [sys.executable, "tests/fake_cli.py", "--touch", "<relpath>"]
+  command = [sys.executable, "tests/fake_cli.py", "--sleep", "3"]
 """
 import argparse
 import sys
+import time
 
 
 def main() -> int:
@@ -15,9 +17,14 @@ def main() -> int:
     ap.add_argument("--emit", default="")
     ap.add_argument("--touch", default="")
     ap.add_argument("--fail", action="store_true")
+    ap.add_argument("--sleep", type=float, default=0,
+                    help="Sleep N seconds before exiting (for timeout tests)")
     args = ap.parse_args()
 
     _prompt = sys.stdin.read()  # consume stdin like a real CLI
+
+    if args.sleep:
+        time.sleep(args.sleep)
 
     if args.touch:
         with open(args.touch, "w", encoding="utf-8") as fh:

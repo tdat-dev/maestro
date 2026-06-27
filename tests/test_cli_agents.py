@@ -42,3 +42,33 @@ def test_run_agent_can_edit_files(tmp_path):
     res = run_agent("builder", "write a file", cwd=str(tmp_path), config=cfg)
     assert res.returncode == 0
     assert target.read_text(encoding="utf-8").strip() == "generated"
+
+
+# FIX 5a — timeout must NOT be retried
+def test_run_agent_does_not_retry_on_timeout(tmp_path):
+    import time
+
+    cfg = default_config()
+    cfg.agents["scout"] = AgentConfig(
+        args=[sys.executable, "tests/fake_cli.py", "--sleep", "10"],
+        timeout=1,
+    )
+    start = time.monotonic()
+    res = run_agent("scout", "prompt", cwd=str(tmp_path), config=cfg)
+    elapsed = time.monotonic() - start
+    assert res.timed_out
+    # With retry this would take ≥2 s; without retry it completes in ~1 s.
+    assert elapsed < 2.5, f"Retry guard failed — took {elapsed:.2f}s"
+
+
+# FIX 6 — robust JSON extraction
+def test_extract_json_with_brace_in_string():
+    text = '```json\n{"approved": true, "notes": "added a } guard", "blocking": []}\n```'
+    result = extract_json_block(text)
+    assert result == {"approved": True, "notes": "added a } guard", "blocking": []}
+
+
+def test_extract_json_nested_object():
+    text = '```json\n{"approved": false, "blocking": [], "meta": {"k": 1}}\n```'
+    result = extract_json_block(text)
+    assert result == {"approved": False, "blocking": [], "meta": {"k": 1}}

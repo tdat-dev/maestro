@@ -15,6 +15,10 @@ from orchestrator.worktree import detect_mode, setup_worktree
 
 
 def route(state: OrchestratorState) -> str:
+    # Agent timeout/failure takes top priority — surface it immediately.
+    if state.get("agent_failed"):
+        return "finalize_failed"
+
     errors = state.get("errors") or []
     review = state.get("review") or {}
     approved = bool(review.get("approved"))
@@ -66,9 +70,15 @@ def node_builder(state, config: Config) -> dict:
     errors_text = format_errors(state.get("errors") or [])
     notes = (state.get("review") or {}).get("notes", "")
     prompt = builder_prompt(state["goal"], state.get("plan", ""), errors_text, notes)
-    run_agent("builder", prompt, cwd=wt, config=config)
-    return {"iteration": state.get("iteration", 0) + 1, "needs_rescout": False,
-            "history": state.get("history", []) + ["builder"]}
+    res = run_agent("builder", prompt, cwd=wt, config=config)
+    result: dict = {
+        "iteration": state.get("iteration", 0) + 1,
+        "needs_rescout": False,
+        "history": state.get("history", []) + ["builder"],
+    }
+    if res.timed_out:
+        result["agent_failed"] = True
+    return result
 
 
 def node_execute(state, config: Config) -> dict:
@@ -99,8 +109,21 @@ def node_reviewer(state, config: Config) -> dict:
         review = {"approved": bool(parsed["approved"]),
                   "blocking": list(parsed.get("blocking", [])),
                   "notes": str(parsed.get("notes", ""))}
-    return {"review": review,
-            "history": state.get("history", []) + ["reviewer"]}
+
+    # FIX 4: set needs_rescout when reviewer rejects but tests are clean.
+    # If there are terminal errors, keep routing to Builder to fix them first.
+    errors = state.get("errors") or []
+    approved = bool(review.get("approved"))
+    needs_rescout = not approved and not bool(errors)
+
+    result: dict = {
+        "review": review,
+        "needs_rescout": needs_rescout,
+        "history": state.get("history", []) + ["reviewer"],
+    }
+    if res.timed_out:
+        result["agent_failed"] = True
+    return result
 
 
 def write_run_log(worktree_path: str, history: list[str], outcome: str | None) -> str:
@@ -125,10 +148,15 @@ def node_finalize_maxed(state) -> dict:
     return {"outcome": "maxed"}
 
 
+def node_finalize_failed(state) -> dict:
+    write_run_log(state["worktree_path"], state.get("history", []), "failed")
+    return {"outcome": "failed"}
+
+
 def build_graph(config: Config):
     from orchestrator.state import OrchestratorState
 
-    g = StateGraph(OrchestratorState)
+    g = StateGraph(OrchestratorState)  # ty: ignore[invalid-argument-type]
     g.add_node("setup", partial(node_setup_worktree, config=config))
     g.add_node("scout", partial(node_scout, config=config))
     g.add_node("builder", partial(node_builder, config=config))
@@ -137,6 +165,7 @@ def build_graph(config: Config):
     g.add_node("reviewer", partial(node_reviewer, config=config))
     g.add_node("finalize_success", node_finalize_success)
     g.add_node("finalize_maxed", node_finalize_maxed)
+    g.add_node("finalize_failed", node_finalize_failed)
 
     g.add_edge(START, "setup")
     g.add_edge("setup", "scout")
@@ -147,9 +176,11 @@ def build_graph(config: Config):
     g.add_conditional_edges("reviewer", route, {
         "finalize_success": "finalize_success",
         "finalize_maxed": "finalize_maxed",
+        "finalize_failed": "finalize_failed",
         "scout": "scout",
         "builder": "builder",
     })
     g.add_edge("finalize_success", END)
     g.add_edge("finalize_maxed", END)
+    g.add_edge("finalize_failed", END)
     return g.compile()

@@ -12,6 +12,9 @@ class ReviewVerdict(TypedDict):
     notes: str
 
 
+# All channels are last-write-wins (no Annotated[..., add] reducers). This is
+# correct because the graph is strictly sequential; a future parallel branch
+# writing history/errors would need an add reducer to merge concurrent updates.
 class OrchestratorState(TypedDict, total=False):
     goal: str
     repo_path: str
@@ -25,5 +28,6 @@ class OrchestratorState(TypedDict, total=False):
     errors: list[ErrorEvent]
     review: Optional[ReviewVerdict]
     needs_rescout: bool
+    agent_failed: bool  # set True when builder or reviewer times out
     history: list[str]
     outcome: Optional[str]  # "success" | "maxed" | "failed"

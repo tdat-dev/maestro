@@ -42,3 +42,16 @@ def test_success_takes_priority_over_maxed():
     s = base(iteration=6, errors=[],
              review={"approved": True, "blocking": [], "notes": ""})
     assert route(s) == "finalize_success"
+
+
+# FIX 5b — agent_failed takes top priority
+def test_agent_failed_routes_to_finalize_failed():
+    s = base(agent_failed=True)
+    assert route(s) == "finalize_failed"
+
+
+def test_agent_failed_overrides_success():
+    """Even if tests pass and reviewer approves, a timeout surfaces as failed."""
+    s = base(agent_failed=True, errors=[],
+             review={"approved": True, "blocking": [], "notes": ""})
+    assert route(s) == "finalize_failed"

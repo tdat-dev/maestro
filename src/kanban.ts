@@ -13,6 +13,7 @@ import {
   fsCreateDir,
   reposUnder,
   gitChangedFiles,
+  captureWebPage,
 } from "./ipc";
 import { sendToAgent, openFileInPanel, openDiff } from "./agentbridge";
 import { parsePlan, type PlanTask } from "./planparse";
@@ -392,6 +393,49 @@ export function createKanban() {
       if (s.mtime !== doneMtime) await importDone();
     } catch {
       /* not written yet */
+    }
+  }
+
+  /* ---- C: screenshot a web preview into the repo ---- */
+  const urlKey = () => `maestro.kanban.previewUrl.${ctx?.key ?? ""}`;
+
+  function promptUrl(initial: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      if (!root) return resolve(null);
+      const bar = el("div", "kb-urlbar");
+      bar.innerHTML =
+        `<input class="kb-url" placeholder="http://localhost:5173" spellcheck="false">` +
+        `<button class="kb-add-btn">Capture</button>` +
+        `<button class="kb-url-x" aria-label="Cancel">✕</button>`;
+      const input = bar.querySelector("input") as HTMLInputElement;
+      input.value = initial;
+      root.prepend(bar);
+      input.focus();
+      input.select();
+      const done = (v: string | null) => {
+        bar.remove();
+        resolve(v);
+      };
+      bar.querySelector(".kb-add-btn")!.addEventListener("click", () => done(input.value.trim() || null));
+      bar.querySelector(".kb-url-x")!.addEventListener("click", () => done(null));
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") done(input.value.trim() || null);
+        else if (e.key === "Escape") done(null);
+      });
+    });
+  }
+
+  async function captureWeb(): Promise<void> {
+    if (!dir) return;
+    const url = await promptUrl(localStorage.getItem(urlKey()) ?? "");
+    if (!url) return;
+    localStorage.setItem(urlKey(), url);
+    const name = `shot-${Date.now().toString(36)}.png`;
+    try {
+      const rel = await captureWebPage(url, dir, name);
+      openFileInPanel(`${dir}\\${rel}`); // show the screenshot in the code panel
+    } catch {
+      /* capture failed — webview/url problem; left silent for now */
     }
   }
 
@@ -922,6 +966,9 @@ export function createKanban() {
         );
         mkBtn("Import", "Import tasks from .maestro/plan.json now", () => void importFromFile());
         mkBtn("Send approved", "Tell the agent to implement the To do list", sendApproved);
+        mkBtn("Capture web", "Screenshot a web URL into .maestro/shots and open it", () =>
+          void captureWeb(),
+        );
       }
 
       // Auto-watch plan.json + done.json so agent writes land on the board.

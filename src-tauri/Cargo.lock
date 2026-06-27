@@ -2075,6 +2075,7 @@ name = "maestro"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "png 0.17.16",
  "portable-pty",
  "serde",
  "serde_json",

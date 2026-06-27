@@ -65,6 +65,12 @@
 .kb-file:hover{border-color:var(--accent-dim);color:var(--accent)}
 .kb-file.kb-diff{color:var(--info);background:rgba(94,194,240,.12)}
 .kb-file.kb-diff:hover{border-color:var(--info);color:var(--info)}
+/* "Capture web" URL bar (top of the board) */
+.kb-urlbar{display:flex;align-items:center;gap:6px;padding:8px;margin-bottom:6px;background:var(--surface-1);border:1px solid var(--line-strong);border-radius:var(--r3)}
+.kb-url{flex:1;min-width:0;background:var(--surface-0);border:1px solid var(--line-strong);border-radius:var(--r1);color:var(--text);font-family:var(--mono);font-size:12px;padding:6px 9px;outline:none}
+.kb-url:focus{border-color:var(--accent-dim);box-shadow:0 0 0 2px var(--accent-glow)}
+.kb-url-x{width:28px;height:28px;border-radius:var(--r1);display:grid;place-items:center;color:var(--muted-2);font-size:13px}
+.kb-url-x:hover{background:var(--surface-3);color:var(--err)}
 .dock-act,.dp-close{
   width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--muted);
   transition:background .14s,color .14s;flex:none;

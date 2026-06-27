@@ -103,6 +103,7 @@ pub fn run() {
             core::fs::fs_create_dir,
             core::fs::fs_rename,
             core::fs::fs_delete,
+            core::screenshot::capture_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

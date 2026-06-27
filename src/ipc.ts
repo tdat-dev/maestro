@@ -344,6 +344,33 @@ export async function fsReadDataUrl(root: string, path: string): Promise<string>
   return invoke<string>("fs_read_data_url", { root, path });
 }
 
+/** Open `url` in a temporary webview window, screenshot it natively, save it
+ *  under `<root>/.maestro/shots/<name>`, and return the path relative to root.
+ *  Used to grab a "done" preview of a web page the agent built. */
+export async function captureWebPage(url: string, root: string, name: string): Promise<string> {
+  const label = `shot-${Date.now()}`;
+  const w = new WebviewWindow(label, {
+    url,
+    width: 1280,
+    height: 860,
+    visible: true,
+    focus: false,
+    skipTaskbar: true,
+    title: "Capturing preview…",
+  });
+  await new Promise<void>((resolve, reject) => {
+    void w.once("tauri://created", () => resolve());
+    void w.once("tauri://error", (e) => reject(e.payload));
+  });
+  // Let the page load and paint before the native capture.
+  await new Promise((r) => setTimeout(r, 2200));
+  try {
+    return await invoke<string>("capture_window", { label, root, name });
+  } finally {
+    await w.close().catch(() => {});
+  }
+}
+
 /** Create a new empty file (rejects if it already exists). */
 export async function fsCreateFile(root: string, path: string): Promise<void> {
   await invoke("fs_create_file", { root, path });

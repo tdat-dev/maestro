@@ -29,7 +29,18 @@ def main(argv: list[str]) -> int:
         "branch": args.branch,
         "max_iterations": config.max_iterations,
     }
-    final = app.invoke(initial, config={"recursion_limit": 100})
+
+    # FIX 7: recursion limit scales with max_iterations so a large --max-iters
+    # never hits GraphRecursionError before finalize_maxed fires.
+    recursion_limit = max(30, 4 * config.max_iterations + 12)
+
+    # FIX 8: wrap invoke so any unexpected exception prints a clean one-liner.
+    try:
+        final = app.invoke(initial, config={"recursion_limit": recursion_limit})
+    except Exception as exc:
+        print(f"Orchestrator error: {exc}")
+        return 1
+
     outcome = final.get("outcome", "failed")
     print(f"Orchestrator finished: {outcome} "
           f"(iterations={final.get('iteration', 0)})")

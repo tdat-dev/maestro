@@ -86,3 +86,13 @@ def test_extract_json_unfenced_last_object_wins():
     text = '{"approved": false} then {"approved": true, "notes": "final"}'
     result = extract_json_block(text)
     assert result == {"approved": True, "notes": "final"}
+
+
+# Smoke-test follow-up — a CLI missing from PATH must fail closed, not crash.
+def test_run_agent_missing_cli_fails_closed(tmp_path):
+    cfg = default_config()
+    cfg.agents["scout"] = AgentConfig(args=["definitely-not-a-real-cli-xyz", "-p"])
+    res = run_agent("scout", "prompt", cwd=str(tmp_path), config=cfg)
+    assert res.failed is True
+    assert res.returncode != 0
+    assert "launch failed" in res.raw_output

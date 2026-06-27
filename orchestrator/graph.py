@@ -76,7 +76,7 @@ def node_builder(state, cfg: Config) -> dict:
         "needs_rescout": False,
         "history": state.get("history", []) + ["builder"],
     }
-    if res.timed_out:
+    if res.failed:
         result["agent_failed"] = True
     return result
 
@@ -121,7 +121,7 @@ def node_reviewer(state, cfg: Config) -> dict:
         "needs_rescout": needs_rescout,
         "history": state.get("history", []) + ["reviewer"],
     }
-    if res.timed_out:
+    if res.failed:
         result["agent_failed"] = True
     return result
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass
 
@@ -15,6 +16,10 @@ class AgentResult:
     raw_output: str
     returncode: int
     timed_out: bool
+    # True when the agent could not produce a usable result: it timed out or
+    # the CLI could not be launched at all. The graph routes this to a failed
+    # outcome instead of looping on empty output.
+    failed: bool = False
 
 
 def _build_command(args: list[str], prompt: str, prompt_via: str) -> tuple[list[str], str | None]:
@@ -24,11 +29,23 @@ def _build_command(args: list[str], prompt: str, prompt_via: str) -> tuple[list[
 
 
 def _resolve_command(command: list[str]) -> list[str]:
-    """Resolve relative file paths in command args to absolute so subprocess
-    can find them regardless of the cwd it is launched with."""
+    """Make a command launchable by ``subprocess(shell=False)``.
+
+    - Resolve the launcher (arg 0) through ``shutil.which`` so Windows finds
+      ``.cmd``/``.exe`` shims via PATHEXT (a bare name like ``codex`` fails
+      with WinError 2 otherwise) and POSIX finds the binary on PATH.
+    - Absolutize relative path *arguments* that exist (e.g. ``tests/fake_cli.py``)
+      so the subprocess finds them regardless of the cwd it is launched with.
+    """
+    if not command:
+        return command
+    resolved = list(command)
+    launcher = shutil.which(resolved[0])
+    if launcher:
+        resolved[0] = launcher
     return [
         os.path.abspath(part) if (i > 0 and not os.path.isabs(part) and os.path.exists(part)) else part
-        for i, part in enumerate(command)
+        for i, part in enumerate(resolved)
     ]
 
 
@@ -41,7 +58,12 @@ def _invoke(command: list[str], stdin_text: str | None, cwd: str, timeout: int) 
         )
         return AgentResult(role="", raw_output=proc.stdout, returncode=proc.returncode, timed_out=False)
     except subprocess.TimeoutExpired:
-        return AgentResult(role="", raw_output="", returncode=-1, timed_out=True)
+        return AgentResult(role="", raw_output="", returncode=-1, timed_out=True, failed=True)
+    except OSError as exc:
+        # CLI not found / not launchable (e.g. missing from PATH). Fail closed
+        # rather than crashing the whole run.
+        return AgentResult(role="", raw_output=f"[agent launch failed: {exc}]",
+                           returncode=-1, timed_out=False, failed=True)
 
 
 def run_agent(role: str, prompt: str, cwd: str, config: Config) -> AgentResult:
@@ -49,8 +71,9 @@ def run_agent(role: str, prompt: str, cwd: str, config: Config) -> AgentResult:
     command, stdin_text = _build_command(ac.args, prompt, ac.prompt_via)
 
     result = _invoke(command, stdin_text, cwd, ac.timeout)
-    # Retry only on non-zero exit code; never retry a timeout (would double latency).
-    if result.returncode != 0 and not result.timed_out:
+    # Retry only on a non-zero exit; never retry a timeout (would double latency)
+    # or an unlaunchable command (would fail identically).
+    if result.returncode != 0 and not result.failed:
         result = _invoke(command, stdin_text, cwd, ac.timeout)
     result.role = role
     return result

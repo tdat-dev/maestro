@@ -47,6 +47,12 @@ parse/apply patch mong manh.
 | `state.py` | `TypedDict` định nghĩa state của LangGraph | — |
 | `graph.py` | Wiring `StateGraph` + conditional edges; hàm `route(state)` thuần | tất cả module dưới |
 | `cli_agents.py` | `run_agent(role, prompt, cwd) -> AgentResult`: gọi CLI headless, timeout, retry 1 lần, capture stdout | `config` |
+
+**Mapping vai→CLI mặc định** (override được trong config):
+Scout = `claude` (rẻ/nhanh để khảo sát), Builder = `codex` (sửa code mạnh),
+Reviewer = `gemini` (model khác để có góc nhìn độc lập). Mọi vai có thể trỏ về
+bất kỳ CLI nào trong `config.py`.
+
 | `worktree.py` | Tạo/dọn git worktree + branch off HEAD; scaffold nếu thư mục trống | — |
 | `executor.py` | Auto-detect project type → chạy test/build, capture stdout/stderr/exit-code | — |
 | `errors.py` | `ErrorSource` interface + adapter `TerminalErrorSource`, `SentryErrorSource`; gom & format cho Builder | `config` |

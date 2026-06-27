@@ -5,6 +5,32 @@
  * the active workspace. Rendered inside a dock panel; see dock.ts. */
 
 import { loadJSON, saveJSON, type DockContext } from "./dockstore";
+import { fsReadFile, fsStat, fsWriteFile, fsCreateFile, fsCreateDir } from "./ipc";
+import { sendToAgent } from "./agentbridge";
+import { parsePlan, type PlanTask } from "./planparse";
+
+/* ---- agent ⇄ board plan gate ---- */
+const PLAN_REL = ".maestro\\plan.json";
+const RULES_DIR = ".maestro";
+const RULES_REL = ".maestro\\AGENTS.md";
+const PROPOSED_TITLE = "Proposed";
+
+// Written into the workspace so every agent session follows plan-first.
+const RULES_TEXT = `# Maestro — plan-first protocol
+
+For ANY task in this workspace, do NOT implement immediately.
+
+1. Break the work into small, concrete subtasks.
+2. Write them to \`.maestro/plan.json\` as a JSON array, e.g.
+   [{"title":"short task","desc":"one-line detail","label":"blue"}]
+   (label is optional: green | yellow | orange | red | purple | blue)
+3. STOP and wait. The tasks appear on the Maestro board for review.
+4. Only implement the tasks I confirm as approved.
+`;
+
+// Typed into the focused agent; the user appends their actual task, then Enter.
+const PLAN_PRIMER =
+  "Read .maestro/AGENTS.md and follow its plan-first protocol — write the breakdown to .maestro/plan.json, then stop. Task: ";
 
 interface ChecklistItem {
   id: string;
@@ -124,6 +150,109 @@ export function createKanban() {
   let board: Board = defaultBoard();
   let root: HTMLElement | null = null;
   let openCardId: string | null = null; // card detail currently shown
+
+  /* ---- agent plan bridge ---- */
+  let dir: string | null = null; // active workspace folder, for the plan file
+  let planMtime = 0; // last-seen mtime of .maestro/plan.json (auto-watch)
+  let watchTimer: number | null = null;
+  let seen = new Set<string>(); // task titles already imported (survives deletes)
+
+  const seenKey = (k: string) => `maestro.kanban.planseen.${k}`;
+  const loadSeen = (k: string) => new Set(loadJSON<string[]>(seenKey(k), []));
+  const saveSeen = () => {
+    if (ctx) saveJSON(seenKey(ctx.key), [...seen]);
+  };
+
+  function findOrCreateList(title: string): List {
+    let list = board.lists.find((l) => l.title.toLowerCase() === title.toLowerCase());
+    if (!list) {
+      list = { id: uid("l"), title, cards: [] };
+      board.lists.unshift(list); // Proposed sits first
+    }
+    return list;
+  }
+  const boardHasTitle = (title: string) =>
+    board.lists.some((l) => l.cards.some((c) => c.title.toLowerCase() === title.toLowerCase()));
+
+  /** Import agent-proposed tasks into the Proposed list (skipping ones already
+   *  imported or already on the board). Returns how many were added. */
+  function importProposed(tasks: PlanTask[]): number {
+    const list = findOrCreateList(PROPOSED_TITLE);
+    let added = 0;
+    for (const t of tasks) {
+      const key = t.title.toLowerCase();
+      if (seen.has(key) || boardHasTitle(t.title)) continue;
+      const card = mkCard(t.title);
+      if (t.desc) card.desc = t.desc;
+      card.labels = [t.label ?? "blue"];
+      list.cards.push(card);
+      seen.add(key);
+      added += 1;
+    }
+    if (added > 0) {
+      saveSeen();
+      persist();
+      render();
+    }
+    return added;
+  }
+
+  /** Read .maestro/plan.json now and import any new tasks. */
+  async function importFromFile(): Promise<number> {
+    if (!dir) return 0;
+    try {
+      const f = await fsReadFile(dir, PLAN_REL);
+      planMtime = f.mtime;
+      return importProposed(parsePlan(f.content));
+    } catch {
+      return 0; // no plan file yet
+    }
+  }
+
+  /** Background poll: when the agent (re)writes plan.json, auto-import. */
+  async function pollPlan(): Promise<void> {
+    if (!dir) return;
+    try {
+      const s = await fsStat(dir, PLAN_REL);
+      if (s.mtime !== planMtime) await importFromFile();
+    } catch {
+      /* file not written yet */
+    }
+  }
+
+  /** Drop the plan-first rules file into the workspace, then prime the agent. */
+  async function planWithAI(): Promise<void> {
+    if (dir) {
+      try {
+        await fsCreateDir(dir, RULES_DIR);
+      } catch {
+        /* already exists */
+      }
+      try {
+        await fsCreateFile(dir, RULES_REL);
+      } catch {
+        /* already exists */
+      }
+      try {
+        await fsWriteFile(dir, RULES_REL, RULES_TEXT, null);
+      } catch {
+        /* non-fatal */
+      }
+    }
+    // Prime the focused agent; the user appends the task and presses Enter.
+    sendToAgent(PLAN_PRIMER, false);
+  }
+
+  /** Tell the agent which tasks were approved (everything in To do). */
+  function sendApproved(): void {
+    const todo = board.lists.find((l) => l.title.toLowerCase() === "to do");
+    const titles = todo?.cards.map((c) => c.title) ?? [];
+    if (titles.length === 0) return;
+    const msg =
+      "Approved. Implement these tasks now, one at a time, and tell me when each is done:\n" +
+      titles.map((t, i) => `${i + 1}. ${t}`).join("\n");
+    sendToAgent(msg, true);
+  }
 
   // Drag uses POINTER EVENTS, not HTML5 drag-and-drop. Maestro runs in a Tauri
   // WebView2 window with OS drag-drop enabled (the "drop a file on a pane"
@@ -597,7 +726,7 @@ export function createKanban() {
   }
 
   return {
-    mount(body: HTMLElement) {
+    mount(body: HTMLElement, actions?: HTMLElement) {
       root = el("div", "kb-root");
       body.appendChild(root);
       // Pointer move/up are bound once on the document; pointer capture (set in
@@ -605,13 +734,36 @@ export function createKanban() {
       document.addEventListener("pointermove", onPointerMove);
       document.addEventListener("pointerup", onPointerUp);
       document.addEventListener("pointercancel", onPointerUp);
+
+      // Plan-gate toolbar: ask the agent to plan, pull its plan in, approve back.
+      if (actions) {
+        const mkBtn = (label: string, title: string, cb: () => void) => {
+          const b = el("button", "kb-tool", enc(label)) as HTMLButtonElement;
+          b.title = title;
+          b.addEventListener("click", cb);
+          actions.appendChild(b);
+          return b;
+        };
+        mkBtn("Plan with AI", "Drop the plan-first rules file + prime the agent", () =>
+          void planWithAI(),
+        );
+        mkBtn("Import", "Import tasks from .maestro/plan.json now", () => void importFromFile());
+        mkBtn("Send approved", "Tell the agent to implement the To do list", sendApproved);
+      }
+
+      // Auto-watch the plan file so an agent write lands on the board on its own.
+      if (watchTimer === null) watchTimer = window.setInterval(() => void pollPlan(), 3500);
       render();
     },
     setContext(next: DockContext | null) {
       ctx = next;
       openCardId = null;
+      dir = next?.dir ?? null;
+      planMtime = 0;
+      seen = next ? loadSeen(next.key) : new Set();
       board = ctx ? normalize(loadJSON<unknown>(keyFor(ctx.key), null), ctx.key) : defaultBoard();
       render();
+      void importFromFile(); // pull any existing plan for this folder
     },
   };
 }

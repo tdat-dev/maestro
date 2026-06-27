@@ -54,6 +54,7 @@ import { Mascot } from "./mascot";
 import { initPanels } from "./panels";
 import { initFileTree } from "./filetree";
 import { initEditor } from "./editor";
+import { setAgentSender } from "./agentbridge";
 
 /* Home launcher ⇄ Workspace grid.
  * Home is shown while there are 0 agents (the prominent "create" entry).
@@ -2521,6 +2522,32 @@ function dropPathsIntoPane(target: Pane, paths: string[]) {
   void sendInput(target.id, text).catch(() => {});
   target.term.focus();
 }
+
+/* ---- active agent target (for the Kanban plan bridge) ---- */
+// Track the last pane the user interacted with so "Plan with AI" / "Send
+// approved" type into the agent they're looking at (else the first pane).
+let lastFocusedPaneId: string | null = null;
+wsHost.addEventListener(
+  "pointerdown",
+  (e) => {
+    const pane = (e.target as HTMLElement)?.closest<HTMLElement>(".pane");
+    if (pane?.dataset.id) lastFocusedPaneId = pane.dataset.id;
+  },
+  true,
+);
+// Type into the focused agent of the active workspace (Enter when `submit`).
+setAgentSender((text, submit) => {
+  if (!activeWs || activeWs.panes.size === 0) return false;
+  const id =
+    lastFocusedPaneId && activeWs.panes.has(lastFocusedPaneId)
+      ? lastFocusedPaneId
+      : activeWs.panes.keys().next().value;
+  const pane = id ? activeWs.panes.get(id) : undefined;
+  if (!pane) return false;
+  void sendInput(pane.id, text + (submit ? "\r" : "")).catch(() => {});
+  pane.term.focus();
+  return true;
+});
 void onDragDrop((e) => {
   if (e.type === "leave") return setDropTarget(null);
   if (e.type === "enter" || e.type === "over") {

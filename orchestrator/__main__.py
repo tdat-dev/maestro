@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from orchestrator.config import load_config
+from orchestrator.config import apply_cli, load_config
 from orchestrator.graph import build_graph
 
 
@@ -14,11 +14,16 @@ def main(argv: list[str]) -> int:
     run.add_argument("--repo", required=True)
     run.add_argument("--goal", required=True)
     run.add_argument("--config", default=None)
+    run.add_argument("--cli", default=None,
+                     help="Use one CLI for all three roles (e.g. claude, codex, gemini). "
+                          "Overrides roles from --config/defaults.")
     run.add_argument("--max-iters", type=int, default=None)
     run.add_argument("--branch", default="agent/run")
     args = parser.parse_args(argv)
 
     config = load_config(args.config)
+    if args.cli:
+        config = apply_cli(config, args.cli)
     if args.max_iters is not None:
         config.max_iterations = args.max_iters
 

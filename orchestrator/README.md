@@ -13,7 +13,19 @@ until tests pass and the Reviewer approves.
 
     python -m orchestrator run --repo PATH --goal "add a /health endpoint with a test"
 
-Options: `--config cfg.yaml`, `--max-iters N`, `--branch NAME`.
+With no `--config`, the roles default to Scout=`claude`, Builder=`codex`,
+Reviewer=`gemini`. To run **all three roles on one CLI** without writing a
+config file, use `--cli`:
+
+    python -m orchestrator run --repo PATH --goal "..." --cli claude
+
+`--cli claude|codex|gemini` points every role at that CLI with a sensible
+headless template (the Builder gets write access automatically:
+`claude -p --dangerously-skip-permissions`, `codex exec -s workspace-write`).
+Any other name is treated as a bare executable. For finer per-role control,
+use `--config` instead (below); `--cli` overrides whatever roles the config set.
+
+Options: `--config cfg.yaml`, `--cli NAME`, `--max-iters N`, `--branch NAME`.
 
 ## Config (`cfg.yaml`)
 

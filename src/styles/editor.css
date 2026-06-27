@@ -1,14 +1,26 @@
 /* CodeMirror editor host (lower pane of the code panel). */
-.editor-host{display:flex;flex-direction:column}
-.editor-host .ed-banner{flex:none;display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px;color:#ffd9a0;background:rgba(255,184,76,.12);border-bottom:1px solid rgba(255,184,76,.3)}
+.editor-host{display:flex;flex-direction:column;background:var(--bg)}
+
+/* breadcrumb tab: open file name + a dirty dot that lights lime when unsaved */
+.editor-host .ed-tab{flex:none;display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;background:var(--surface-0);border-bottom:1px solid var(--line)}
+.editor-host .ed-tab[hidden]{display:none}
+.editor-host .ed-tab-name{font-family:var(--mono);font-size:11.5px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.editor-host .ed-dot{width:6px;height:6px;border-radius:50%;background:transparent;border:1.5px solid var(--muted-2);flex:none;transition:background .14s,border-color .14s}
+.editor-host .ed-tab.dirty .ed-dot{background:var(--accent);border-color:var(--accent);box-shadow:0 0 6px var(--accent-glow)}
+.editor-host .ed-tab.dirty .ed-tab-name{color:var(--text)}
+
+/* conflict banner — amber, sits under the tab */
+.editor-host .ed-banner{flex:none;display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:11.5px;color:#ffd9a0;background:rgba(255,184,76,.1);border-bottom:1px solid rgba(255,184,76,.28)}
 .editor-host .ed-banner[hidden]{display:none}
-.editor-host .ed-banner button{font:inherit;font-size:11px;padding:2px 8px;border-radius:5px;border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text-2);cursor:pointer}
-.editor-host .ed-banner button:hover{border-color:var(--accent-dim);color:var(--accent)}
-.editor-host .ed-empty{flex:1;display:grid;place-items:center;color:var(--muted-2);font-size:12px}
+.editor-host .ed-banner button{font:inherit;font-size:11px;padding:3px 9px;border-radius:var(--r1);border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text-2);cursor:pointer;transition:border-color .14s,color .14s}
+.editor-host .ed-banner button:hover{border-color:#ffb84c;color:#ffb84c}
+
+/* empty state — calm, centered, with a glyph */
+.editor-host .ed-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--muted-2);font-size:12px}
 .editor-host .ed-empty[hidden]{display:none}
+.editor-host .ed-empty svg{color:var(--line-strong)}
+
 .editor-host .ed-mount{flex:1;min-height:0;overflow:hidden}
 .editor-host .ed-mount[hidden]{display:none}
-.editor-host .cm-editor{height:100%;font-size:12.5px}
+.editor-host .cm-editor{height:100%}
 .editor-host .cm-editor.cm-focused{outline:none}
-/* dirty dot on the panel title is optional; class hook is here for it */
-.code-panel.ed-dirty .editor-host::before{content:"●";position:absolute;top:6px;right:10px;color:var(--accent);font-size:10px;z-index:2}

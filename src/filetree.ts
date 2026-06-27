@@ -11,6 +11,10 @@ interface FileTreeOpts {
 
 const CHEVRON =
   '<svg class="tw-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+const FOLDER_ICON =
+  '<svg class="tw-ic tw-ic-dir" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h3.6a2 2 0 0 1 1.4.6L11.8 7H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+const FILE_ICON =
+  '<svg class="tw-ic tw-ic-file" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/></svg>';
 
 export function initFileTree(opts: FileTreeOpts): { setRoot(dir: string | null): void } {
   const { host, onOpenFile } = opts;
@@ -37,6 +41,7 @@ export function initFileTree(opts: FileTreeOpts): { setRoot(dir: string | null):
       const childRel = joinRel(rel, ent.name);
       row.innerHTML =
         (ent.is_dir ? CHEVRON : `<span class="tw-chev tw-spacer"></span>`) +
+        (ent.is_dir ? FOLDER_ICON : FILE_ICON) +
         `<span class="tw-name"></span>`;
       row.querySelector(".tw-name")!.textContent = ent.name;
       container.appendChild(row);

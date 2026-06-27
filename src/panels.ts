@@ -53,7 +53,22 @@ function wireSplitter(
   });
 }
 
-/** Restore persisted widths and make both splitters draggable. */
+/** Wire a show/hide toggle for one side panel: persists the collapsed state,
+ *  reflects it on the `.app` class + the button's `.on` (visible) state. */
+function wireToggle(app: HTMLElement, btn: HTMLElement, cls: string, key: string): void {
+  const apply = (hidden: boolean) => {
+    app.classList.toggle(cls, hidden);
+    btn.classList.toggle("on", !hidden); // lit when the panel is visible
+  };
+  apply(localStorage.getItem(key) === "1");
+  btn.addEventListener("click", () => {
+    const hidden = !app.classList.contains(cls);
+    localStorage.setItem(key, hidden ? "1" : "0");
+    apply(hidden);
+  });
+}
+
+/** Restore persisted widths, make both splitters draggable, wire show/hide. */
 export function initPanels(): void {
   const app = document.getElementById("app");
   const railSplit = document.getElementById("railSplit");
@@ -63,4 +78,25 @@ export function initPanels(): void {
   restore(app, CODE);
   wireSplitter(app, railSplit, RAIL, "left");
   wireSplitter(app, codeSplit, CODE, "right");
+
+  const railBtn = document.getElementById("btnToggleRail");
+  const codeBtn = document.getElementById("btnToggleCode");
+  if (railBtn) wireToggle(app, railBtn, "rail-hidden", "maestro.railHidden");
+  if (codeBtn) wireToggle(app, codeBtn, "code-hidden", "maestro.codeHidden");
+  // The code panel's own "›‹" header button mirrors the topbar toggle.
+  document.getElementById("cpClose")?.addEventListener("click", () => codeBtn?.click());
+
+  // Keyboard: Ctrl+Shift+B → sidebar, Ctrl+Shift+E → code panel (matches the
+  // dock's Ctrl+Shift+* convention; avoids clashing with xterm key handling).
+  document.addEventListener("keydown", (e) => {
+    if (!e.ctrlKey || !e.shiftKey) return;
+    const k = e.key.toLowerCase();
+    if (k === "b") {
+      e.preventDefault();
+      railBtn?.click();
+    } else if (k === "e") {
+      e.preventDefault();
+      codeBtn?.click();
+    }
+  });
 }

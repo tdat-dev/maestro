@@ -27,8 +27,14 @@
 .code-panel .editor-host{flex:1;min-height:0;overflow:hidden;position:relative;border-top:1px solid var(--line)}
 body.splitting{cursor:col-resize;user-select:none}
 
-/* topbar pane-toggle buttons (sidebar / code panel) — sit with the home button */
-.tb-pane{width:30px;height:30px;border-radius:var(--r2);display:grid;place-items:center;color:var(--muted);flex:none;transition:background .14s,color .14s}
+/* topbar pane-toggle buttons — mapped to the edge they control: the sidebar
+   toggle sits far-left (by Home), the code-panel toggle far-right (by the
+   window controls), so the button's position tells you which panel it opens. */
+.tb-pane{width:30px;height:30px;border-radius:var(--r2);display:grid;place-items:center;color:var(--muted-2);flex:none;transition:background .14s,color .14s,box-shadow .14s}
 .tb-pane:hover{background:var(--surface-1);color:var(--text-2)}
-.tb-pane.on{color:var(--accent)}
-.tb-pane.on:hover{background:var(--accent-glow)}
+/* lit pill = that panel is currently open; dim = collapsed (click to reveal) */
+.tb-pane.on{color:var(--accent);background:var(--accent-glow);box-shadow:inset 0 0 0 1px var(--accent-dim)}
+.tb-pane.on:hover{background:rgba(198,241,53,.22)}
+
+/* hairline divider grouping the toggles apart from the rest of the topbar */
+.tb-div{width:1px;height:18px;background:var(--line);flex:none;margin:0 2px}

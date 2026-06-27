@@ -39,7 +39,7 @@ def _listing(path: str) -> str:
         return "(empty)"
 
 
-def node_setup_worktree(state, config: Config) -> dict:
+def node_setup_worktree(state, cfg: Config) -> dict:
     repo = state["repo_path"]
     branch = state.get("branch", "agent/run")
     mode = detect_mode(repo)
@@ -48,29 +48,29 @@ def node_setup_worktree(state, config: Config) -> dict:
         "worktree_path": wt,
         "mode": mode,
         "iteration": state.get("iteration", 0),
-        "max_iterations": state.get("max_iterations", config.max_iterations),
+        "max_iterations": state.get("max_iterations", cfg.max_iterations),
         "errors": [],
         "needs_rescout": False,
         "history": state.get("history", []),
     }
 
 
-def node_scout(state, config: Config) -> dict:
+def node_scout(state, cfg: Config) -> dict:
     wt = state["worktree_path"]
     prompt = scout_prompt(state["goal"], state.get("mode", "edit"), _listing(wt))
-    res = run_agent("scout", prompt, cwd=wt, config=config)
+    res = run_agent("scout", prompt, cwd=wt, config=cfg)
     parsed = extract_json_block(res.raw_output) or {}
     plan = parsed.get("plan") or res.raw_output.strip()
     return {"plan": plan, "needs_rescout": False,
             "history": state.get("history", []) + ["scout"]}
 
 
-def node_builder(state, config: Config) -> dict:
+def node_builder(state, cfg: Config) -> dict:
     wt = state["worktree_path"]
     errors_text = format_errors(state.get("errors") or [])
     notes = (state.get("review") or {}).get("notes", "")
     prompt = builder_prompt(state["goal"], state.get("plan", ""), errors_text, notes)
-    res = run_agent("builder", prompt, cwd=wt, config=config)
+    res = run_agent("builder", prompt, cwd=wt, config=cfg)
     result: dict = {
         "iteration": state.get("iteration", 0) + 1,
         "needs_rescout": False,
@@ -81,26 +81,26 @@ def node_builder(state, config: Config) -> dict:
     return result
 
 
-def node_execute(state, config: Config) -> dict:
+def node_execute(state, cfg: Config) -> dict:
     wt = state["worktree_path"]
-    cmd = config.test_command or detect_test_command(wt)
+    cmd = cfg.test_command or detect_test_command(wt)
     if not cmd:
         return {"last_exec": None}
     return {"last_exec": run_command(cmd, cwd=wt)}
 
 
-def node_collect_errors(state, config: Config) -> dict:
+def node_collect_errors(state, cfg: Config) -> dict:
     terminal = TerminalErrorSource(state.get("last_exec"))
-    sentry = SentryErrorSource(config.sentry)
+    sentry = SentryErrorSource(cfg.sentry)
     events = terminal.collect() + sentry.collect()
     return {"errors": events}
 
 
-def node_reviewer(state, config: Config) -> dict:
+def node_reviewer(state, cfg: Config) -> dict:
     wt = state["worktree_path"]
     errors_text = format_errors(state.get("errors") or [])
     prompt = reviewer_prompt(state["goal"], state.get("plan", ""), errors_text)
-    res = run_agent("reviewer", prompt, cwd=wt, config=config)
+    res = run_agent("reviewer", prompt, cwd=wt, config=cfg)
     parsed = extract_json_block(res.raw_output)
     if parsed is None or "approved" not in parsed:
         review = {"approved": False, "blocking": ["unparseable review"],
@@ -154,15 +154,13 @@ def node_finalize_failed(state) -> dict:
 
 
 def build_graph(config: Config):
-    from orchestrator.state import OrchestratorState
-
     g = StateGraph(OrchestratorState)  # ty: ignore[invalid-argument-type]
-    g.add_node("setup", partial(node_setup_worktree, config=config))
-    g.add_node("scout", partial(node_scout, config=config))
-    g.add_node("builder", partial(node_builder, config=config))
-    g.add_node("execute", partial(node_execute, config=config))
-    g.add_node("collect_errors", partial(node_collect_errors, config=config))
-    g.add_node("reviewer", partial(node_reviewer, config=config))
+    g.add_node("setup", partial(node_setup_worktree, cfg=config))
+    g.add_node("scout", partial(node_scout, cfg=config))
+    g.add_node("builder", partial(node_builder, cfg=config))
+    g.add_node("execute", partial(node_execute, cfg=config))
+    g.add_node("collect_errors", partial(node_collect_errors, cfg=config))
+    g.add_node("reviewer", partial(node_reviewer, cfg=config))
     g.add_node("finalize_success", node_finalize_success)
     g.add_node("finalize_maxed", node_finalize_maxed)
     g.add_node("finalize_failed", node_finalize_failed)

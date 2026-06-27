@@ -15,3 +15,10 @@ logs/
 /maestro.exe
 /uninstall.exe
 *.lnk
+
+# Python orchestrator artifacts
+__pycache__/
+*.egg-info/
+.venv/
+uv.lock
+.pytest_cache/

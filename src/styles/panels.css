@@ -27,6 +27,14 @@
 .code-panel .editor-host{flex:1;min-height:0;overflow:hidden;position:relative;border-top:1px solid var(--line)}
 body.splitting{cursor:col-resize;user-select:none}
 
+/* expand-to-fullscreen: the code panel floats as a large centered overlay so
+   editing isn't cramped in the narrow column. Esc or the button collapses it. */
+.app.editor-max::before{content:"";position:fixed;inset:0;background:rgba(5,7,9,.62);z-index:199}
+.app.editor-max .code-panel{position:fixed;inset:max(32px,4vh) max(48px,6vw);width:auto;z-index:200;border:1px solid var(--line-strong);border-radius:var(--r4);box-shadow:0 30px 90px rgba(0,0,0,.6);background:var(--bg)}
+.app.editor-max .code-panel .cp-head,.app.editor-max .code-panel .file-tree,.app.editor-max .code-split{display:none}
+.app.editor-max .code-panel .editor-host{border-top:none;border-radius:var(--r4)}
+.app.editor-max .code-panel .ed-tab{border-radius:var(--r4) var(--r4) 0 0}
+
 /* topbar pane-toggle buttons — mapped to the edge they control: the sidebar
    toggle sits far-left (by Home), the code-panel toggle far-right (by the
    window controls), so the button's position tells you which panel it opens. */

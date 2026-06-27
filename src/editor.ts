@@ -14,6 +14,8 @@ import { markdown } from "@codemirror/lang-markdown";
 import { rust } from "@codemirror/lang-rust";
 import { python } from "@codemirror/lang-python";
 import { yaml } from "@codemirror/lang-yaml";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 import { fsReadFile, fsWriteFile, fsStat, fsReadDataUrl } from "./ipc";
 import { langForFile, resolveConflict, isImageFile } from "./codepanel";
 
@@ -46,7 +48,7 @@ const CONFLICT_BANNER =
 const maestroTheme = EditorView.theme(
   {
     "&": { color: "var(--text-2)", backgroundColor: "var(--bg)", height: "100%" },
-    ".cm-scroller": { fontFamily: "var(--mono)", fontSize: "12.5px", lineHeight: "1.65", overflow: "auto" },
+    ".cm-scroller": { fontFamily: "var(--mono)", fontSize: "13px", lineHeight: "1.75", overflow: "auto" },
     ".cm-content": { padding: "8px 0", caretColor: "var(--accent)" },
     ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "2px" },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
@@ -92,18 +94,35 @@ function baseName(p: string): string {
 export function initEditor(opts: EditorOpts): { open(relPath: string): Promise<void> } {
   const { host, getRoot } = opts;
 
-  // Breadcrumb tab (open filename + dirty dot) · conflict banner · editor mount.
+  const EXPAND_SVG =
+    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3"/></svg>`;
+  const COLLAPSE_SVG =
+    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3a1 1 0 0 0 1-1V4m12 4h-3a1 1 0 0 1-1-1V4M4 16h3a1 1 0 0 1 1 1v3m12-4h-3a1 1 0 0 0-1 1v3"/></svg>`;
+
+  // Breadcrumb tab: filename + dirty dot on the left, actions on the right.
   const tab = document.createElement("div");
   tab.className = "ed-tab";
   tab.hidden = true;
-  tab.innerHTML = `<span class="ed-dot"></span><span class="ed-tab-name"></span>`;
+  tab.innerHTML =
+    `<span class="ed-dot"></span><span class="ed-tab-name"></span>` +
+    `<span class="ed-actions">` +
+    `<button class="ed-seg" data-ed-act="preview" hidden></button>` +
+    `<button class="ed-act" data-ed-act="max" title="Expand editor (Esc to exit)"></button>` +
+    `</span>`;
   const tabName = tab.querySelector(".ed-tab-name") as HTMLElement;
+  const previewBtn = tab.querySelector('[data-ed-act="preview"]') as HTMLButtonElement;
+  const maxBtn = tab.querySelector('[data-ed-act="max"]') as HTMLButtonElement;
+  maxBtn.innerHTML = EXPAND_SVG;
   const banner = document.createElement("div");
   banner.className = "ed-banner";
   banner.hidden = true;
   const mount = document.createElement("div");
   mount.className = "ed-mount";
   mount.hidden = true;
+  // Rendered Markdown preview (sanitized) — toggled from the tab for .md files.
+  const mdEl = document.createElement("div");
+  mdEl.className = "ed-md markdown-body";
+  mdEl.hidden = true;
   // Image preview (png/jpg/gif/webp/svg…) — a scrollable checkerboard stage.
   const imgWrap = document.createElement("div");
   imgWrap.className = "ed-img";
@@ -117,7 +136,7 @@ export function initEditor(opts: EditorOpts): { open(relPath: string): Promise<v
   empty.innerHTML =
     `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/></svg>` +
     `<span>Select a file to view or edit</span>`;
-  host.replaceChildren(tab, banner, empty, mount, imgWrap);
+  host.replaceChildren(tab, banner, empty, mount, imgWrap, mdEl);
 
   const langComp = new Compartment();
   let view: EditorView | null = null;
@@ -126,6 +145,35 @@ export function initEditor(opts: EditorOpts): { open(relPath: string): Promise<v
   let diskMtime = 0;
   let saved = ""; // last-saved/loaded doc text — dirty = current !== saved
   let pollTimer: number | null = null;
+  let isMarkdown = false;
+  let previewing = false;
+
+  /* ---- Markdown preview + expand-to-fullscreen ---- */
+  function renderMarkdown(): void {
+    const raw = marked.parse(current(), { async: false }) as string;
+    mdEl.innerHTML = DOMPurify.sanitize(raw);
+  }
+  function setPreview(on: boolean): void {
+    previewing = on && isMarkdown;
+    previewBtn.textContent = previewing ? "Edit" : "Preview";
+    if (previewing) renderMarkdown();
+    mdEl.hidden = !previewing;
+    mount.hidden = previewing;
+    if (!previewing) view?.focus();
+  }
+  previewBtn.addEventListener("click", () => setPreview(!previewing));
+
+  const appEl = () => host.closest<HTMLElement>("#app");
+  function setMax(on: boolean): void {
+    appEl()?.classList.toggle("editor-max", on);
+    maxBtn.innerHTML = on ? COLLAPSE_SVG : EXPAND_SVG;
+    maxBtn.title = on ? "Exit full screen (Esc)" : "Expand editor (Esc to exit)";
+    if (on && !previewing) view?.focus();
+  }
+  maxBtn.addEventListener("click", () => setMax(!appEl()?.classList.contains("editor-max")));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && appEl()?.classList.contains("editor-max")) setMax(false);
+  });
 
   const current = () => view?.state.doc.toString() ?? "";
   const isDirty = () => current() !== saved;
@@ -226,6 +274,10 @@ export function initEditor(opts: EditorOpts): { open(relPath: string): Promise<v
     }
     teardownEditor(); // images are read-only — no buffer, save, or poll
     setBanner(null);
+    isMarkdown = false;
+    previewing = false;
+    previewBtn.hidden = true;
+    mdEl.hidden = true;
     empty.hidden = true;
     mount.hidden = true;
     imgWrap.hidden = false;
@@ -247,6 +299,8 @@ export function initEditor(opts: EditorOpts): { open(relPath: string): Promise<v
       teardownEditor();
       imgWrap.hidden = true;
       mount.hidden = true;
+      mdEl.hidden = true;
+      previewBtn.hidden = true;
       empty.hidden = false;
       (empty.lastElementChild as HTMLElement).textContent =
         "Can't open this file (binary or too large)";
@@ -283,6 +337,7 @@ export function initEditor(opts: EditorOpts): { open(relPath: string): Promise<v
       doc: f.content,
       extensions: [
         basicSetup,
+        EditorView.lineWrapping, // wrap long lines — the panel is narrow
         saveKey,
         langComp.of(langExtension(langForFile(relPath))),
         EditorView.updateListener.of((u) => {
@@ -296,6 +351,11 @@ export function initEditor(opts: EditorOpts): { open(relPath: string): Promise<v
     if (view) view.destroy();
     view = new EditorView({ state, parent: mount });
     renderDirty();
+
+    // Markdown files get an Edit ⇄ Preview toggle; others hide it.
+    isMarkdown = langForFile(relPath) === "markdown";
+    previewBtn.hidden = !isMarkdown;
+    setPreview(false);
 
     if (pollTimer === null) {
       pollTimer = window.setInterval(() => void poll(), POLL_MS);

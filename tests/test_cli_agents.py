@@ -72,3 +72,17 @@ def test_extract_json_nested_object():
     text = '```json\n{"approved": false, "blocking": [], "meta": {"k": 1}}\n```'
     result = extract_json_block(text)
     assert result == {"approved": False, "blocking": [], "meta": {"k": 1}}
+
+
+# Follow-up — unfenced nested JSON must return the OUTERMOST object, not a
+# nested child (the bare-fallback path's left-to-right outermost scan).
+def test_extract_json_unfenced_nested_returns_outermost():
+    text = 'verdict: {"approved": false, "meta": {"k": 1}} done'
+    result = extract_json_block(text)
+    assert result == {"approved": False, "meta": {"k": 1}}
+
+
+def test_extract_json_unfenced_last_object_wins():
+    text = '{"approved": false} then {"approved": true, "notes": "final"}'
+    result = extract_json_block(text)
+    assert result == {"approved": True, "notes": "final"}

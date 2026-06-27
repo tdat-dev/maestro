@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 
 
@@ -39,16 +40,28 @@ def setup_worktree(repo_path: str, branch: str) -> str:
         # agent always works in isolation and never touches the raw files.
         _git(["init"], repo_path)
         _git(["add", "-A"], repo_path)
+        # commit.gpgsign=false: never fail the snapshot if the user has global
+        # signing enabled but no usable key in this environment.
         _git(["-c", "user.email=orchestrator@local", "-c", "user.name=orchestrator",
+              "-c", "commit.gpgsign=false",
               "commit", "-m", "orchestrator: snapshot before agent run"], repo_path)
 
     parent = os.path.dirname(os.path.abspath(repo_path.rstrip("/\\")))
     wt_path = os.path.join(parent, f".orchestrator-wt-{branch.replace('/', '-')}")
 
-    # Re-run safety: if a stale worktree from a previous run already exists,
-    # remove it so git does not error on the duplicate path/branch.
+    # Re-run safety: clear any stale worktree from a previous run.
     if os.path.exists(wt_path):
         teardown_worktree(repo_path, wt_path)
+        # If git did not recognise it as a registered worktree (e.g. a leftover
+        # plain directory), remove the bare path directly so the add below
+        # cannot collide on an existing directory.
+        if os.path.exists(wt_path):
+            shutil.rmtree(wt_path, ignore_errors=True)
+    # Drop stale worktree registrations (path already gone, metadata lingering).
+    try:
+        _git(["worktree", "prune"], repo_path)
+    except subprocess.CalledProcessError:
+        pass
 
     # -B force-creates or resets the branch (idempotent on re-run).
     _git(["worktree", "add", "-B", branch, wt_path, "HEAD"], repo_path)

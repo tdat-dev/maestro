@@ -66,7 +66,9 @@ def extract_json_block(text: str) -> dict | None:  # type: ignore[type-arg]
     1. Prefer fence-anchored positions (```json fences always point at the
        outermost ``{``); try them last-to-first so the last fence wins when
        multiple fences are present.
-    2. Fallback: try every bare ``{`` in the text last-to-first.
+    2. Fallback: scan bare ``{`` positions left-to-right, skipping past each
+       decoded object so nested children are never mistaken for top-level
+       ones, and keep the LAST top-level object.
 
     ``json.JSONDecoder.raw_decode`` handles nested braces and ``}`` inside
     strings correctly, so the full object is always returned regardless of
@@ -84,15 +86,22 @@ def extract_json_block(text: str) -> dict | None:  # type: ignore[type-arg]
         except json.JSONDecodeError:
             continue
 
-    # --- Pass 2: bare '{' positions (fallback, last-to-first) ---
-    for idx in range(len(text) - 1, -1, -1):
+    # --- Pass 2: bare '{' positions, outermost & last-wins ---
+    result: dict | None = None  # type: ignore[type-arg]
+    idx = 0
+    n = len(text)
+    while idx < n:
         if text[idx] != "{":
+            idx += 1
             continue
         try:
-            value, _ = decoder.raw_decode(text, idx)
-            if isinstance(value, dict):
-                return value
+            value, end = decoder.raw_decode(text, idx)
         except json.JSONDecodeError:
+            idx += 1
             continue
+        if isinstance(value, dict):
+            result = value
+        # Skip past the decoded object so its nested braces aren't reconsidered.
+        idx = max(end, idx + 1)
 
-    return None
+    return result

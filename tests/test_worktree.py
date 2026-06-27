@@ -88,3 +88,52 @@ def test_setup_worktree_is_rerun_safe(tmp_path):
     assert wt1 == wt2
 
     teardown_worktree(str(repo), wt2)
+
+
+def test_setup_worktree_handles_stale_plain_dir(tmp_path):
+    """A leftover plain directory at the worktree path (not a registered git
+    worktree) must be cleared so `git worktree add` does not collide."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(["init"], str(repo))
+    _git(["-c", "user.email=a@b.c", "-c", "user.name=t",
+          "commit", "--allow-empty", "-m", "init"], str(repo))
+    (repo / "main.py").write_text("print(1)", encoding="utf-8")
+    _git(["add", "-A"], str(repo))
+    _git(["-c", "user.email=a@b.c", "-c", "user.name=t",
+          "commit", "-m", "code"], str(repo))
+
+    # Pre-create a stale plain dir at the exact path setup_worktree will use.
+    parent = os.path.dirname(os.path.abspath(str(repo).rstrip("/\\")))
+    stale = os.path.join(parent, ".orchestrator-wt-agent-stale")
+    os.makedirs(stale, exist_ok=True)
+    with open(os.path.join(stale, "junk.txt"), "w", encoding="utf-8") as fh:
+        fh.write("leftover")
+
+    wt = setup_worktree(str(repo), "agent/stale")
+    assert os.path.isfile(os.path.join(wt, "main.py"))
+
+    teardown_worktree(str(repo), wt)
+
+
+def test_snapshot_commit_survives_global_gpgsign(tmp_path, monkeypatch):
+    """The non-git snapshot commit must not fail when the user's global config
+    forces commit.gpgsign with no usable key (the -c commit.gpgsign=false guard)."""
+    fake_global = tmp_path / "gitconfig"
+    fake_global.write_text(
+        "[commit]\n    gpgsign = true\n"
+        "[gpg]\n    program = nonexistent-gpg-binary-xyz\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(fake_global))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+    repo = tmp_path / "src"
+    repo.mkdir()
+    (repo / "main.py").write_text("print(1)", encoding="utf-8")
+
+    # Non-git edit dir → snapshot commit must succeed despite gpgsign=true.
+    wt = setup_worktree(str(repo), "agent/gpg")
+    assert os.path.isfile(os.path.join(wt, "main.py"))
+
+    teardown_worktree(str(repo), wt)

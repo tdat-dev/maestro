@@ -14,8 +14,8 @@ import { markdown } from "@codemirror/lang-markdown";
 import { rust } from "@codemirror/lang-rust";
 import { python } from "@codemirror/lang-python";
 import { yaml } from "@codemirror/lang-yaml";
-import { fsReadFile, fsWriteFile, fsStat } from "./ipc";
-import { langForFile, resolveConflict } from "./codepanel";
+import { fsReadFile, fsWriteFile, fsStat, fsReadDataUrl } from "./ipc";
+import { langForFile, resolveConflict, isImageFile } from "./codepanel";
 
 interface EditorOpts {
   host: HTMLElement;
@@ -104,12 +104,20 @@ export function initEditor(opts: EditorOpts): { open(relPath: string): Promise<v
   const mount = document.createElement("div");
   mount.className = "ed-mount";
   mount.hidden = true;
+  // Image preview (png/jpg/gif/webp/svg…) — a scrollable checkerboard stage.
+  const imgWrap = document.createElement("div");
+  imgWrap.className = "ed-img";
+  imgWrap.hidden = true;
+  const imgEl = document.createElement("img");
+  imgEl.className = "ed-img-el";
+  imgEl.alt = "";
+  imgWrap.appendChild(imgEl);
   const empty = document.createElement("div");
   empty.className = "ed-empty";
   empty.innerHTML =
     `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/></svg>` +
     `<span>Select a file to view or edit</span>`;
-  host.replaceChildren(tab, banner, empty, mount);
+  host.replaceChildren(tab, banner, empty, mount, imgWrap);
 
   const langComp = new Compartment();
   let view: EditorView | null = null;
@@ -190,19 +198,64 @@ export function initEditor(opts: EditorOpts): { open(relPath: string): Promise<v
     }
   }
 
+  /** Tear down the text editor (used when switching to an image preview). */
+  function teardownEditor(): void {
+    if (view) {
+      view.destroy();
+      view = null;
+    }
+    openRel = null;
+    openRoot = null;
+    saved = "";
+    renderDirty();
+  }
+
+  async function openImage(root: string, relPath: string): Promise<void> {
+    let url: string;
+    try {
+      url = await fsReadDataUrl(root, relPath);
+    } catch {
+      teardownEditor();
+      mount.hidden = true;
+      imgWrap.hidden = true;
+      empty.hidden = false;
+      (empty.lastElementChild as HTMLElement).textContent = "Can't preview this image (too large)";
+      tab.hidden = false;
+      tabName.textContent = baseName(relPath);
+      return;
+    }
+    teardownEditor(); // images are read-only — no buffer, save, or poll
+    setBanner(null);
+    empty.hidden = true;
+    mount.hidden = true;
+    imgWrap.hidden = false;
+    imgEl.src = url;
+    tab.hidden = false;
+    tab.classList.remove("dirty");
+    tabName.textContent = baseName(relPath);
+    tabName.title = relPath.replace(/\\/g, " / ");
+  }
+
   async function open(relPath: string): Promise<void> {
     const root = getRoot();
     if (!root) return;
+    if (isImageFile(relPath)) return openImage(root, relPath);
     let f: { content: string; mtime: number };
     try {
       f = await fsReadFile(root, relPath);
     } catch {
-      empty.hidden = false;
+      teardownEditor();
+      imgWrap.hidden = true;
       mount.hidden = true;
-      empty.textContent = "Can't open this file (binary or too large)";
+      empty.hidden = false;
+      (empty.lastElementChild as HTMLElement).textContent =
+        "Can't open this file (binary or too large)";
+      tab.hidden = false;
+      tabName.textContent = baseName(relPath);
       return;
     }
     empty.hidden = true;
+    imgWrap.hidden = true;
     mount.hidden = false;
     tab.hidden = false;
     tabName.textContent = baseName(relPath);

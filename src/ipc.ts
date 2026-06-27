@@ -330,3 +330,9 @@ export async function fsWriteFile(
 ): Promise<{ mtime: number }> {
   return invoke<{ mtime: number }>("fs_write_file", { root, path, content, expectedMtime });
 }
+
+/** Read an image file as a `data:<mime>;base64,...` URL for inline preview.
+ *  Rejects non-image extensions and files over 25 MB. */
+export async function fsReadDataUrl(root: string, path: string): Promise<string> {
+  return invoke<string>("fs_read_data_url", { root, path });
+}

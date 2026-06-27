@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filterEntries, sortEntries, langForFile, resolveConflict } from "./codepanel";
+import { filterEntries, sortEntries, langForFile, resolveConflict, isImageFile } from "./codepanel";
 import type { FsEntry } from "./ipc";
 
 const dir = (name: string): FsEntry => ({ name, is_dir: true, size: 0 });
@@ -29,6 +29,16 @@ describe("langForFile", () => {
     expect(langForFile("a.rs")).toBe("rust");
     expect(langForFile("README")).toBe("plaintext");
     expect(langForFile("weird.xyz")).toBe("plaintext");
+  });
+});
+
+describe("isImageFile", () => {
+  it("detects common image extensions, case-insensitive", () => {
+    expect(isImageFile("logo.png")).toBe(true);
+    expect(isImageFile("Photo.JPG")).toBe(true);
+    expect(isImageFile("icon.svg")).toBe(true);
+    expect(isImageFile("main.ts")).toBe(false);
+    expect(isImageFile("README")).toBe(false);
   });
 });
 

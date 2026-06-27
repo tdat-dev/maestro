@@ -47,3 +47,11 @@ export function resolveConflict(diskChanged: boolean, dirty: boolean): ConflictA
   if (!diskChanged) return "ok";
   return dirty ? "banner" : "reload";
 }
+
+const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif", "svg"]);
+
+/** True for files the code panel should preview as an image rather than edit. */
+export function isImageFile(name: string): boolean {
+  const i = name.lastIndexOf(".");
+  return i >= 0 && IMAGE_EXT.has(name.slice(i + 1).toLowerCase());
+}

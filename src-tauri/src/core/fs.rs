@@ -137,6 +137,56 @@ pub fn fs_write_file(
     })
 }
 
+/// Refuse to inline images bigger than this as a data URL (base64 is +33%).
+pub const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024; // 25 MiB
+
+/// Image MIME for a path's extension, or None when it isn't a known image type.
+fn image_mime(path: &Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    Some(match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "ico" => "image/x-icon",
+        "avif" => "image/avif",
+        "svg" => "image/svg+xml",
+        _ => return None,
+    })
+}
+
+/// Standard base64 (no line breaks). Small dependency-free encoder.
+fn base64_encode(data: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(T[((n >> 18) & 63) as usize] as char);
+        out.push(T[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { T[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
+/// Read an image file as a `data:<mime>;base64,...` URL for inline preview.
+/// Rejects non-image extensions and oversize files.
+#[tauri::command]
+pub fn fs_read_data_url(root: String, path: String) -> Result<String, CommandError> {
+    let file = scoped(&root, &path)?;
+    let mime = image_mime(&file).ok_or_else(|| CommandError::Failed("not an image".into()))?;
+    let meta = std::fs::metadata(&file).map_err(|e| CommandError::Failed(e.to_string()))?;
+    if meta.len() > MAX_IMAGE_BYTES {
+        return Err(CommandError::Failed("image too large to preview (>25 MB)".into()));
+    }
+    let bytes = std::fs::read(&file).map_err(|e| CommandError::Failed(e.to_string()))?;
+    Ok(format!("data:{mime};base64,{}", base64_encode(&bytes)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -97,6 +97,7 @@ pub fn run() {
             core::fs::fs_read_file,
             core::fs::fs_stat,
             core::fs::fs_write_file,
+            core::fs::fs_read_data_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

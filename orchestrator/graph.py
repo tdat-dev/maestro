@@ -103,11 +103,25 @@ def node_reviewer(state, config: Config) -> dict:
             "history": state.get("history", []) + ["reviewer"]}
 
 
+def write_run_log(worktree_path: str, history: list[str], outcome: str | None) -> str:
+    log_dir = os.path.join(worktree_path, "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    path = os.path.join(log_dir, "orchestrator-run.log")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(f"outcome: {outcome}\n")
+        fh.write("steps:\n")
+        for step in history:
+            fh.write(f"  - {step}\n")
+    return path
+
+
 def node_finalize_success(state) -> dict:
+    write_run_log(state["worktree_path"], state.get("history", []), "success")
     return {"outcome": "success"}
 
 
 def node_finalize_maxed(state) -> dict:
+    write_run_log(state["worktree_path"], state.get("history", []), "maxed")
     return {"outcome": "maxed"}
 
 

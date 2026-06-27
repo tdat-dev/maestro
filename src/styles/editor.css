@@ -1,0 +1,14 @@
+/* CodeMirror editor host (lower pane of the code panel). */
+.editor-host{display:flex;flex-direction:column}
+.editor-host .ed-banner{flex:none;display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px;color:#ffd9a0;background:rgba(255,184,76,.12);border-bottom:1px solid rgba(255,184,76,.3)}
+.editor-host .ed-banner[hidden]{display:none}
+.editor-host .ed-banner button{font:inherit;font-size:11px;padding:2px 8px;border-radius:5px;border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text-2);cursor:pointer}
+.editor-host .ed-banner button:hover{border-color:var(--accent-dim);color:var(--accent)}
+.editor-host .ed-empty{flex:1;display:grid;place-items:center;color:var(--muted-2);font-size:12px}
+.editor-host .ed-empty[hidden]{display:none}
+.editor-host .ed-mount{flex:1;min-height:0;overflow:hidden}
+.editor-host .ed-mount[hidden]{display:none}
+.editor-host .cm-editor{height:100%;font-size:12.5px}
+.editor-host .cm-editor.cm-focused{outline:none}
+/* dirty dot on the panel title is optional; class hook is here for it */
+.code-panel.ed-dirty .editor-host::before{content:"●";position:absolute;top:6px;right:10px;color:var(--accent);font-size:10px;z-index:2}

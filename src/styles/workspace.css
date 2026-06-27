@@ -1,11 +1,15 @@
 /* Workspace: one unified top bar (tabs + actions), tiling grid, refined panes.
    A 48px right column holds the tool dock rail (dock.css); the topbar and the
    broadcast bar span both columns, the terminal grid takes the left column. */
-.app{position:relative;display:grid;grid-template-columns:1fr 48px;grid-template-rows:46px 1fr auto;height:100vh;width:100vw}
+.app{position:relative;display:grid;grid-template-columns:var(--rail-w,216px) 1fr var(--code-w,380px) 48px;grid-template-rows:46px 1fr auto;height:100vh;width:100vw}
 .app > .topbar{grid-column:1 / -1}
-.app > .main{grid-column:1;grid-row:2}
-.app > .dock-rail{grid-column:2;grid-row:2}
+.app > .project-rail{grid-column:1;grid-row:2}
+.app > .main{grid-column:2;grid-row:2}
+.app > .code-panel{grid-column:3;grid-row:2}
+.app > .dock-rail{grid-column:4;grid-row:2}
 .app > .bcast{grid-column:1 / -1}
+.app.rail-hidden{--rail-w:0px}
+.app.code-hidden{--code-w:0px}
 
 /* ---------- unified top bar ---------- */
 .topbar{display:flex;align-items:center;gap:10px;padding:0 196px 0 10px;background:#0e1218;border-bottom:1px solid var(--line)}

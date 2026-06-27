@@ -106,9 +106,6 @@
 <div class="app" id="app" hidden>
   <header class="topbar" data-tauri-drag-region>
     <button class="tb-home" id="btnHome" aria-label="Home" title="Home (keep agents running)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5M5.5 9.2V20a1 1 0 0 0 1 1H10v-5.5h4V21h3.5a1 1 0 0 0 1-1V9.2"/></svg></button>
-    <nav class="tabstrip" id="tabstrip">
-      <button class="tab-add" id="tabAdd" aria-label="New workspace"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
-    </nav>
     <div class="spacer" data-tauri-drag-region></div>
     <button class="tb-btn" id="btnMergeMain" hidden title="Move this workspace back into the main Maestro window"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M14 12H3M10 8l4 4-4 4M21 3v18"/></svg> Merge</button>
     <button class="tb-btn" id="btnNewAgent"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Agent</button>
@@ -118,7 +115,29 @@
     </div>
     <span class="clock" id="clock" data-tauri-drag-region>--:--:--</span>
   </header>
+
+  <!-- Project rail (left): one row per workspace/folder. Replaces the old
+       horizontal tab strip; #railList is populated by src/main.ts. -->
+  <aside class="project-rail" id="projectRail">
+    <div class="rail-head">
+      <span class="rail-title">Projects</span>
+      <button class="rail-add" id="railAdd" aria-label="New project" title="New project">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+    <div class="rail-list" id="railList"></div>
+    <div class="rail-split" id="railSplit" title="Drag to resize"></div>
+  </aside>
+
   <main class="main" id="workspaces"></main>
+
+  <!-- Code panel (right): lazy file tree + lightweight CodeMirror editor.
+       Built by src/filetree.ts and src/editor.ts. -->
+  <aside class="code-panel" id="codePanel">
+    <div class="code-split" id="codeSplit" title="Drag to resize"></div>
+    <div class="file-tree" id="fileTree"></div>
+    <div class="editor-host" id="editorHost"></div>
+  </aside>
 
   <!-- Tool dock rail (right edge): Kanban / Pomodoro / Diff. The sliding panel
        is built by src/dock.ts; these buttons toggle it. -->

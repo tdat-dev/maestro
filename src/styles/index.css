@@ -3,6 +3,10 @@
 @import "./titlebar.css";
 @import "./home.css";
 @import "./workspace.css";
+@import "./panels.css";
+@import "./sidebar.css";
+@import "./filetree.css";
+@import "./editor.css";
 @import "./broadcast.css";
 @import "./modal.css";
 @import "./wizard.css";

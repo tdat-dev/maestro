@@ -1,0 +1,14 @@
+/* Left project rail + right code panel shells, and their resize splitters.
+   The grid columns are driven by --rail-w / --code-w on .app (workspace.css). */
+.project-rail{position:relative;background:#0e1218;border-right:1px solid var(--line);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.code-panel{position:relative;background:#0b0f14;border-left:1px solid var(--line);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.rail-hidden .project-rail,.code-hidden .code-panel{border:0}
+
+/* 5px hit-area splitters straddling the column borders. */
+.rail-split{position:absolute;top:0;right:-2px;width:5px;height:100%;cursor:col-resize;z-index:8}
+.code-split{position:absolute;top:0;left:-2px;width:5px;height:100%;cursor:col-resize;z-index:8}
+.rail-split:hover,.code-split:hover,.splitting .rail-split,.splitting .code-split{background:var(--accent-dim)}
+
+.code-panel .file-tree{flex:0 0 45%;min-height:0;overflow:auto;border-bottom:1px solid var(--line)}
+.code-panel .editor-host{flex:1;min-height:0;overflow:hidden;position:relative}
+body.splitting{cursor:col-resize;user-select:none}

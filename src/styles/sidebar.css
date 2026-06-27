@@ -1,0 +1,23 @@
+/* Vertical project rail (replaces the old horizontal tab strip). One row per
+   workspace = one folder. Mirrors .tab states (live/attn/active) vertically. */
+.rail-head{display:flex;align-items:center;justify-content:space-between;height:38px;padding:0 8px 0 12px;border-bottom:1px solid var(--line);flex:none}
+.rail-title{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-2)}
+.rail-add{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:var(--muted)}
+.rail-add:hover{background:var(--surface-1);color:var(--accent)}
+.rail-list{flex:1;min-height:0;overflow-y:auto;padding:6px}
+
+.proj{display:flex;align-items:center;gap:8px;height:34px;padding:0 6px 0 10px;border-radius:8px;color:var(--muted);cursor:pointer;transition:background .14s,color .14s}
+.proj:hover{background:var(--surface-1);color:var(--text-2)}
+.proj.active{background:var(--surface-2);color:var(--text)}
+.proj .tdot{width:6px;height:6px;border-radius:50%;background:var(--idle);flex:none}
+.proj.live .tdot{background:var(--run);box-shadow:0 0 6px var(--run)}
+.proj.attn .tdot{background:#ffb84c;box-shadow:0 0 6px #ffb84c}
+.proj .tname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:500}
+.proj .tcount{font-family:var(--mono);font-size:10px;font-variant-numeric:tabular-nums;color:var(--muted-2);background:var(--surface-3);border-radius:4px;padding:1px 5px;flex:none}
+.proj.active .tcount{color:var(--text-2)}
+.proj .tclose{width:18px;height:18px;border-radius:5px;display:grid;place-items:center;color:var(--muted-2);flex:none}
+.proj .tclose:hover{background:var(--surface-3);color:var(--err)}
+.proj.dragging{opacity:.4}
+.rail-list.reordering .proj{transition:none}
+.tname-edit{background:var(--surface-3);border:1px solid var(--line-strong);color:var(--text);border-radius:5px;font:inherit;font-size:12px;padding:1px 6px;width:100%;outline:none}
+.tname-edit:focus{border-color:var(--accent-dim)}

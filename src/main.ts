@@ -51,6 +51,9 @@ import { initIdleAnimationPause } from "./power";
 import { CLI_LOGOS } from "./logos";
 import { initDock, dockSetContext, dockToggle } from "./dock";
 import { Mascot } from "./mascot";
+import { initPanels } from "./panels";
+import { initFileTree } from "./filetree";
+import { initEditor } from "./editor";
 
 /* Home launcher ⇄ Workspace grid.
  * Home is shown while there are 0 agents (the prominent "create" entry).
@@ -128,8 +131,16 @@ const isDetachedWindow = DETACH_KEY !== null;
 const homeEl = document.getElementById("home") as HTMLElement;
 const appEl = document.getElementById("app") as HTMLElement;
 const wsHost = document.getElementById("workspaces") as HTMLElement;
-const tabstrip = document.getElementById("tabstrip") as HTMLElement;
-const tabAdd = document.getElementById("tabAdd") as HTMLElement;
+// The project rail replaces the old horizontal tab strip. `railList` holds the
+// `.proj` rows; the old `tabstrip`/`tabAdd` names are kept as aliases so the
+// rest of the workspace logic (drag, order, rename) stays untouched.
+const railList = document.getElementById("railList") as HTMLElement;
+const railAdd = document.getElementById("railAdd") as HTMLElement;
+const tabstrip = railList;
+const tabAdd = railAdd;
+
+// Code panel (right): file tree + editor, wired up in the startup block.
+let fileTree: { setRoot(dir: string | null): void } | null = null;
 
 function showWorkspace() {
   homeEl.hidden = true;
@@ -183,13 +194,13 @@ function createWorkspace(dir: string | null, name?: string): Workspace {
   wsHost.appendChild(gridEl);
 
   const tabEl = document.createElement("div");
-  tabEl.className = "tab";
+  tabEl.className = "proj";
   tabEl.innerHTML =
     `<span class="tdot"></span><span class="tname"></span><span class="tcount"></span>` +
     `<button class="tclose" aria-label="Close workspace">${KILL_SVG}</button>`;
   tabEl.querySelector(".tname")!.textContent = wsName;
   tabEl.dataset.ws = id;
-  tabstrip.insertBefore(tabEl, tabAdd);
+  railList.appendChild(tabEl);
 
   const ws: Workspace = { id, name: wsName, dir, repoRoot: null, isolated: false, gridEl, tabEl, panes: new Map() };
   tabEl.addEventListener("click", (e) => {
@@ -223,6 +234,8 @@ function activateWorkspace(ws: Workspace) {
   updateBcast();
   // Re-scope the tool dock (board / timer / diff) to this workspace's folder.
   dockSetContext({ key: ws.dir || ws.id, dir: ws.dir });
+  // Re-root the code panel's file tree to this workspace's folder.
+  fileTree?.setRoot(ws.dir);
 }
 
 /** Tile a workspace's panes to fill the whole area (1→full, 2→split, 4→2×2, …).
@@ -435,8 +448,8 @@ function wireTabDrag(ws: Workspace) {
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
     const r = el.getBoundingClientRect();
-    const before = e.clientX - r.left < r.width / 2; // left half → drop before
-    tabstrip.insertBefore(tabDragSrc.tabEl, before ? el : el.nextSibling);
+    const before = e.clientY - r.top < r.height / 2; // top half → drop before
+    railList.insertBefore(tabDragSrc.tabEl, before ? el : el.nextSibling);
   });
   el.addEventListener("drop", (e) => e.preventDefault());
 }
@@ -445,7 +458,7 @@ function wireTabDrag(ws: Workspace) {
 // session save iterates the Map, so the order survives restarts.
 function commitTabOrder() {
   const ordered: Workspace[] = [];
-  tabstrip.querySelectorAll<HTMLElement>(".tab").forEach((t) => {
+  railList.querySelectorAll<HTMLElement>(".proj").forEach((t) => {
     const w = t.dataset.ws ? workspaces.get(t.dataset.ws) : undefined;
     if (w) ordered.push(w);
   });
@@ -2128,6 +2141,18 @@ initTitlebar(!isDetachedWindow);
 // activateWorkspace() re-scopes the dock to its folder.
 initDock();
 dockSetContext(null);
+
+/* ---------------- Side panels (project rail resize + code panel) ---------------- */
+// The editor is created first so the tree's onOpenFile can hand files to it.
+initPanels();
+const editor = initEditor({
+  host: document.getElementById("editorHost") as HTMLElement,
+  getRoot: () => activeWs?.dir ?? null,
+});
+fileTree = initFileTree({
+  host: document.getElementById("fileTree") as HTMLElement,
+  onOpenFile: (rel) => void editor.open(rel),
+});
 
 /* Pause decorative animations when the window is hidden/unfocused (saves GPU).
  * On resume, repaint everything: after a long idle / display sleep / tray stint,

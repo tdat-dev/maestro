@@ -1,0 +1,12 @@
+/* File tree rows in the code panel's upper pane. */
+.file-tree{font-size:12.5px;color:var(--text-2);padding:4px 0}
+.tw-msg{padding:14px;color:var(--muted-2);font-size:12px;text-align:center}
+.tw-row{display:flex;align-items:center;gap:4px;height:24px;padding:0 8px;cursor:pointer;white-space:nowrap;border-radius:5px}
+.tw-row:hover{background:var(--surface-1)}
+.tw-row.sel{background:var(--surface-2);color:var(--text)}
+.tw-chev{flex:none;color:var(--muted-2);transition:transform .12s}
+.tw-spacer{width:12px;height:12px;display:inline-block}
+.tw-row.open > .tw-chev{transform:rotate(90deg)}
+.tw-name{overflow:hidden;text-overflow:ellipsis}
+.tw-dir .tw-name{color:var(--text-2);font-weight:500}
+.tw-kids{margin-left:13px;border-left:1px solid var(--line)}

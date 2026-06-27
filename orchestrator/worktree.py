@@ -27,14 +27,31 @@ def setup_worktree(repo_path: str, branch: str) -> str:
     os.makedirs(repo_path, exist_ok=True)
     mode = detect_mode(repo_path)
 
-    if mode == "create" or not _is_git_repo(repo_path):
+    if mode == "create":
+        # Empty (or vcs-only) directory: init in place, return it directly.
         if not _is_git_repo(repo_path):
             _git(["init"], repo_path)
         return repo_path
 
+    # edit mode: has source files
+    if not _is_git_repo(repo_path):
+        # Non-git source tree: snapshot it before creating a worktree so the
+        # agent always works in isolation and never touches the raw files.
+        _git(["init"], repo_path)
+        _git(["add", "-A"], repo_path)
+        _git(["-c", "user.email=orchestrator@local", "-c", "user.name=orchestrator",
+              "commit", "-m", "orchestrator: snapshot before agent run"], repo_path)
+
     parent = os.path.dirname(os.path.abspath(repo_path.rstrip("/\\")))
     wt_path = os.path.join(parent, f".orchestrator-wt-{branch.replace('/', '-')}")
-    _git(["worktree", "add", "-b", branch, wt_path, "HEAD"], repo_path)
+
+    # Re-run safety: if a stale worktree from a previous run already exists,
+    # remove it so git does not error on the duplicate path/branch.
+    if os.path.exists(wt_path):
+        teardown_worktree(repo_path, wt_path)
+
+    # -B force-creates or resets the branch (idempotent on re-run).
+    _git(["worktree", "add", "-B", branch, wt_path, "HEAD"], repo_path)
     return wt_path
 
 

@@ -22,3 +22,8 @@
 
 /* nested levels get an indent guide so deep trees stay readable */
 .tw-kids{margin-left:9px;padding-left:8px;border-left:1px solid var(--line)}
+
+/* while dragging a tree row, let dragover reach the panes (not the xterm canvas)
+   so the file/folder path can be dropped into a terminal */
+body.tree-dragging .term-host{pointer-events:none}
+body.tree-dragging .tw-row{cursor:grabbing}

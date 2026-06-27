@@ -46,6 +46,19 @@ export function initFileTree(opts: FileTreeOpts): { setRoot(dir: string | null):
       row.querySelector(".tw-name")!.textContent = ent.name;
       container.appendChild(row);
 
+      // Drag a row onto a terminal pane → its absolute path is typed into that
+      // agent's PTY (works for files and folders). Uses a custom dataTransfer
+      // type so the pane drop handler can tell it apart from a pane reorder.
+      const absPath = `${root}\\${childRel}`;
+      row.setAttribute("draggable", "true");
+      row.addEventListener("dragstart", (e) => {
+        e.dataTransfer?.setData("text/plain", absPath);
+        e.dataTransfer?.setData("application/x-maestro-path", absPath);
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
+        document.body.classList.add("tree-dragging");
+      });
+      row.addEventListener("dragend", () => document.body.classList.remove("tree-dragging"));
+
       if (ent.is_dir) {
         const kids = document.createElement("div");
         kids.className = "tw-kids";

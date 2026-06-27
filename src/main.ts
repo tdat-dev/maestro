@@ -2513,6 +2513,14 @@ function setDropTarget(p: Pane | null) {
   dropTarget = p;
   dropTarget?.el.classList.add("drop-target");
 }
+/** Type whitespace-quoted path(s) into a pane's PTY, then focus it. Shared by
+ *  the OS file-drop (paths from outside the app) and the in-app file-tree drag. */
+function dropPathsIntoPane(target: Pane, paths: string[]) {
+  if (paths.length === 0) return;
+  const text = paths.map((p) => (/\s/.test(p) ? `"${p}"` : p)).join(" ") + " ";
+  void sendInput(target.id, text).catch(() => {});
+  target.term.focus();
+}
 void onDragDrop((e) => {
   if (e.type === "leave") return setDropTarget(null);
   if (e.type === "enter" || e.type === "over") {
@@ -2521,10 +2529,38 @@ void onDragDrop((e) => {
   // drop: type the (whitespace-quoted) path(s) into the targeted pane's PTY.
   const target = paneAtPoint(e.position.x, e.position.y) ?? dropTarget;
   setDropTarget(null);
-  if (!target || e.paths.length === 0) return;
-  const text = e.paths.map((p) => (/\s/.test(p) ? `"${p}"` : p)).join(" ") + " ";
-  void sendInput(target.id, text).catch(() => {});
-  target.term.focus();
+  if (target) dropPathsIntoPane(target, e.paths);
+});
+
+/* ---- in-app drag: a file-tree row → a terminal pane (HTML5 DnD) ---- */
+// Tauri's onDragDrop only fires for files dragged from OUTSIDE the window, so
+// tree-row drags use plain HTML5 DnD. `body.tree-dragging` lets dragover reach
+// the panes (the xterm canvas otherwise swallows pointer events).
+const TREE_PATH = "application/x-maestro-path";
+/** Pane under a CSS-pixel point (HTML5 client coords need no DPR scaling). */
+function paneAtClient(x: number, y: number): Pane | null {
+  const el = document.elementFromPoint(x, y)?.closest<HTMLElement>(".pane");
+  const id = el?.dataset.id;
+  return id && activeWs ? activeWs.panes.get(id) ?? null : null;
+}
+wsHost.addEventListener("dragover", (e) => {
+  if (!e.dataTransfer?.types.includes(TREE_PATH)) return; // not a tree drag
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "copy";
+  setDropTarget(paneAtClient(e.clientX, e.clientY));
+});
+wsHost.addEventListener("dragleave", (e) => {
+  if (e.dataTransfer?.types.includes(TREE_PATH) && !wsHost.contains(e.relatedTarget as Node)) {
+    setDropTarget(null);
+  }
+});
+wsHost.addEventListener("drop", (e) => {
+  if (!e.dataTransfer?.types.includes(TREE_PATH)) return;
+  e.preventDefault();
+  const abs = e.dataTransfer.getData(TREE_PATH) || e.dataTransfer.getData("text/plain");
+  const target = paneAtClient(e.clientX, e.clientY) ?? dropTarget;
+  setDropTarget(null);
+  if (target && abs) dropPathsIntoPane(target, [abs]);
 });
 
 /* pty-exit listener LAST + guarded so it can never block the wiring above. */

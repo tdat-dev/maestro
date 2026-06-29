@@ -1,7 +1,7 @@
 {
   "name": "maestro",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Spawn & orchestrate fleets of AI agent CLIs — real terminals, real tree-kill.",
   "license": "MIT",
   "author": "tdat-dev",

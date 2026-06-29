@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-06-29
+
+### Fixed
+
+- **Worktree disk bloat** — every git worktree that ran `cargo build` created its
+  own `src-tauri/target` (~10 GB for a Tauri build), silently filling the disk.
+  New worktrees now get a `.cargo/config.toml` pointing `target-dir` at the main
+  repo's target, so all worktrees of a repo share one build cache instead of
+  duplicating it.
+
 ## [0.2.0] - 2026-06-19
 
 ### Added

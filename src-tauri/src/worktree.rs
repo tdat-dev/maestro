@@ -73,6 +73,31 @@ pub fn worktree_path_for(repo_root: &str, branch: &str) -> PathBuf {
     p
 }
 
+/// Drop a `.cargo/config.toml` in the worktree-parent folder so all worktrees of
+/// this repo share the main repo's `src-tauri/target` instead of each building its
+/// own. Cargo finds it by searching parent dirs up from `<worktree>/src-tauri`.
+/// No-op for non-Rust repos and best-effort (never blocks worktree creation).
+fn write_shared_cargo_target(worktree_parent: &Path, repo_root: &str) {
+    let src_tauri = Path::new(repo_root).join("src-tauri");
+    if !src_tauri.join("Cargo.toml").exists() {
+        return; // not a Tauri/Rust repo — nothing to share
+    }
+    let cargo_dir = worktree_parent.join(".cargo");
+    let cfg = cargo_dir.join("config.toml");
+    if cfg.exists() {
+        return; // already configured — don't clobber
+    }
+    // Cargo accepts forward slashes on Windows; avoids TOML backslash escaping.
+    let target_dir = format!("{}/src-tauri/target", repo_root.replace('\\', "/"));
+    let body = format!(
+        "# Auto-added by Maestro: share the main repo's Cargo target across all\n\
+         # worktrees so each worktree build does not duplicate src-tauri/target.\n\
+         [build]\ntarget-dir = \"{target_dir}\"\n"
+    );
+    let _ = std::fs::create_dir_all(&cargo_dir);
+    let _ = std::fs::write(&cfg, body);
+}
+
 fn git(args: &[&str], cwd: &str) -> Result<String, CommandError> {
     let mut cmd = Command::new("git");
     cmd.args(args).current_dir(cwd);
@@ -109,6 +134,10 @@ pub fn worktree_add(repo_root: String, branch: String) -> Result<String, Command
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| CommandError::Failed(format!("mkdir worktree root: {e}")))?;
+        // Make every worktree of this repo share the main repo's Cargo target dir.
+        // Without this, each worktree that runs `cargo build` grows its own
+        // src-tauri/target (~10 GB for a Tauri app), silently filling the disk.
+        write_shared_cargo_target(parent, &repo_root);
     }
     git(
         &["worktree", "add", "-b", &branch, &path_str, "HEAD"],

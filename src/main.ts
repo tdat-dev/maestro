@@ -2207,10 +2207,42 @@ function activeRunning(): Pane[] {
 }
 function updateBcast() {
   const allRunning = activeRunning();
-  const targets = allRunning.filter(p => activeWs?.bcastSelected.has(p.id));
+  let targets = allRunning.filter(p => activeWs?.bcastSelected.has(p.id));
+  let isAutoRouted = false;
+  
+  const text = bcastInput?.value || "";
+  const sorted = [...allRunning].sort((a, b) => b.spec.name.length - a.spec.name.length);
+  let matchedName = "";
+  for (const p of sorted) {
+    const escapedName = p.spec.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`^@?${escapedName}(?:[-\\s]?([1-9][0-9]*))?[:,]?\\s+`, 'i');
+    const match = text.match(regex);
+    if (match) {
+      const exactMatches = allRunning.filter(agent => agent.spec.name.toLowerCase() === p.spec.name.toLowerCase());
+      if (match[1]) {
+        const idx = parseInt(match[1], 10) - 1;
+        if (idx >= 0 && idx < exactMatches.length) {
+          targets = [exactMatches[idx]];
+          matchedName = `${p.spec.name} #${idx + 1}`;
+        } else {
+          targets = []; // Out of bounds, invalid index
+        }
+      } else {
+        targets = exactMatches;
+        matchedName = p.spec.name;
+      }
+      isAutoRouted = true;
+      break;
+    }
+  }
+
   const n = targets.length;
   if (bcastCountEl) {
-    bcastCountEl.textContent = allRunning.length === 0 ? "0 agents" : `${n} selected`;
+    if (isAutoRouted) {
+      bcastCountEl.textContent = n > 1 ? `${n} ${matchedName}s` : `${matchedName} only`;
+    } else {
+      bcastCountEl.textContent = allRunning.length === 0 ? "0 agents" : `${n} selected`;
+    }
   }
   bcastSend.disabled = n === 0 || bcastInput.value.length === 0;
   bcastEmitter?.classList.toggle("live", n > 0);
@@ -2218,7 +2250,7 @@ function updateBcast() {
   if (bcastTargets) {
     bcastTargets.replaceChildren();
     for (const p of allRunning) {
-      const on = activeWs?.bcastSelected.has(p.id);
+      const on = targets.includes(p);
       
       const row = document.createElement("div");
       row.className = "bcast-row" + (on ? "" : " off");
@@ -2257,14 +2289,39 @@ const bcastHistory: string[] = [];
 let bcastHistIdx = 0; // points one past the newest entry
 
 function broadcast() {
-  const text = bcastInput.value;
-  const targets = activeRunning().filter(p => activeWs?.bcastSelected.has(p.id));
+  let text = bcastInput.value;
+  const allRunning = activeRunning();
+  let targets = allRunning.filter(p => activeWs?.bcastSelected.has(p.id));
+  
+  const sorted = [...allRunning].sort((a, b) => b.spec.name.length - a.spec.name.length);
+  for (const p of sorted) {
+    const escapedName = p.spec.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`^@?${escapedName}(?:[-\\s]?([1-9][0-9]*))?[:,]?\\s+`, 'i');
+    const match = text.match(regex);
+    if (match) {
+      const exactMatches = allRunning.filter(agent => agent.spec.name.toLowerCase() === p.spec.name.toLowerCase());
+      if (match[1]) {
+        const idx = parseInt(match[1], 10) - 1;
+        if (idx >= 0 && idx < exactMatches.length) {
+          targets = [exactMatches[idx]];
+        } else {
+          targets = [];
+        }
+      } else {
+        targets = exactMatches;
+      }
+      text = text.substring(match[0].length);
+      break;
+    }
+  }
+
   if (!text || targets.length === 0) return;
+  const originalText = bcastInput.value;
   for (const p of targets) {
     void sendInput(p.id, text + "\r").catch(() => {});
     flashPane(p);
   }
-  if (bcastHistory[bcastHistory.length - 1] !== text) bcastHistory.push(text);
+  if (bcastHistory[bcastHistory.length - 1] !== originalText) bcastHistory.push(originalText);
   bcastHistIdx = bcastHistory.length;
   bcastInput.value = "";
   updateBcast();

@@ -1,5 +1,10 @@
-use crate::error::CommandError;
+use crate::error::{run_blocking, CommandError};
 use serde::Serialize;
+
+// Every command here shells out to git (possibly several times, on big repos)
+// and is therefore an async wrapper over a sync `*_impl` body: sync Tauri
+// commands run on the main thread and freeze the UI for the duration. Tests
+// exercise the `*_impl` functions directly.
 use std::path::Path;
 use std::process::Command;
 #[cfg(windows)]
@@ -37,7 +42,13 @@ pub struct RepoRef {
 /// - else → each immediate sub-folder that is a git repo (parent-of-repos case);
 /// - else → empty.
 #[tauri::command]
-pub fn git_repos_under(dir: String) -> Vec<RepoRef> {
+pub async fn git_repos_under(dir: String) -> Vec<RepoRef> {
+    run_blocking(move || Ok(git_repos_under_impl(dir)))
+        .await
+        .unwrap_or_default()
+}
+
+fn git_repos_under_impl(dir: String) -> Vec<RepoRef> {
     let mk = |p: &Path| RepoRef {
         path: p.to_string_lossy().replace('/', "\\"),
         name: p
@@ -73,7 +84,11 @@ pub fn git_repos_under(dir: String) -> Vec<RepoRef> {
 /// diff includes new files as full additions; it does not stage content and is
 /// reversible, and it honors .gitignore. Empty string when there is nothing to show.
 #[tauri::command]
-pub fn repo_diff(repo_root: String) -> Result<String, CommandError> {
+pub async fn repo_diff(repo_root: String) -> Result<String, CommandError> {
+    run_blocking(move || repo_diff_impl(repo_root)).await
+}
+
+fn repo_diff_impl(repo_root: String) -> Result<String, CommandError> {
     let _ = git(&["add", "-N", "--", "."], &repo_root); // best-effort; surfaces untracked files in the diff
     let diff = git(
         &["-c", "core.quotepath=false", "diff", "--no-color", "HEAD"],
@@ -92,7 +107,11 @@ pub struct ChangedFile {
 /// Files changed in the working tree vs HEAD (including untracked), as porcelain
 /// status pairs. Used to attach "what changed" evidence to a finished task.
 #[tauri::command]
-pub fn git_changed_files(repo_root: String) -> Result<Vec<ChangedFile>, CommandError> {
+pub async fn git_changed_files(repo_root: String) -> Result<Vec<ChangedFile>, CommandError> {
+    run_blocking(move || git_changed_files_impl(repo_root)).await
+}
+
+fn git_changed_files_impl(repo_root: String) -> Result<Vec<ChangedFile>, CommandError> {
     let _ = git(&["add", "-N", "--", "."], &repo_root); // surface untracked files
     let out = git(
         &["-c", "core.quotepath=false", "status", "--porcelain"],
@@ -153,7 +172,11 @@ pub struct RepoInfo {
 /// Describe a reviewed repo path: its branch, whether it is a linked worktree,
 /// the main checkout it belongs to, and whether it has uncommitted changes.
 #[tauri::command]
-pub fn review_repo_info(repo_path: String) -> Result<RepoInfo, CommandError> {
+pub async fn review_repo_info(repo_path: String) -> Result<RepoInfo, CommandError> {
+    run_blocking(move || review_repo_info_impl(repo_path)).await
+}
+
+fn review_repo_info_impl(repo_path: String) -> Result<RepoInfo, CommandError> {
     ensure_work_tree(&repo_path)?;
     let branch = git(&["rev-parse", "--abbrev-ref", "HEAD"], &repo_path)
         .unwrap_or_default();
@@ -185,7 +208,11 @@ pub fn review_repo_info(repo_path: String) -> Result<RepoInfo, CommandError> {
 /// Stage everything in `worktree_path` and commit it with `message`.
 /// Returns the new commit's full SHA. Errors if there is nothing to commit.
 #[tauri::command]
-pub fn review_commit(worktree_path: String, message: String) -> Result<String, CommandError> {
+pub async fn review_commit(worktree_path: String, message: String) -> Result<String, CommandError> {
+    run_blocking(move || review_commit_impl(worktree_path, message)).await
+}
+
+fn review_commit_impl(worktree_path: String, message: String) -> Result<String, CommandError> {
     ensure_work_tree(&worktree_path)?;
     let msg = message.trim();
     if msg.is_empty() {
@@ -207,7 +234,11 @@ pub fn review_commit(worktree_path: String, message: String) -> Result<String, C
 /// On conflict: collect the conflicting files, **abort** the merge (leaving the
 /// repo clean), and return a structured error. Never uses force flags.
 #[tauri::command]
-pub fn review_merge(repo_root: String, branch: String) -> Result<String, CommandError> {
+pub async fn review_merge(repo_root: String, branch: String) -> Result<String, CommandError> {
+    run_blocking(move || review_merge_impl(repo_root, branch)).await
+}
+
+fn review_merge_impl(repo_root: String, branch: String) -> Result<String, CommandError> {
     ensure_work_tree(&repo_root)?;
     if branch.trim().is_empty() || branch.starts_with('-') {
         return Err(CommandError::Failed(format!("invalid branch: {branch}")));
@@ -249,7 +280,11 @@ pub fn review_merge(repo_root: String, branch: String) -> Result<String, Command
 /// (`checkout -- .`) and delete untracked files/dirs (`clean -fd`). Scoped to
 /// the given work tree only; committed history is untouched.
 #[tauri::command]
-pub fn review_discard(worktree_path: String) -> Result<(), CommandError> {
+pub async fn review_discard(worktree_path: String) -> Result<(), CommandError> {
+    run_blocking(move || review_discard_impl(worktree_path)).await
+}
+
+fn review_discard_impl(worktree_path: String) -> Result<(), CommandError> {
     ensure_work_tree(&worktree_path)?;
     git(&["checkout", "--", "."], &worktree_path)?;
     git(&["clean", "-fd"], &worktree_path)?;
@@ -261,7 +296,15 @@ pub fn review_discard(worktree_path: String) -> Result<(), CommandError> {
 /// worktree makes `git worktree remove` fail, which surfaces as an error so the
 /// user doesn't lose uncommitted work by accident.
 #[tauri::command]
-pub fn review_remove_worktree(
+pub async fn review_remove_worktree(
+    repo_root: String,
+    worktree_path: String,
+    branch: Option<String>,
+) -> Result<(), CommandError> {
+    run_blocking(move || review_remove_worktree_impl(repo_root, worktree_path, branch)).await
+}
+
+fn review_remove_worktree_impl(
     repo_root: String,
     worktree_path: String,
     branch: Option<String>,
@@ -296,7 +339,7 @@ mod tests {
         let repo = tmp.path().join("solo");
         std::fs::create_dir(&repo).unwrap();
         init_repo(&repo);
-        let got = git_repos_under(repo.to_string_lossy().to_string());
+        let got = git_repos_under_impl(repo.to_string_lossy().to_string());
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].name, "solo");
     }
@@ -312,7 +355,7 @@ mod tests {
             init_repo(&r);
         }
         std::fs::create_dir(parent.join("plain")).unwrap(); // non-git, ignored
-        let got = git_repos_under(parent.to_string_lossy().to_string());
+        let got = git_repos_under_impl(parent.to_string_lossy().to_string());
         let names: Vec<_> = got.iter().map(|r| r.name.clone()).collect();
         assert_eq!(names, vec!["repoA".to_string(), "repoB".to_string()]);
     }
@@ -324,7 +367,7 @@ mod tests {
         std::fs::create_dir(&repo).unwrap();
         init_repo(&repo);
         std::fs::write(repo.join("a.txt"), "one\ntwo\n").unwrap(); // modify tracked file
-        let d = repo_diff(repo.to_string_lossy().to_string()).unwrap();
+        let d = repo_diff_impl(repo.to_string_lossy().to_string()).unwrap();
         assert!(d.contains("a.txt"), "diff should name the file: {d}");
         assert!(d.contains("+two"), "diff should show the added line: {d}");
     }
@@ -335,7 +378,7 @@ mod tests {
         let repo = tmp.path().join("clean");
         std::fs::create_dir(&repo).unwrap();
         init_repo(&repo);
-        assert_eq!(repo_diff(repo.to_string_lossy().to_string()).unwrap(), "");
+        assert_eq!(repo_diff_impl(repo.to_string_lossy().to_string()).unwrap(), "");
     }
 
     #[test]
@@ -345,7 +388,7 @@ mod tests {
         std::fs::create_dir(&repo).unwrap();
         init_repo(&repo);
         std::fs::write(repo.join("new.txt"), "fresh\n").unwrap(); // untracked
-        let d = repo_diff(repo.to_string_lossy().to_string()).unwrap();
+        let d = repo_diff_impl(repo.to_string_lossy().to_string()).unwrap();
         assert!(d.contains("new.txt"), "new files must be reviewable: {d}");
         assert!(d.contains("+fresh"), "added content must show: {d}");
     }
@@ -362,7 +405,7 @@ mod tests {
         std::fs::write(repo.join("a.txt"), "one\ntwo\n").unwrap(); // modify tracked
         std::fs::write(repo.join("b.txt"), "brand new\n").unwrap(); // untracked
 
-        let sha = review_commit(root.clone(), "maestro: agent changes".into()).expect("commit");
+        let sha = review_commit_impl(root.clone(), "maestro: agent changes".into()).expect("commit");
         assert_eq!(sha.len(), 40, "expected a 40-char sha, got {sha}");
         // Tree is clean after committing everything.
         assert_eq!(git(&["status", "--porcelain"], &root).unwrap(), "");
@@ -377,7 +420,7 @@ mod tests {
         let repo = tmp.path().join("clean2");
         std::fs::create_dir(&repo).unwrap();
         init_repo(&repo);
-        let r = review_commit(repo.to_string_lossy().to_string(), "noop".into());
+        let r = review_commit_impl(repo.to_string_lossy().to_string(), "noop".into());
         assert!(r.is_err(), "committing a clean tree must error");
     }
 
@@ -397,7 +440,7 @@ mod tests {
         git(&["checkout", "-q", "-"], &root).unwrap();
         assert!(!repo.join("feat.txt").exists(), "feat file should be branch-only pre-merge");
 
-        let sha = review_merge(root.clone(), "feature".into()).expect("merge");
+        let sha = review_merge_impl(root.clone(), "feature".into()).expect("merge");
         assert_eq!(sha.len(), 40);
         assert!(repo.join("feat.txt").exists(), "merge should bring the feature file in");
         // --no-ff → the merge commit has two parents.
@@ -421,7 +464,7 @@ mod tests {
         std::fs::write(repo.join("a.txt"), "main change\n").unwrap();
         git(&["commit", "-qam", "main edit"], &root).unwrap();
 
-        let err = review_merge(root.clone(), "feat".into()).unwrap_err();
+        let err = review_merge_impl(root.clone(), "feat".into()).unwrap_err();
         let CommandError::Failed(msg) = err else {
             panic!("expected Failed, got {err:?}");
         };
@@ -441,7 +484,7 @@ mod tests {
         std::fs::write(repo.join("a.txt"), "dirtied\n").unwrap(); // modify tracked
         std::fs::write(repo.join("junk.txt"), "junk\n").unwrap(); // untracked
 
-        review_discard(root.clone()).expect("discard");
+        review_discard_impl(root.clone()).expect("discard");
         // Line endings may be normalised to CRLF by core.autocrlf on Windows;
         // compare on trimmed content so the test is platform-agnostic.
         assert_eq!(
@@ -458,7 +501,7 @@ mod tests {
         let repo = tmp.path().join("info");
         std::fs::create_dir(&repo).unwrap();
         init_repo(&repo);
-        let info = review_repo_info(repo.to_string_lossy().to_string()).unwrap();
+        let info = review_repo_info_impl(repo.to_string_lossy().to_string()).unwrap();
         assert!(!info.is_worktree, "a plain checkout is not a worktree");
         assert!(info.main_root.is_none());
         assert!(!info.dirty, "freshly committed tree is clean");
@@ -477,7 +520,7 @@ mod tests {
         git(&["worktree", "add", "-b", "agent-x", &wt_str, "HEAD"], &root).expect("add worktree");
 
         // The linked worktree is detected as such, pointing back at the main root.
-        let info = review_repo_info(wt_str.clone()).unwrap();
+        let info = review_repo_info_impl(wt_str.clone()).unwrap();
         assert!(info.is_worktree, "linked worktree should be flagged");
         assert_eq!(info.branch, "agent-x");
         let main = info.main_root.expect("worktree should know its main root");
@@ -488,13 +531,13 @@ mod tests {
 
         // Make a change in the worktree, commit it, then merge into main and clean up.
         std::fs::write(wt.join("w.txt"), "from agent\n").unwrap();
-        review_commit(wt_str.clone(), "maestro: agent-x changes".into()).expect("commit in wt");
-        review_merge(main.clone(), "agent-x".into()).expect("merge into main");
+        review_commit_impl(wt_str.clone(), "maestro: agent-x changes".into()).expect("commit in wt");
+        review_merge_impl(main.clone(), "agent-x".into()).expect("merge into main");
         assert!(
             std::path::Path::new(&main).join("w.txt").exists(),
             "merged file should appear in main"
         );
-        review_remove_worktree(main.clone(), wt_str.clone(), Some("agent-x".into()))
+        review_remove_worktree_impl(main.clone(), wt_str.clone(), Some("agent-x".into()))
             .expect("remove worktree + branch");
         assert!(!wt.exists(), "worktree dir should be gone");
     }

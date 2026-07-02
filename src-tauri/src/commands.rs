@@ -4,9 +4,13 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::core::command_spec::CommandSpec;
-use crate::error::CommandError;
+use crate::error::{run_blocking, CommandError};
 use crate::state::AppState;
 use portable_pty::PtySize;
+
+// All PTY commands are async: sync commands run on the main thread, and ConPTY
+// creation (plus any wait on the registry lock while another agent is mid-
+// spawn) is slow enough to visibly freeze the UI when a crew boots at once.
 
 #[derive(Clone, Serialize)]
 struct ExitPayload {
@@ -15,7 +19,7 @@ struct ExitPayload {
 }
 
 #[tauri::command]
-pub fn pty_spawn(
+pub async fn pty_spawn(
     app: AppHandle,
     state: State<'_, AppState>,
     agent_id: String,
@@ -42,96 +46,113 @@ pub fn pty_spawn(
         pixel_height: 0,
     };
 
-    let channel = on_bytes.clone();
     let app2 = app.clone();
     let exit_id = agent_id.clone();
+    let registry = state.registry.clone();
 
-    let mut reg = state
-        .registry
-        .lock()
-        .map_err(|_| CommandError::Failed("state poisoned".into()))?;
-    reg.spawn(
-        agent_id,
-        &spec,
-        size,
-        move |bytes| {
-            let _ = channel.send(InvokeResponseBody::Raw(bytes.to_vec()));
-        },
-        move |code| {
-            let _ = app2.emit("pty-exit", ExitPayload { id: exit_id, code });
-        },
-    )
-    .map_err(CommandError::from)
+    run_blocking(move || {
+        let mut reg = registry
+            .lock()
+            .map_err(|_| CommandError::Failed("state poisoned".into()))?;
+        reg.spawn(
+            agent_id,
+            &spec,
+            size,
+            move |bytes| {
+                let _ = on_bytes.send(InvokeResponseBody::Raw(bytes.to_vec()));
+            },
+            move |code| {
+                let _ = app2.emit("pty-exit", ExitPayload { id: exit_id, code });
+            },
+        )
+        .map_err(CommandError::from)
+    })
+    .await
 }
 
 /// Re-attach a running agent's output stream to a NEW channel (used when a tab
 /// is detached into another window: the PTY survives, only the consumer moves).
 /// The agent's buffered scrollback is replayed through the channel first.
 #[tauri::command]
-pub fn pty_attach(
+pub async fn pty_attach(
     state: State<'_, AppState>,
     agent_id: String,
     on_bytes: Channel<InvokeResponseBody>,
 ) -> Result<(), CommandError> {
-    let reg = state
-        .registry
-        .lock()
-        .map_err(|_| CommandError::Failed("state poisoned".into()))?;
-    reg.attach(
-        &agent_id,
-        Box::new(move |bytes| {
-            let _ = on_bytes.send(InvokeResponseBody::Raw(bytes.to_vec()));
-        }),
-    )
-    .map_err(CommandError::from)
+    let registry = state.registry.clone();
+    run_blocking(move || {
+        let reg = registry
+            .lock()
+            .map_err(|_| CommandError::Failed("state poisoned".into()))?;
+        reg.attach(
+            &agent_id,
+            Box::new(move |bytes| {
+                let _ = on_bytes.send(InvokeResponseBody::Raw(bytes.to_vec()));
+            }),
+        )
+        .map_err(CommandError::from)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn pty_input(
+pub async fn pty_input(
     state: State<'_, AppState>,
     agent_id: String,
     data: String,
 ) -> Result<(), CommandError> {
-    let mut reg = state
-        .registry
-        .lock()
-        .map_err(|_| CommandError::Failed("state poisoned".into()))?;
-    reg.write_input(&agent_id, data.as_bytes())
-        .map_err(CommandError::from)
+    let registry = state.registry.clone();
+    run_blocking(move || {
+        let mut reg = registry
+            .lock()
+            .map_err(|_| CommandError::Failed("state poisoned".into()))?;
+        reg.write_input(&agent_id, data.as_bytes())
+            .map_err(CommandError::from)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn pty_resize(
+pub async fn pty_resize(
     state: State<'_, AppState>,
     agent_id: String,
     cols: u16,
     rows: u16,
 ) -> Result<(), CommandError> {
-    let reg = state
-        .registry
-        .lock()
-        .map_err(|_| CommandError::Failed("state poisoned".into()))?;
-    reg.resize(&agent_id, cols, rows).map_err(CommandError::from)
+    let registry = state.registry.clone();
+    run_blocking(move || {
+        let reg = registry
+            .lock()
+            .map_err(|_| CommandError::Failed("state poisoned".into()))?;
+        reg.resize(&agent_id, cols, rows).map_err(CommandError::from)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn pty_kill(state: State<'_, AppState>, agent_id: String) -> Result<(), CommandError> {
-    let mut reg = state
-        .registry
-        .lock()
-        .map_err(|_| CommandError::Failed("state poisoned".into()))?;
-    reg.kill(&agent_id);
-    Ok(())
+pub async fn pty_kill(state: State<'_, AppState>, agent_id: String) -> Result<(), CommandError> {
+    let registry = state.registry.clone();
+    run_blocking(move || {
+        let mut reg = registry
+            .lock()
+            .map_err(|_| CommandError::Failed("state poisoned".into()))?;
+        reg.kill(&agent_id);
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn pty_kill_all(state: State<'_, AppState>) -> Result<(), CommandError> {
-    let mut reg = state
-        .registry
-        .lock()
-        .map_err(|_| CommandError::Failed("state poisoned".into()))?;
-    reg.clear();
-    Ok(())
+pub async fn pty_kill_all(state: State<'_, AppState>) -> Result<(), CommandError> {
+    let registry = state.registry.clone();
+    run_blocking(move || {
+        let mut reg = registry
+            .lock()
+            .map_err(|_| CommandError::Failed("state poisoned".into()))?;
+        reg.clear();
+        Ok(())
+    })
+    .await
 }
 
 /// Show or hide the system-tray icon. Driven by the frontend "Hide to tray"
@@ -211,7 +232,12 @@ fn program_on_path(program: &str, exts: &[String]) -> bool {
 /// batch-check every preset's binary in one round-trip to gray out the ones
 /// that aren't installed.
 #[tauri::command]
-pub fn programs_on_path(programs: Vec<String>) -> Result<Vec<bool>, CommandError> {
+pub async fn programs_on_path(programs: Vec<String>) -> Result<Vec<bool>, CommandError> {
+    // PATH can contain slow/network dirs; probe off the main thread.
+    run_blocking(move || programs_on_path_impl(programs)).await
+}
+
+fn programs_on_path_impl(programs: Vec<String>) -> Result<Vec<bool>, CommandError> {
     // PATHEXT decides which extensions a bare name can resolve to. Default to
     // the documented Windows set when it's unset, and uppercase-normalize for
     // tidy case-insensitive comparisons.
@@ -249,7 +275,7 @@ mod tests {
 
     #[test]
     fn programs_finds_cmd_and_misses_fake() {
-        let out = programs_on_path(vec![
+        let out = programs_on_path_impl(vec![
             "cmd.exe".into(),
             "cmd".into(),
             "definitely-not-a-real-cli-xyz".into(),

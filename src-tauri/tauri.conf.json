@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "maestro",
-  "version": "0.3.2",
+  "version": "0.3.4",
   "identifier": "com.maestro.app",
   "build": {
     "frontendDist": "../dist",

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-07-02
+
+### Fixed
+
+- **App froze while spawning a crew** — booting several isolated agents at once
+  locked up the whole window (and dragged the machine down) until every agent
+  had started. All Tauri commands ran synchronously on the main/UI thread, so
+  each agent's `git worktree add` (a full repo checkout) and ConPTY creation
+  blocked rendering and input. Heavy commands (PTY, worktree, git review, PATH
+  probing) now run on a background thread pool, and worktree checkouts queue
+  one-at-a-time instead of thrashing the disk in parallel. The UI stays
+  responsive for the whole boot.
+
 ## [0.3.1] - 2026-06-29
 
 ### Fixed

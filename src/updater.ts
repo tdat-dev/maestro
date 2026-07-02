@@ -45,17 +45,20 @@ function showUpdateToast(update: Update): void {
   const ver = $("updVer");
   const bar = $("updBar");
   const fill = $("updBarFill") as HTMLElement | null;
+  const sizeText = $("updSize");
   const actions = $("updActions");
   const goBtn = $("updGo") as HTMLButtonElement | null;
   const laterBtn = $("updLater");
   const dismissBtn = $("updDismiss");
-  if (!toast || !title || !ver || !bar || !fill || !actions || !goBtn || !laterBtn || !dismissBtn) return;
+  if (!toast || !title || !ver || !bar || !fill || !sizeText || !actions || !goBtn || !laterBtn || !dismissBtn) return;
 
   // Reset to the "available" state (in case it was shown/dismissed before).
   title.textContent = "New version available";
   ver.textContent = `Maestro v${update.version}`;
   bar.hidden = true;
   fill.style.width = "0%";
+  sizeText.hidden = true;
+  sizeText.textContent = "";
   actions.hidden = false;
   goBtn.disabled = false;
 
@@ -71,18 +74,26 @@ function showUpdateToast(update: Update): void {
     laterBtn.hidden = true;
     title.textContent = "Downloading update…";
     bar.hidden = false;
+    sizeText.hidden = false;
     let total = 0;
     let got = 0;
+    
+    const formatMB = (bytes: number) => (bytes / (1024 * 1024)).toFixed(1);
+
     try {
       await update.downloadAndInstall((e) => {
         switch (e.event) {
           case "Started":
             total = e.data.contentLength ?? 0;
+            if (total > 0) sizeText.textContent = `0.0 / ${formatMB(total)} MB`;
             break;
           case "Progress":
             got += e.data.chunkLength;
             if (total > 0) {
               fill.style.width = `${Math.min(100, Math.round((got / total) * 100))}%`;
+              sizeText.textContent = `${formatMB(got)} / ${formatMB(total)} MB`;
+            } else {
+              sizeText.textContent = `${formatMB(got)} MB downloaded`;
             }
             break;
           case "Finished":
@@ -96,6 +107,7 @@ function showUpdateToast(update: Update): void {
       console.warn("update install failed:", err);
       title.textContent = "Update failed — try again";
       bar.hidden = true;
+      sizeText.hidden = true;
       laterBtn.hidden = false;
       goBtn.disabled = false;
     }

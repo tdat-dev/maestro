@@ -45,6 +45,11 @@
   box-shadow:0 0 12px -2px rgba(198,241,53,.7);
   transition:width .25s ease;
 }
+.upd-size{
+  font-size:10px;color:var(--muted-2);font-family:var(--mono);
+  text-align:right;margin-top:1px;
+}
+.upd-size[hidden]{display:none}
 
 .upd-actions{display:flex;gap:7px;margin-top:8px}
 .upd-actions[hidden]{display:none}

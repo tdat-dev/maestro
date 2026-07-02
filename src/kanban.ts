@@ -15,12 +15,20 @@ import {
   gitChangedFiles,
   captureWebPage,
 } from "./ipc";
-import { sendToAgent, openFileInPanel, openDiff } from "./agentbridge";
+import {
+  sendToAgent,
+  openFileInPanel,
+  openDiff,
+  hoverPaneAt,
+  clearPaneTarget,
+  dropTextIntoPaneAt,
+} from "./agentbridge";
 import { parsePlan, type PlanTask } from "./planparse";
 
 /* ---- agent ⇄ board plan gate ---- */
 const PLAN_REL = ".maestro\\plan.json";
 const DONE_REL = ".maestro\\done.json";
+const BOARD_REL = ".maestro\\board.md";
 const RULES_DIR = ".maestro";
 const RULES_REL = ".maestro\\AGENTS.md";
 const PROPOSED_TITLE = "Proposed";
@@ -41,6 +49,10 @@ For ANY task in this workspace, do NOT implement immediately.
    [{"title":"<the exact task title>","summary":"one line on what changed"}]
    Keep titles identical to the plan so the board can match and move the card
    to Done automatically. Do not remove earlier entries.
+
+The live board is always mirrored to \`.maestro/board.md\`. Read it at the START of
+any task to see the current To do / Doing / Done lists and decide what to work on
+next — it is refreshed automatically whenever the board changes.
 `;
 
 // Typed into the focused agent; the user appends their actual task, then Enter.
@@ -59,7 +71,7 @@ interface DoneInfo {
   summary?: string; // optional agent-written note
   at: number; // ms timestamp
 }
-interface Card {
+export interface Card {
   id: string;
   title: string;
   desc: string;
@@ -73,7 +85,7 @@ interface List {
   title: string;
   cards: Card[];
 }
-interface Board {
+export interface Board {
   lists: List[];
 }
 
@@ -167,6 +179,43 @@ function normalizeCard(c: Partial<Card>): Card {
 }
 function mkCard(title: string): Card {
   return { id: uid("c"), title, desc: "", labels: [], due: null, checklist: [] };
+}
+
+/** The text typed into an agent's PTY when a card is dropped onto its pane:
+ *  title, description, then any UNCHECKED checklist items. No trailing newline —
+ *  the drop never presses Enter, so the user can edit before sending. */
+export function cardToAgentText(card: Card): string {
+  const lines = [`Task: ${card.title.trim()}`];
+  const desc = card.desc.trim();
+  if (desc) lines.push("", desc);
+  const todo = card.checklist.filter((i) => !i.done);
+  if (todo.length) {
+    lines.push("");
+    for (const i of todo) lines.push(`- [ ] ${i.text}`);
+  }
+  return lines.join("\n");
+}
+
+/** Serialise the whole board to the Markdown mirror the agent reads
+ *  (`.maestro/board.md`): one section per list, cards as GitHub-style
+ *  checkboxes with their description and checklist nested underneath. */
+export function boardToMarkdown(board: Board): string {
+  const out: string[] = ["# Board", ""];
+  for (const list of board.lists) {
+    out.push(`## ${list.title} (${list.cards.length})`, "");
+    if (!list.cards.length) {
+      out.push("_(empty)_", "");
+      continue;
+    }
+    for (const c of list.cards) {
+      out.push(`- [${c.done ? "x" : " "}] ${c.title.trim()}`);
+      const desc = c.desc.trim();
+      if (desc) out.push(`  ${desc.replace(/\n/g, "\n  ")}`);
+      for (const item of c.checklist) out.push(`  - [${item.done ? "x" : " "}] ${item.text}`);
+    }
+    out.push("");
+  }
+  return out.join("\n");
 }
 
 function fmtDue(iso: string): { label: string; overdue: boolean; soon: boolean } {
@@ -446,8 +495,34 @@ export function createKanban() {
   // the real DOM node live as the pointer moves, then rebuild the model from
   // the DOM order on pointerup.
   let drag:
-    | { type: "card" | "list"; el: HTMLElement; startX: number; startY: number; pid: number; started: boolean }
+    | {
+        type: "card" | "list";
+        el: HTMLElement;
+        startX: number;
+        startY: number;
+        pid: number;
+        started: boolean;
+        overPane: boolean; // pointer is over a terminal pane, not the board
+      }
     | null = null;
+
+  // Floating pill that follows the cursor while a card is aimed at an agent pane,
+  // so it's obvious which task is about to be sent. Lives on <body> to escape the
+  // dock panel's overflow clipping.
+  let pill: HTMLElement | null = null;
+  function showPill(title: string, x: number, y: number) {
+    if (!pill) {
+      pill = el("div", "kb-pill");
+      document.body.appendChild(pill);
+    }
+    pill.textContent = `→ ${title}`;
+    pill.style.left = `${x}px`;
+    pill.style.top = `${y}px`;
+    pill.classList.add("on");
+  }
+  function hidePill() {
+    pill?.classList.remove("on");
+  }
   // True from the moment a real drag starts until the next pointerdown — lets
   // the trailing click after a drag be ignored (so it doesn't open a card or
   // start a rename).
@@ -455,6 +530,37 @@ export function createKanban() {
 
   function persist() {
     if (ctx) saveJSON(keyFor(ctx.key), board);
+    scheduleBoardFile();
+  }
+
+  /* ---- live board mirror the agent reads (.maestro/board.md) ---- */
+  let boardWriteTimer: number | null = null;
+  function scheduleBoardFile() {
+    if (!dir) return;
+    if (boardWriteTimer !== null) clearTimeout(boardWriteTimer);
+    // Debounced: a burst of edits (or a drag reorder) writes the file once.
+    boardWriteTimer = window.setTimeout(() => {
+      boardWriteTimer = null;
+      void writeBoardFile();
+    }, 500);
+  }
+  async function writeBoardFile() {
+    if (!dir) return;
+    try {
+      await fsCreateDir(dir, RULES_DIR);
+    } catch {
+      /* already exists */
+    }
+    try {
+      await fsCreateFile(dir, BOARD_REL);
+    } catch {
+      /* already exists */
+    }
+    try {
+      await fsWriteFile(dir, BOARD_REL, boardToMarkdown(board), null);
+    } catch {
+      /* non-fatal — folder unwritable */
+    }
   }
 
   /** Slot the dragged node into place under the pointer (live reorder). */
@@ -467,6 +573,20 @@ export function createKanban() {
       drag.el.classList.add(drag.type === "card" ? "dragging" : "list-dragging");
     }
     e.preventDefault();
+    if (drag.type === "card") {
+      // Aiming at a terminal pane (outside the board) → drop-to-agent, not a
+      // reorder. Highlight the pane, trail the pill, and hold the card in place.
+      if (hoverPaneAt(e.clientX, e.clientY)) {
+        drag.overPane = true;
+        showPill((findCard(drag.el.dataset.card ?? "")?.card.title ?? "").trim() || "task", e.clientX, e.clientY);
+        return;
+      }
+      if (drag.overPane) {
+        drag.overPane = false;
+        clearPaneTarget();
+        hidePill();
+      }
+    }
     const under = document.elementFromPoint(e.clientX, e.clientY);
     if (!under) return;
     if (drag.type === "card") {
@@ -488,9 +608,9 @@ export function createKanban() {
     }
   }
 
-  function onPointerUp() {
+  function onPointerUp(e: PointerEvent) {
     if (!drag) return;
-    const { el, pid, started, type } = drag;
+    const { el, pid, started, type, overPane } = drag;
     const cardId = type === "card" ? el.dataset.card ?? null : null;
     const fromListId = el.dataset.list ?? null;
     try {
@@ -499,18 +619,27 @@ export function createKanban() {
       /* ignore */
     }
     drag = null;
-    if (started) {
-      el.classList.remove("dragging", "list-dragging");
-      commitFromDom();
-      if (cardId) maybeFireDone(cardId, fromListId);
+    if (!started) return;
+    el.classList.remove("dragging", "list-dragging");
+    // Dropped onto an agent pane: send the card's task there and leave the board
+    // untouched (the card snaps back to where it was — no model change).
+    if (overPane && cardId) {
+      const found = findCard(cardId);
+      if (found) dropTextIntoPaneAt(e.clientX, e.clientY, cardToAgentText(found.card));
+      else clearPaneTarget();
+      hidePill();
       render();
+      return;
     }
+    commitFromDom();
+    if (cardId) maybeFireDone(cardId, fromListId);
+    render();
   }
 
   function beginDrag(e: PointerEvent, type: "card" | "list", el: HTMLElement) {
     if (e.button !== 0) return;
     dragged = false;
-    drag = { type, el, startX: e.clientX, startY: e.clientY, pid: e.pointerId, started: false };
+    drag = { type, el, startX: e.clientX, startY: e.clientY, pid: e.pointerId, started: false, overPane: false };
     try {
       el.setPointerCapture(e.pointerId);
     } catch {
@@ -991,6 +1120,7 @@ export function createKanban() {
       render();
       void importFromFile(); // pull any existing plan for this folder
       void importDone(); // and any already-reported done tasks
+      scheduleBoardFile(); // mirror the current board so the agent can read it
     },
   };
 }

@@ -1,0 +1,11 @@
+[
+  {"title": "Lập danh mục chức năng", "desc": "Liệt kê toàn bộ feature từ README + src/ modules (wizard, terminal, broadcast, diff, kanban, pomodoro, dock, mascot)", "label": "blue"},
+  {"title": "Phân tích Workspace & Wizard", "desc": "Đọc wizard.ts + workspaces.ts: luồng chọn folder, preset, grid 1-12, multi-select model", "label": "blue"},
+  {"title": "Phân tích Terminal/ConPTY", "desc": "Đọc terminal.ts + ipc.ts + src-tauri: spawn agent, tree-kill, xterm.js, vòng đời pane", "label": "purple"},
+  {"title": "Phân tích Tiling & Detach/Merge", "desc": "Trong main.ts: tiling frameless, control pill, drag reorder, detach ra cửa sổ riêng rồi merge", "label": "purple"},
+  {"title": "Phân tích Diff review", "desc": "Đọc diff.ts + diffview.ts: cách review thay đổi từng agent, hiển thị diff", "label": "green"},
+  {"title": "Phân tích Tool dock (Kanban/Pomodoro)", "desc": "Đọc dock.ts, dockstore.ts, kanban.ts, pomodoro.ts: tính năng v0.2.0 mới thêm", "label": "green"},
+  {"title": "Phân tích Broadcast & Crew", "desc": "Đọc crew.ts: broadcast 1 lệnh tới nhiều agent, chọn nhóm agent nhận", "label": "yellow"},
+  {"title": "Đánh giá chất lượng & độ phủ test", "desc": "Soát các *.test.ts hiện có, chỉ ra module thiếu test và rủi ro", "label": "orange"},
+  {"title": "Tổng hợp báo cáo phân tích", "desc": "Viết docs/feature-analysis.md: bảng feature, điểm mạnh/yếu, đề xuất cải thiện", "label": "red"}
+]

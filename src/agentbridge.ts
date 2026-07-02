@@ -40,3 +40,33 @@ export function setDiffOpener(fn: () => void): void {
 export function openDiff(): void {
   diffOpener?.();
 }
+
+/* ---- drag a Kanban card straight onto a terminal pane ---- */
+// The board drags cards with pointer events (HTML5 DnD is swallowed by
+// WebView2's OS drag-drop). To let a card be dropped onto an agent pane, main.ts
+// registers how to (a) highlight the pane under a client point while dragging and
+// (b) type the card's task into that pane's PTY on drop. Coords are client CSS
+// pixels (pointer events), so main.ts resolves them WITHOUT DPR scaling.
+export interface PaneTargeting {
+  /** Highlight the pane under (x, y) as a task-drop target; true if one is there. */
+  hover(x: number, y: number): boolean;
+  /** Drop the highlight (pointer left the panes or the drag ended off-target). */
+  clear(): void;
+  /** Type `text` into the PTY of the pane under (x, y) — no Enter; true on hit. */
+  drop(x: number, y: number, text: string): boolean;
+}
+
+let paneTargeting: PaneTargeting | null = null;
+
+export function setPaneTargeting(t: PaneTargeting): void {
+  paneTargeting = t;
+}
+export function hoverPaneAt(x: number, y: number): boolean {
+  return paneTargeting ? paneTargeting.hover(x, y) : false;
+}
+export function clearPaneTarget(): void {
+  paneTargeting?.clear();
+}
+export function dropTextIntoPaneAt(x: number, y: number, text: string): boolean {
+  return paneTargeting ? paneTargeting.drop(x, y, text) : false;
+}

@@ -1,11 +1,11 @@
 /* Design tokens + global reset/base. Loaded first. */
 :root{
-  --bg:#0d1014; --surface-0:#11161d; --surface-1:#161b22; --surface-2:#1c232c; --surface-3:#232b35;
-  --line:#2a323d; --line-strong:#3a4552;
-  --text:#e8edf2; --text-2:#c2ccd6; --muted:#94a3b1; --muted-2:#7d8b99;
-  --accent:#c6f135; --accent-dim:#9bbd2a; --accent-ink:#10160a; --accent-glow:rgba(198,241,53,.16);
-  --info:#5ec2f0; --run:#3ad29f; --idle:#6b7785; --err:#ff6b6b;
-  --r1:5px; --r2:7px; --r3:9px; --r4:12px;
+  --bg:#090a0c; --surface-0:#0f1115; --surface-1:#16181d; --surface-2:#20232a; --surface-3:#2a2f38;
+  --line:#20232a; --line-strong:#323842;
+  --text:#f8fafc; --text-2:#cbd5e1; --muted:#94a3b8; --muted-2:#64748b;
+  --accent:#c6f135; --accent-dim:#84cc16; --accent-ink:#1a2e05; --accent-glow:rgba(198,241,53,.12);
+  --info:#38bdf8; --run:#34d399; --idle:#64748b; --err:#f87171;
+  --r1:6px; --r2:8px; --r3:10px; --r4:14px;
   /* type system: sans for UI chrome, mono for technical values, display for the wordmark */
   --sans:'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono:'Geist Mono', ui-monospace, 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;

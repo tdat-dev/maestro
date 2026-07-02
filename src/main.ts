@@ -54,7 +54,7 @@ import { Mascot } from "./mascot";
 import { initPanels } from "./panels";
 import { initFileTree } from "./filetree";
 import { initEditor } from "./editor";
-import { setAgentSender, setFileOpener, setDiffOpener } from "./agentbridge";
+import { setAgentSender, setFileOpener, setDiffOpener, setPaneTargeting } from "./agentbridge";
 
 /* Home launcher ⇄ Workspace grid.
  * Home is shown while there are 0 agents (the prominent "create" entry).
@@ -116,6 +116,7 @@ interface Workspace {
   gridEl: HTMLElement;
   tabEl: HTMLElement;
   panes: Map<string, Pane>;
+  bcastSelected: Set<string>;
 }
 const workspaces = new Map<string, Workspace>();
 let activeWs: Workspace | null = null;
@@ -203,7 +204,7 @@ function createWorkspace(dir: string | null, name?: string): Workspace {
   tabEl.dataset.ws = id;
   railList.appendChild(tabEl);
 
-  const ws: Workspace = { id, name: wsName, dir, repoRoot: null, isolated: false, gridEl, tabEl, panes: new Map() };
+  const ws: Workspace = { id, name: wsName, dir, repoRoot: null, isolated: false, gridEl, tabEl, panes: new Map(), bcastSelected: new Set() };
   tabEl.addEventListener("click", (e) => {
     if ((e.target as HTMLElement).closest(".tclose")) return;
     activateWorkspace(ws);
@@ -886,6 +887,7 @@ function createAgent(
 
   const pane: Pane = { id, el, term, running: false, spawnedAt: null, lastOutputAt: 0, lastInputAt: 0, attention: false, attentionClearedAt: 0, attentionNotified: false, color: spec.color, spec };
   ws.panes.set(id, pane);
+  ws.bcastSelected.add(id);
   layoutGrid(ws);
   updateCount();
 
@@ -2195,32 +2197,53 @@ const bcastSend = document.getElementById("bcastSend") as HTMLButtonElement;
 const bcastCountEl = document.getElementById("bcastCount");
 const bcastEmitter = document.getElementById("bcastEmitter");
 const bcastTargets = document.getElementById("bcastTargets");
+const bcastTargetBtn = document.getElementById("bcastTargetBtn") as HTMLButtonElement;
+const bcastMenu = document.getElementById("bcastMenu") as HTMLElement;
+const bcastSelectAll = document.getElementById("bcastSelectAll") as HTMLButtonElement;
+const bcastDeselectAll = document.getElementById("bcastDeselectAll") as HTMLButtonElement;
 
 function activeRunning(): Pane[] {
   return activeWs ? [...activeWs.panes.values()].filter((p) => p.running) : [];
 }
 function updateBcast() {
-  const targets = activeRunning();
+  const allRunning = activeRunning();
+  const targets = allRunning.filter(p => activeWs?.bcastSelected.has(p.id));
   const n = targets.length;
-  if (bcastCountEl) bcastCountEl.textContent = `${n} agent${n === 1 ? "" : "s"}`;
+  if (bcastCountEl) {
+    bcastCountEl.textContent = allRunning.length === 0 ? "0 agents" : `${n} selected`;
+  }
   bcastSend.disabled = n === 0 || bcastInput.value.length === 0;
   bcastEmitter?.classList.toggle("live", n > 0);
   // one identity-colored dot per receiving agent (cap, then +N).
   if (bcastTargets) {
-    const cap = 14;
     bcastTargets.replaceChildren();
-    for (const p of targets.slice(0, cap)) {
-      const d = document.createElement("span");
-      d.className = "t";
-      d.style.background = p.color;
-      bcastTargets.appendChild(d);
-    }
-    if (n > cap) {
-      const more = document.createElement("span");
-      more.className = "bcast-count";
-      more.style.marginLeft = "5px";
-      more.textContent = `+${n - cap}`;
-      bcastTargets.appendChild(more);
+    for (const p of allRunning) {
+      const on = activeWs?.bcastSelected.has(p.id);
+      
+      const row = document.createElement("div");
+      row.className = "bcast-row" + (on ? "" : " off");
+      row.style.setProperty("--c", p.color);
+      
+      const dot = document.createElement("span");
+      dot.className = "t";
+      
+      const name = document.createElement("span");
+      name.className = "bcast-row-name";
+      name.textContent = p.spec.name;
+      
+      const check = document.createElement("div");
+      check.className = "bcast-row-check";
+      check.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
+      
+      row.append(dot, name, check);
+      
+      row.addEventListener("click", () => {
+        if (!activeWs) return;
+        if (activeWs.bcastSelected.has(p.id)) activeWs.bcastSelected.delete(p.id);
+        else activeWs.bcastSelected.add(p.id);
+        updateBcast();
+      });
+      bcastTargets.appendChild(row);
     }
   }
 }
@@ -2235,7 +2258,7 @@ let bcastHistIdx = 0; // points one past the newest entry
 
 function broadcast() {
   const text = bcastInput.value;
-  const targets = activeRunning();
+  const targets = activeRunning().filter(p => activeWs?.bcastSelected.has(p.id));
   if (!text || targets.length === 0) return;
   for (const p of targets) {
     void sendInput(p.id, text + "\r").catch(() => {});
@@ -2272,6 +2295,28 @@ bcastInput.addEventListener("keydown", (e) => {
   }
 });
 bcastSend.addEventListener("click", broadcast);
+
+bcastTargetBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const open = bcastMenu.classList.toggle("hidden");
+  document.querySelector(".bcast-target-wrapper")?.classList.toggle("open", !open);
+});
+document.addEventListener("click", (e) => {
+  if (!bcastMenu?.classList.contains("hidden") && !bcastMenu?.contains(e.target as Node) && !bcastTargetBtn?.contains(e.target as Node)) {
+    bcastMenu?.classList.add("hidden");
+    document.querySelector(".bcast-target-wrapper")?.classList.remove("open");
+  }
+});
+bcastSelectAll?.addEventListener("click", () => {
+  if (!activeWs) return;
+  for (const p of activeRunning()) activeWs.bcastSelected.add(p.id);
+  updateBcast();
+});
+bcastDeselectAll?.addEventListener("click", () => {
+  if (!activeWs) return;
+  activeWs.bcastSelected.clear();
+  updateBcast();
+});
 
 /* ---------------- keyboard shortcuts ---------------- */
 // Windows-Terminal-ish chords, chosen to avoid keys the CLIs themselves use
@@ -2516,11 +2561,18 @@ function paneAtPoint(x: number, y: number): Pane | null {
   const id = el?.dataset.id;
   return id && activeWs ? activeWs.panes.get(id) ?? null : null;
 }
-function setDropTarget(p: Pane | null) {
-  if (p === dropTarget) return;
-  dropTarget?.el.classList.remove("drop-target");
+// `agent` swaps the pane's drop label from "attach path" to "send task": a
+// Kanban card being dragged onto the pane, not a file.
+let dropAgent = false;
+function setDropTarget(p: Pane | null, agent = false) {
+  if (p === dropTarget && agent === dropAgent) return;
+  dropTarget?.el.classList.remove("drop-target", "drop-agent");
   dropTarget = p;
-  dropTarget?.el.classList.add("drop-target");
+  dropAgent = agent;
+  if (p) {
+    p.el.classList.add("drop-target");
+    if (agent) p.el.classList.add("drop-agent");
+  }
 }
 /** Type whitespace-quoted path(s) into a pane's PTY, then focus it. Shared by
  *  the OS file-drop (paths from outside the app) and the in-app file-tree drag. */
@@ -2555,6 +2607,25 @@ setAgentSender((text, submit) => {
   void sendInput(pane.id, text + (submit ? "\r" : "")).catch(() => {});
   pane.term.focus();
   return true;
+});
+// Kanban card → pane: highlight the pane under the pointer while a card is being
+// dragged, and drop the card's task into that pane's PTY (no Enter) on release.
+// Pointer events give client CSS px, so resolve with paneAtClient (no DPR).
+setPaneTargeting({
+  hover: (x, y) => {
+    const p = paneAtClient(x, y);
+    setDropTarget(p, true);
+    return !!p;
+  },
+  clear: () => setDropTarget(null),
+  drop: (x, y, text) => {
+    const target = paneAtClient(x, y) ?? dropTarget;
+    setDropTarget(null);
+    if (!target || !text) return false;
+    void sendInput(target.id, text).catch(() => {});
+    target.term.focus();
+    return true;
+  },
 });
 void onDragDrop((e) => {
   if (e.type === "leave") return setDropTarget(null);

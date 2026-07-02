@@ -58,10 +58,34 @@ export function mountTerminal(
   const term = new Terminal({
     convertEol: false, // ConPTY already emits \r\n
     cursorBlink: true,
-    fontFamily: "Consolas, 'Cascadia Mono', monospace",
-    fontSize: opts.fontSize ?? 15,
-    lineHeight: 1.15,
+    fontFamily: "'Inter', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
+    fontSize: opts.fontSize ?? 14,
+    lineHeight: 1.5,
+    letterSpacing: 0.5,
     scrollback: 5000, // generous history so search/scroll can reach older output
+    theme: {
+      background: 'transparent',
+      foreground: '#e2e8f0', // slate-200
+      cursor: '#c6f135',     // maestro accent
+      cursorAccent: '#0a0c10',
+      selectionBackground: 'rgba(198, 241, 53, 0.3)',
+      black: '#1e293b',
+      red: '#ef4444',
+      green: '#22c55e',
+      yellow: '#eab308',
+      blue: '#3b82f6',
+      magenta: '#d946ef',
+      cyan: '#06b6d4',
+      white: '#f8fafc',
+      brightBlack: '#475569',
+      brightRed: '#f87171',
+      brightGreen: '#4ade80',
+      brightYellow: '#fde047',
+      brightBlue: '#60a5fa',
+      brightMagenta: '#e879f9',
+      brightCyan: '#22d3ee',
+      brightWhite: '#ffffff'
+    }
   });
   const fit = new FitAddon();
   term.loadAddon(fit);

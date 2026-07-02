@@ -8,20 +8,20 @@
 .home-resume .hr-count{font-family:var(--mono);font-size:11px;color:var(--muted-2)}
 .home{position:fixed;inset:0;overflow:auto;display:grid;place-items:center;
   background:
-    radial-gradient(820px 440px at 50% 20%, rgba(198,241,53,.10), transparent 62%),
-    radial-gradient(560px 560px at 86% 96%, rgba(94,194,240,.05), transparent 60%),
+    radial-gradient(820px 440px at 50% 20%, var(--accent-glow), transparent 62%),
+    radial-gradient(560px 560px at 86% 96%, rgba(56,189,248,.04), transparent 60%),
     var(--bg);}
 .home-inner{width:min(660px,92vw);padding:44px 0 56px;display:flex;flex-direction:column;align-items:stretch}
 .hero{text-align:center;margin-bottom:34px}
 .logo-glow{width:104px;height:104px;margin:0 auto 16px;display:grid;place-items:center;position:relative;isolation:isolate}
-.logo-glow svg{filter:drop-shadow(0 0 22px rgba(39,185,163,.45)) drop-shadow(0 0 8px rgba(198,241,53,.3))}
+.logo-glow svg{filter:drop-shadow(0 0 16px rgba(198,241,53,.2))}
 /* Living logo — perpetual gentle breathe + glow pulse. transform/opacity only,
    GPU-composited (will-change caches the drop-shadow layer), so it's negligible
    on CPU/battery. The logo is display:none off-screen, so it costs nothing then. */
 .logo-glow::before{content:"";position:absolute;top:50%;left:50%;width:150px;height:150px;
   transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;z-index:-1;
-  background:radial-gradient(circle, rgba(39,185,163,.30), rgba(198,241,53,.10) 45%, transparent 70%);
-  opacity:.4;animation:logoGlowPulse 4.2s ease-in-out infinite}
+  background:radial-gradient(circle, rgba(163,230,53,.15), transparent 65%);
+  opacity:.5;animation:logoGlowPulse 4.2s ease-in-out infinite}
 .logo-glow svg{will-change:transform;animation:logoBreathe 4.2s ease-in-out infinite}
 @keyframes logoBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
 @keyframes logoGlowPulse{
@@ -36,10 +36,10 @@
 .hero p{margin:14px auto 0;color:var(--muted);font-size:13.5px;max-width:430px;line-height:1.65}
 
 .card-primary{display:flex;align-items:center;gap:16px;text-align:left;padding:21px 22px;border-radius:14px;
-  background:linear-gradient(180deg,rgba(198,241,53,.07),rgba(255,255,255,.012));
-  border:1px solid var(--accent-dim);box-shadow:0 0 0 4px var(--accent-glow),0 16px 44px rgba(0,0,0,.45);
-  transition:box-shadow .18s ease,border-color .18s ease}
-.card-primary:hover{box-shadow:0 0 0 5px var(--accent-glow),0 20px 56px rgba(0,0,0,.55);border-color:var(--accent)}
+  background:linear-gradient(180deg,var(--surface-1),var(--surface-0));
+  border:1px solid var(--line-strong);box-shadow:inset 0 1px 0 rgba(255,255,255,.04), 0 4px 12px rgba(0,0,0,.25);
+  transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+.card-primary:hover{transform:translateY(-1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 8px 24px rgba(0,0,0,.4);border-color:var(--accent-dim)}
 .cp-ic{width:46px;height:46px;border-radius:12px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
 .cp-text{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
 .cp-text b{font-size:17px;font-weight:700}
@@ -48,8 +48,8 @@
 
 .card-row{display:flex;gap:13px;margin-top:13px}
 .card{flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:5px;text-align:left;padding:17px 17px 16px;border-radius:12px;
-  background:var(--surface-1);border:1px solid var(--line);transition:border-color .18s ease,background .18s ease}
-.card:not(.disabled):hover{border-color:var(--line-strong);background:var(--surface-2)}
+  background:var(--surface-1);border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.02), 0 2px 6px rgba(0,0,0,.15);transition:border-color .18s ease,background .18s ease,transform .18s ease,box-shadow .18s ease}
+.card:not(.disabled):hover{border-color:var(--line-strong);background:var(--surface-2);transform:translateY(-1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.04), 0 6px 16px rgba(0,0,0,.25)}
 .card.disabled{opacity:.55;cursor:default}
 .card .c-ic{width:34px;height:34px;border-radius:9px;background:var(--surface-3);color:var(--text-2);display:grid;place-items:center;margin-bottom:5px}
 .card b{font-size:13.5px;font-weight:600}

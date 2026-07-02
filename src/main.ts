@@ -2215,7 +2215,7 @@ function updateBcast() {
   let matchedName = "";
   for (const p of sorted) {
     const escapedName = p.spec.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`^@?${escapedName}(?:[-\\s]?([1-9][0-9]*))?[:,]?\\s+`, 'i');
+    const regex = new RegExp(`^@?${escapedName}(?:[-\\s]?([1-9][0-9]*))?[:,]?(?:\\s+|$)`, 'i');
     const match = text.match(regex);
     if (match) {
       const exactMatches = allRunning.filter(agent => agent.spec.name.toLowerCase() === p.spec.name.toLowerCase());
@@ -2296,7 +2296,7 @@ function broadcast() {
   const sorted = [...allRunning].sort((a, b) => b.spec.name.length - a.spec.name.length);
   for (const p of sorted) {
     const escapedName = p.spec.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`^@?${escapedName}(?:[-\\s]?([1-9][0-9]*))?[:,]?\\s+`, 'i');
+    const regex = new RegExp(`^@?${escapedName}(?:[-\\s]?([1-9][0-9]*))?[:,]?(?:\\s+|$)`, 'i');
     const match = text.match(regex);
     if (match) {
       const exactMatches = allRunning.filter(agent => agent.spec.name.toLowerCase() === p.spec.name.toLowerCase());

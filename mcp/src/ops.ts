@@ -122,3 +122,42 @@ export function deleteCard(board: Board, cardRef: string): void {
   const found = resolveCard(board, cardRef);
   found.list.cards.splice(found.idx, 1);
 }
+
+export function addList(board: Board, title: string): List {
+  const t = title.trim();
+  if (!t) throw new BoardError("list title must not be empty");
+  const list: List = { id: uid("l"), title: t, cards: [] };
+  board.lists.push(list);
+  return list;
+}
+
+export function renameList(board: Board, listRef: string, title: string): List {
+  const t = title.trim();
+  if (!t) throw new BoardError("list title must not be empty");
+  const list = resolveList(board, listRef);
+  list.title = t;
+  return list;
+}
+
+export function deleteList(board: Board, listRef: string): void {
+  const list = resolveList(board, listRef);
+  board.lists = board.lists.filter((l) => l !== list);
+}
+
+export function markDone(
+  board: Board,
+  cardRef: string,
+  evidence: { repoRoot: string; files: string[]; summary?: string },
+): Card {
+  const found = resolveCard(board, cardRef);
+  const done = resolveOrCreateList(board, "Done");
+  found.list.cards.splice(found.idx, 1);
+  done.cards.push(found.card);
+  found.card.done = {
+    repoRoot: evidence.repoRoot,
+    files: evidence.files,
+    summary: evidence.summary,
+    at: Date.now(),
+  };
+  return found.card;
+}

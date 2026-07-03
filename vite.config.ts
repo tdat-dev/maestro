@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 
 // Tauri expects a fixed dev-server port (matches devUrl in tauri.conf.json).
@@ -8,5 +9,9 @@ export default defineConfig({
   server: {
     port: 1430,
     strictPort: true,
+  },
+  test: {
+    // mcp/ is its own package with its own vitest; .claude/ holds worktree copies.
+    exclude: ["**/node_modules/**", "**/dist/**", "mcp/**", ".claude/**"],
   },
 });

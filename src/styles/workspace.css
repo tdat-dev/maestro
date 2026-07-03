@@ -1,19 +1,19 @@
 /* Workspace: one unified top bar (tabs + actions), tiling grid, refined panes.
    A 48px right column holds the tool dock rail (dock.css); the topbar and the
    broadcast bar span both columns, the terminal grid takes the left column. */
-.app{position:relative;display:grid;grid-template-columns:var(--rail-w,216px) 1fr var(--code-w,380px) 48px;grid-template-rows:46px 1fr;height:100vh;width:100vw}
+.app{position:relative;display:grid;grid-template-columns:1fr var(--code-w,380px) 48px;grid-template-rows:46px 1fr;height:100vh;width:100vw}
 .app > .topbar{grid-column:1 / -1}
-.app > .project-rail{grid-column:1;grid-row:2}
-.app > .main{grid-column:2;grid-row:2}
-.app > .code-panel{grid-column:3;grid-row:2}
-.app > .dock-rail{grid-column:4;grid-row:2}
+.app > .main{grid-column:1;grid-row:2}
+.app > .code-panel{grid-column:2;grid-row:2}
+.app > .dock-rail{grid-column:3;grid-row:2}
 /* bcast floats at the bottom */
-.app.rail-hidden{--rail-w:0px}
 .app.code-hidden{--code-w:0px}
 
 /* ---------- unified top bar ---------- */
-.topbar{display:flex;align-items:center;gap:10px;padding:0 196px 0 10px;background:rgba(15,17,21,.75);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);z-index:100}
-.spacer{flex:1;align-self:stretch}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 196px 0 10px;background:rgba(15,17,21,.75);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);z-index:100}
+.tb-left, .tb-right{display:flex;align-items:center;gap:10px;flex:1}
+.tb-right{justify-content:flex-end}
+.tb-center{display:flex;align-items:center;justify-content:center;gap:3px;flex:2;min-width:0}
 /* home button — back to launcher, agents keep running */
 .tb-home{width:30px;height:30px;border-radius:7px;display:grid;place-items:center;color:var(--muted);flex:none;margin-right:5px;transition:background .14s,color .14s}
 .tb-home:hover{background:var(--surface-1);color:var(--accent)}
@@ -48,13 +48,11 @@
 .tb-btn svg{color:var(--accent)}
 
 /* live stats + clock (numbers in mono) */
-.stats{display:flex;align-items:center;gap:13px;flex:none}
-.stat{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted-2);font-weight:500}
-.stat b{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--text-2);font-weight:600}
-.stat.live b{color:var(--run)}
-.stat .pip{width:6px;height:6px;border-radius:50%;background:var(--idle)}
-.stat.live .pip{background:var(--run);box-shadow:0 0 6px var(--run);animation:pulse 2.2s infinite}
-.clock{font-family:var(--mono);font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--muted-2);flex:none;padding-left:13px;border-left:1px solid var(--line)}
+.tb-btn-icon{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--text-2);background:var(--surface-1);border:1px solid var(--line-strong);transition:border-color .15s,color .15s,background .15s;flex:none}
+.tb-btn-icon:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--surface-2)}
+
+/* hide stats + clock as requested */
+.stats, .clock { display: none !important; }
 
 /* ---------- workspace area ---------- */
 /* Frameless: terminals run edge-to-edge; the 1px grid gap is the only divider. */
@@ -136,3 +134,13 @@
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(58,210,159,.45)}70%{box-shadow:0 0 0 6px rgba(58,210,159,0)}100%{box-shadow:0 0 0 0 rgba(58,210,159,0)}}
 @keyframes paneIn{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.pane{animation:none}.stat.live .pip{animation:none}}
+
+/* cross-window workspace drop zone */
+body.drag-over-ws .app::after{content:"Drop to merge workspace";position:absolute;inset:0;display:grid;place-items:center;background:rgba(13,16,20,0.85);backdrop-filter:blur(12px);color:var(--text);font-size:18px;font-weight:600;letter-spacing:0.02em;z-index:9999;pointer-events:none;outline:2px dashed var(--accent);outline-offset:-12px;border-radius:12px}
+
+/* tab drop indicator */
+.tab.drop-before::before, .tab.drop-after::after{content:'';position:absolute;top:4px;bottom:4px;width:2px;background:var(--text);border-radius:1px;z-index:10}
+.tab.drop-before::before{left:-2px}
+.tab.drop-after::after{right:-2px}
+
+.tab { position: relative; }

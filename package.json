@@ -15,7 +15,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev -c src-tauri/tauri.dev.conf.json"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.4",

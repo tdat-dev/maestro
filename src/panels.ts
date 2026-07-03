@@ -10,7 +10,6 @@ interface SplitCfg {
   def: number;
 }
 
-const RAIL: SplitCfg = { key: "maestro.railW", varName: "--rail-w", min: 150, max: 480, def: 216 };
 const CODE: SplitCfg = { key: "maestro.codeW", varName: "--code-w", min: 240, max: 760, def: 380 };
 
 /** Clamp a pixel width into [min, max]. */
@@ -71,17 +70,12 @@ function wireToggle(app: HTMLElement, btn: HTMLElement, cls: string, key: string
 /** Restore persisted widths, make both splitters draggable, wire show/hide. */
 export function initPanels(): void {
   const app = document.getElementById("app");
-  const railSplit = document.getElementById("railSplit");
   const codeSplit = document.getElementById("codeSplit");
-  if (!app || !railSplit || !codeSplit) return;
-  restore(app, RAIL);
+  if (!app || !codeSplit) return;
   restore(app, CODE);
-  wireSplitter(app, railSplit, RAIL, "left");
   wireSplitter(app, codeSplit, CODE, "right");
 
-  const railBtn = document.getElementById("btnToggleRail");
   const codeBtn = document.getElementById("btnToggleCode");
-  if (railBtn) wireToggle(app, railBtn, "rail-hidden", "maestro.railHidden");
   if (codeBtn) wireToggle(app, codeBtn, "code-hidden", "maestro.codeHidden");
   // The code panel's own "›‹" header button mirrors the topbar toggle.
   document.getElementById("cpClose")?.addEventListener("click", () => codeBtn?.click());
@@ -91,10 +85,7 @@ export function initPanels(): void {
   document.addEventListener("keydown", (e) => {
     if (!e.ctrlKey || !e.shiftKey) return;
     const k = e.key.toLowerCase();
-    if (k === "b") {
-      e.preventDefault();
-      railBtn?.click();
-    } else if (k === "e") {
+    if (k === "e") {
       e.preventDefault();
       codeBtn?.click();
     }

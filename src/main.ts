@@ -13,6 +13,7 @@ import {
   onWindowClose,
   confirmDialog,
   destroyWindow,
+  hideWindow,
   setTrayVisible,
   setTrayTooltip,
   onTrayQuit,
@@ -195,8 +196,8 @@ function createWorkspace(dir: string | null, name?: string): Workspace {
   gridEl.appendChild(tile);
   wsHost.appendChild(gridEl);
 
-  const tabEl = document.createElement("div");
-  tabEl.className = "proj";
+  const tabEl = document.createElement("button");
+  tabEl.className = "tab";
   tabEl.innerHTML =
     `<span class="tdot"></span><span class="tname"></span><span class="tcount"></span>` +
     `<button class="tclose" aria-label="Close workspace">${KILL_SVG}</button>`;
@@ -419,6 +420,20 @@ function wireTabDrag(ws: Workspace) {
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = "move";
       e.dataTransfer.setData("text/plain", ws.id);
+
+      // --- CROSS-WINDOW DRAG PAYLOAD ---
+      const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const payload = buildDetachPayload(ws);
+      e.dataTransfer.setData("application/maestro-workspace", JSON.stringify({ key, ws: payload }));
+
+      const pUnlisten = onAppEvent<{ key: string }>(MERGE_ACK_EVT, (a) => {
+        if (a?.key === key) {
+           dropWorkspace(ws);
+           if (isDetachedWindow && workspaces.size === 0) void destroyWindow();
+           pUnlisten.then(f => f());
+        }
+      });
+      window.setTimeout(() => pUnlisten.then(f => f()), 10000);
     }
   });
   el.addEventListener("dragend", (e) => {
@@ -428,6 +443,7 @@ function wireTabDrag(ws: Workspace) {
     tabDragSrc = null;
     if (!src || !workspaces.has(src.id)) return;
     // Released beyond the viewport → tear the tab out into its own window.
+    // Note: Cross-window drops are handled by the document.body drop listener.
     const out =
       !tabDragInside ||
       e.clientX < 0 ||
@@ -446,21 +462,66 @@ function wireTabDrag(ws: Workspace) {
     } else commitTabOrder();
   });
   el.addEventListener("dragover", (e) => {
-    if (!tabDragSrc || tabDragSrc === ws) return;
+    if (tabDragSrc === ws) return;
+    const isCrossWindow = !tabDragSrc && Array.from(e.dataTransfer?.types || []).includes("application/maestro-workspace");
+    if (!tabDragSrc && !isCrossWindow) return;
+
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    
     const r = el.getBoundingClientRect();
-    const before = e.clientY - r.top < r.height / 2; // top half → drop before
+    const before = e.clientX - r.left < r.width / 2;
+
+    if (isCrossWindow) {
+      document.querySelectorAll(".tab.drop-before, .tab.drop-after").forEach(t => t.classList.remove("drop-before", "drop-after"));
+      el.classList.add(before ? "drop-before" : "drop-after");
+      return;
+    }
+    if (!tabDragSrc) return;
     railList.insertBefore(tabDragSrc.tabEl, before ? el : el.nextSibling);
   });
-  el.addEventListener("drop", (e) => e.preventDefault());
+  el.addEventListener("dragleave", () => {
+    el.classList.remove("drop-before", "drop-after");
+  });
+  el.addEventListener("drop", (e) => {
+    el.classList.remove("drop-before", "drop-after");
+    e.preventDefault();
+    
+    const dt = e.dataTransfer;
+    if (!tabDragSrc && dt && Array.from(dt.types).includes("application/maestro-workspace")) {
+      e.stopPropagation(); // prevent body from handling it (which appends to end)
+      dragWsCount = 0;
+      document.body.classList.remove("drag-over-ws");
+      const raw = dt.getData("application/maestro-workspace");
+      if (raw) {
+        try {
+          const msg = JSON.parse(raw) as MergeMsg;
+          adoptWorkspace(msg.ws);
+          
+          // Move the newly adopted workspace (currently last) to the exact drop spot
+          const r = el.getBoundingClientRect();
+          const before = e.clientX - r.left < r.width / 2;
+          const newTab = railList.lastElementChild;
+          if (newTab && newTab !== el) {
+            railList.insertBefore(newTab, before ? el : el.nextSibling);
+            commitTabOrder();
+          }
+          
+          void emitAppEvent(MERGE_ACK_EVT, { key: msg.key });
+          void focusThisWindow().catch(() => {});
+        } catch (err) {
+          console.warn("cross-window drag parse failed", err);
+        }
+      }
+    }
+  });
 }
 
 // Rebuild the workspaces Map to match the tabstrip's DOM order, then persist —
 // session save iterates the Map, so the order survives restarts.
 function commitTabOrder() {
   const ordered: Workspace[] = [];
-  railList.querySelectorAll<HTMLElement>(".proj").forEach((t) => {
+  railList.querySelectorAll<HTMLElement>(".tab").forEach((t) => {
     const w = t.dataset.ws ? workspaces.get(t.dataset.ws) : undefined;
     if (w) ordered.push(w);
   });
@@ -619,6 +680,49 @@ if (!isDetachedWindow) {
     void focusThisWindow().catch(() => {});
   });
 }
+
+let dragWsCount = 0;
+document.body.addEventListener("dragenter", (e) => {
+  if (Array.from(e.dataTransfer?.types || []).includes("application/maestro-workspace")) {
+    dragWsCount++;
+    if (dragWsCount === 1) document.body.classList.add("drag-over-ws");
+  }
+});
+document.body.addEventListener("dragleave", (e) => {
+  if (Array.from(e.dataTransfer?.types || []).includes("application/maestro-workspace")) {
+    dragWsCount--;
+    if (dragWsCount === 0) document.body.classList.remove("drag-over-ws");
+  }
+});
+
+// Support dropping workspaces from ANY other window
+document.body.addEventListener("dragover", (e) => {
+  const dt = e.dataTransfer;
+  if (dt && Array.from(dt.types).includes("application/maestro-workspace")) {
+    e.preventDefault();
+    dt.dropEffect = "move";
+  }
+});
+
+document.body.addEventListener("drop", (e) => {
+  const dt = e.dataTransfer;
+  if (dt && Array.from(dt.types).includes("application/maestro-workspace")) {
+    e.preventDefault();
+    dragWsCount = 0;
+    document.body.classList.remove("drag-over-ws");
+    const raw = dt.getData("application/maestro-workspace");
+    if (raw) {
+      try {
+        const msg = JSON.parse(raw) as MergeMsg;
+        adoptWorkspace(msg.ws);
+        void emitAppEvent(MERGE_ACK_EVT, { key: msg.key });
+        void focusThisWindow().catch(() => {});
+      } catch (err) {
+        console.warn("cross-window drag parse failed", err);
+      }
+    }
+  }
+});
 
 /** Detached-window side: hand `ws` back to the main window and (on success)
  *  release the tab here. Returns false if the main window never acked within the
@@ -2879,7 +2983,43 @@ async function closeDetachedWindow(): Promise<void> {
 void onWindowClose(async (event) => {
   if (closing) return;
   event.preventDefault();
-  await (isDetachedWindow ? closeDetachedWindow() : quitApp());
+
+  const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+  const allWindows = await WebviewWindow.getAll();
+  let visibleCount = 0;
+  for (const w of allWindows) {
+    if (await w.isVisible()) visibleCount++;
+  }
+
+  // If this is the last visible window, quit the app completely.
+  if (visibleCount <= 1) {
+    await quitApp();
+    return;
+  }
+
+  // Otherwise, just close THIS window.
+  if (isDetachedWindow) {
+    await closeDetachedWindow();
+  } else {
+    // The main window is closing, but detached windows are still active.
+    // We shouldn't destroy the main window (breaks the tray icon).
+    // Just kill its PTYs, clear workspaces, and hide it.
+    const total = ownPaneCount();
+    if (needsCloseConfirm(total)) {
+      const ok = await confirmDialog(`${total} running terminal(s) will be killed. Close this window?`, "Close window");
+      if (!ok) return;
+    }
+    closing = true;
+    for (const w of workspaces.values()) {
+      for (const id of w.panes.keys()) {
+        try { await killPty(id); } catch {}
+      }
+    }
+    workspaces.clear();
+    saveSession();
+    await hideWindow();
+    closing = false;
+  }
 }).catch((e) => console.warn("close handler unavailable:", e));
 
 if (isDetachedWindow) {

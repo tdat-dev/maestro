@@ -66,7 +66,10 @@ export function mountTerminal(
     letterSpacing: 0,
     scrollback: 5000, // generous history so search/scroll can reach older output
     theme: {
-      background: 'transparent',
+      // Not 'transparent': the WebGL renderer can't blend it and falls back to
+      // dead #000, splitting panes into black boxes. A near-black with the
+      // pane's own tint keeps every renderer consistent with the glass frame.
+      background: '#0b0d12',
       foreground: '#e2e8f0', // slate-200
       cursor: '#c6f135',     // maestro accent
       cursorAccent: '#0a0c10',

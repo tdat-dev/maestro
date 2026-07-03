@@ -49,7 +49,6 @@ import { checkForUpdates } from "./updater";
 import { getVersion } from "@tauri-apps/api/app";
 import { initTitlebar } from "./titlebar";
 import { initIdleAnimationPause } from "./power";
-import { CLI_LOGOS } from "./logos";
 import { initDock, dockSetContext, dockToggle, dockOpen } from "./dock";
 import { Mascot } from "./mascot";
 import { initPanels } from "./panels";
@@ -870,18 +869,15 @@ function buildPaneEl(
   sub: string,
   badge: string,
   color: string,
-  mono: string,
 ): HTMLElement {
   const el = document.createElement("section");
   el.className = "pane";
   el.dataset.id = id;
   el.innerHTML = `
     <div class="pane-head" data-drag>
-      <span class="mono" style="--c:${color}">${CLI_LOGOS[badge] ?? mono}</span>
-      <span class="pane-id">
-        <span class="pane-name" title="${name}">${name}</span>
-        <span class="pane-sub" data-sub title="${sub ? badge + " · " + sub : badge}">${sub ? badge + " · " + sub : badge}</span>
-      </span>
+      <span class="pane-dot" style="--c:${color}"></span>
+      <span class="pane-name">${name}</span>
+      <span class="pane-sub" data-sub>${sub ? badge + " · " + sub : badge}</span>
       <span class="uptime" data-uptime></span>
       <span class="pane-stat" data-status>queued</span>
       <div class="ctrls">
@@ -968,7 +964,7 @@ function createAgent(
   showWorkspace();
   const id = attach?.id ?? newId();
   const sub = spec.cwd ? basename(spec.cwd) : "";
-  const el = buildPaneEl(id, spec.name, sub, spec.badge, spec.color, spec.mono);
+  const el = buildPaneEl(id, spec.name, sub, spec.badge, spec.color);
   ws.gridEl.insertBefore(el, ws.gridEl.lastElementChild); // before the spawn tile
 
   const host = el.querySelector<HTMLElement>("[data-host]")!;

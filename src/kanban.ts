@@ -201,6 +201,8 @@ export function createKanban() {
     });
     if (!fresh.length) return 0;
     await withBoard((b) => {
+      // reset per-attempt: withBoard may re-run this mutator on Conflict retry
+      added = 0;
       const list = findOrCreateListIn(b, PROPOSED_TITLE);
       for (const t of fresh) {
         const card = mkCard(t.title);
@@ -353,6 +355,8 @@ export function createKanban() {
     // board.json this write just produced).
     const moved: { card: Card; summary?: string }[] = [];
     await withBoard((b) => {
+      // reset per-attempt: withBoard may re-run this mutator on Conflict retry
+      moved.length = 0;
       const doneList = findOrCreateListIn(b, DONE_TITLE);
       for (const entry of fresh) {
         doneSeen.add(entry.title.trim().toLowerCase());

@@ -20,24 +20,47 @@ export function serializeBoard(board: Board): string {
   return JSON.stringify({ version: 2, lists: board.lists }, null, 2);
 }
 
-/** mtime of board.json, or null when the file doesn't exist yet. */
+/** The Rust backend's `scoped()` (src-tauri/src/core/fs.rs) rejects a missing
+ *  path with `CommandError::Failed("no such path: {io error}")`, which Tauri
+ *  serializes to the JS side as `{ Failed: "no such path: ..." }`. Any other
+ *  fs_read_file/fs_stat failure (permission denied, ">2 MB", "binary file",
+ *  etc.) must NOT be treated as "missing" — swallowing those would feed a
+ *  null into kanban's withBoard fallback, which force-writes the stale
+ *  in-memory board over a perfectly good on-disk file. */
+function isNotFoundError(e: unknown): boolean {
+  let msg: string | undefined;
+  if (typeof e === "string") msg = e;
+  else if (e && typeof e === "object") {
+    const o = e as Record<string, unknown>;
+    if (typeof o.Failed === "string") msg = o.Failed;
+    else if (typeof o.message === "string") msg = o.message;
+  }
+  return typeof msg === "string" && /no such path/i.test(msg);
+}
+
+/** mtime of board.json, or null when the file doesn't exist yet. Any other
+ *  failure (permission, backend refusal) propagates — see isNotFoundError. */
 export async function statBoardFile(dir: string): Promise<number | null> {
   try {
     return (await fsStat(dir, BOARD_JSON_REL)).mtime;
-  } catch {
-    return null;
+  } catch (e) {
+    if (isNotFoundError(e)) return null;
+    throw e;
   }
 }
 
 /** Read + parse board.json. null when missing; BoardFileCorrupt on bad
- *  JSON/shape (the caller must NOT write over a corrupt file). */
+ *  JSON/shape (the caller must NOT write over a corrupt file). Any other read
+ *  failure (permission, too-large, binary refusal) propagates — see
+ *  isNotFoundError. */
 export async function readBoardFile(dir: string): Promise<BoardFile | null> {
   let content: string;
   let mtime: number;
   try {
     ({ content, mtime } = await fsReadFile(dir, BOARD_JSON_REL));
-  } catch {
-    return null;
+  } catch (e) {
+    if (isNotFoundError(e)) return null;
+    throw e;
   }
   let parsed: unknown;
   try {

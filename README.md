@@ -71,8 +71,9 @@ you spawned it in.
 claude mcp add --scope user maestro -- npx -y maestro-mcp
 ```
 
-See [mcp/README.md](mcp/README.md) for the full tool reference and a
-local-checkout install command.
+On native Windows, wrap with `cmd /c` (see [mcp/README.md](mcp/README.md) for
+why). See that README for the full tool reference, the local-checkout install
+command, and a worktree-isolation caveat.
 
 ## Install
 

@@ -6,15 +6,22 @@ const files = new Map<string, { content: string; mtime: number }>();
 let clock = 100;
 const key = (root: string, path: string) => `${root}|${path}`;
 
+// Mirrors the real Tauri rejection shape for a missing path: `scoped()` in
+// src-tauri/src/core/fs.rs fails canonicalize() with
+// `CommandError::Failed(format!("no such path: {e}"))`, which serializes to
+// JS as `{ Failed: "no such path: ..." }` (see src/editor.ts's `{ Conflict }`
+// handling for the same pattern with the other variant).
+const notFound = () => ({ Failed: "no such path: The system cannot find the path specified. (os error 3)" });
+
 vi.mock("./ipc", () => ({
   fsReadFile: vi.fn(async (root: string, path: string) => {
     const f = files.get(key(root, path));
-    if (!f) throw new Error("NotFound");
+    if (!f) throw notFound();
     return f;
   }),
   fsStat: vi.fn(async (root: string, path: string) => {
     const f = files.get(key(root, path));
-    if (!f) throw new Error("NotFound");
+    if (!f) throw notFound();
     return { mtime: f.mtime };
   }),
   fsWriteFile: vi.fn(async (root: string, path: string, content: string, expectedMtime: number | null) => {
@@ -40,6 +47,7 @@ import {
   statBoardFile,
   serializeBoard,
 } from "./boardfile";
+import { fsReadFile, fsStat } from "./ipc";
 
 beforeEach(() => {
   files.clear();
@@ -90,5 +98,28 @@ describe("boardfile", () => {
     const m1 = await writeBoardFile("D:\\ws", b, null);
     const m2 = await writeBoardFile("D:\\ws", b, m1);
     expect(m2).toBeGreaterThan(m1);
+  });
+
+  it("readBoardFile propagates a non-not-found error instead of returning null", async () => {
+    (fsReadFile as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce({
+      Failed: "file too large to open (>2 MB)",
+    });
+    await expect(readBoardFile("D:\\ws")).rejects.toMatchObject({
+      Failed: "file too large to open (>2 MB)",
+    });
+  });
+
+  it("readBoardFile propagates a permission-style error instead of returning null", async () => {
+    (fsReadFile as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce({
+      Failed: "Access is denied. (os error 5)",
+    });
+    await expect(readBoardFile("D:\\ws")).rejects.toBeTruthy();
+  });
+
+  it("statBoardFile propagates a non-not-found error instead of returning null", async () => {
+    (fsStat as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce({
+      Failed: "binary file",
+    });
+    await expect(statBoardFile("D:\\ws")).rejects.toMatchObject({ Failed: "binary file" });
   });
 });

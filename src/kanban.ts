@@ -18,7 +18,13 @@ import {
   type Card,
   type List,
 } from "./board";
-import { readBoardFile, writeBoardFile, statBoardFile, type BoardFile } from "./boardfile";
+import {
+  readBoardFile,
+  writeBoardFile,
+  statBoardFile,
+  BoardFileCorrupt,
+  type BoardFile,
+} from "./boardfile";
 
 export type { Board, Card } from "./board"; // kanban.test.ts + panels import from here
 import {
@@ -508,7 +514,13 @@ export function createKanban() {
       let bf: BoardFile | null = null;
       try {
         bf = await readBoardFile(dir);
-      } catch {
+      } catch (e) {
+        if (!(e instanceof BoardFileCorrupt)) {
+          // permission/too-large/binary-refusal etc: not the user's doing —
+          // abort with no write rather than clobbering an unreadable file.
+          console.warn("maestro: board.json unreadable — change not saved", e);
+          return;
+        }
         // corrupt file: mutate the in-memory copy; the forced write below
         // replaces the corrupt file — this is the user's explicit action.
       }
@@ -552,10 +564,19 @@ export function createKanban() {
         boardMtime = bf.mtime;
         return;
       }
-    } catch {
-      console.warn(
-        "maestro: .maestro/board.json is corrupt — showing an in-memory board; fix or delete the file",
-      );
+    } catch (e) {
+      if (e instanceof BoardFileCorrupt) {
+        console.warn(
+          "maestro: .maestro/board.json is corrupt — showing an in-memory board; fix or delete the file",
+        );
+      } else {
+        // permission/too-large/binary-refusal etc: not corrupt, just unreadable —
+        // show the default board but don't touch the file (withBoard aborts too).
+        console.warn(
+          "maestro: .maestro/board.json is unreadable — showing an in-memory board; changes won't be saved",
+          e,
+        );
+      }
       board = defaultBoard();
       return;
     }

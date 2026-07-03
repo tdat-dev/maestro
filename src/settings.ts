@@ -47,16 +47,16 @@ export function setMascotPos(x: number, y: number): void {
 /* ---------------- terminal font size ---------------- */
 
 const TERM_FONT_SIZE_KEY = "maestro.termFontSize";
-const TERM_FONT_MIN = 11;
+const TERM_FONT_MIN = 10;
 const TERM_FONT_MAX = 20;
-const TERM_FONT_DEFAULT = 15;
+const TERM_FONT_DEFAULT = 13;
 
 function clampFont(n: number): number {
   if (!Number.isFinite(n)) return TERM_FONT_DEFAULT;
   return Math.min(TERM_FONT_MAX, Math.max(TERM_FONT_MIN, Math.round(n)));
 }
 
-/** Terminal font size in px. Defaults to 15, clamped to 11..20. */
+/** Terminal font size in px. Defaults to 13, clamped to 10..20. */
 export function getTermFontSize(): number {
   const raw = localStorage.getItem(TERM_FONT_SIZE_KEY);
   if (raw === null) return TERM_FONT_DEFAULT;

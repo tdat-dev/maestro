@@ -2872,7 +2872,7 @@ setCheckUpdate?.addEventListener("click", async () => {
 
 /* ---- terminal font size stepper ---- */
 const setFontN = document.getElementById("setFontN");
-const TERM_FONT_MIN = 11;
+const TERM_FONT_MIN = 10;
 const TERM_FONT_MAX = 20;
 
 function syncFontLabel() {

@@ -58,10 +58,12 @@ export function mountTerminal(
   const term = new Terminal({
     convertEol: false, // ConPTY already emits \r\n
     cursorBlink: true,
-    fontFamily: "'Inter', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
-    fontSize: opts.fontSize ?? 14,
-    lineHeight: 1.5,
-    letterSpacing: 0.5,
+    // Monospace only — a proportional font here breaks xterm's cell grid, and
+    // wide lineHeight/letterSpacing bloat every cell (fewer cols/rows per pane).
+    fontFamily: "'Cascadia Mono', 'Cascadia Code', Consolas, monospace",
+    fontSize: opts.fontSize ?? 13,
+    lineHeight: 1.2,
+    letterSpacing: 0,
     scrollback: 5000, // generous history so search/scroll can reach older output
     theme: {
       background: 'transparent',

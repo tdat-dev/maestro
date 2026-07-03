@@ -13,10 +13,12 @@ import {
   defaultBoard,
   normalizeLists,
   findCardIn,
+  applyDomOrder,
   type Board,
   type Card,
   type List,
 } from "./board";
+import { readBoardFile, writeBoardFile, statBoardFile, type BoardFile } from "./boardfile";
 
 export type { Board, Card } from "./board"; // kanban.test.ts + panels import from here
 import {
@@ -163,6 +165,7 @@ export function createKanban() {
   let dir: string | null = null; // active workspace folder, for the plan file
   let planMtime = 0; // last-seen mtime of .maestro/plan.json (auto-watch)
   let doneMtime = 0; // last-seen mtime of .maestro/done.json (auto-watch)
+  let boardMtime: number | null = null; // last-seen board.json mtime (null = no file yet)
   let watchTimer: number | null = null;
   let seen = new Set<string>(); // task titles already imported (survives deletes)
   let doneSeen = new Set<string>(); // done.json titles already moved to Done
@@ -177,11 +180,11 @@ export function createKanban() {
     if (ctx) saveJSON(doneSeenKey(ctx.key), [...doneSeen]);
   };
 
-  function findOrCreateList(title: string): List {
-    let list = board.lists.find((l) => l.title.toLowerCase() === title.toLowerCase());
+  function findOrCreateListIn(b: Board, title: string): List {
+    let list = b.lists.find((l) => l.title.toLowerCase() === title.toLowerCase());
     if (!list) {
       list = { id: uid("l"), title, cards: [] };
-      board.lists.unshift(list); // Proposed sits first
+      b.lists.unshift(list); // Proposed sits first
     }
     return list;
   }
@@ -190,24 +193,25 @@ export function createKanban() {
 
   /** Import agent-proposed tasks into the Proposed list (skipping ones already
    *  imported or already on the board). Returns how many were added. */
-  function importProposed(tasks: PlanTask[]): number {
-    const list = findOrCreateList(PROPOSED_TITLE);
+  async function importProposed(tasks: PlanTask[]): Promise<number> {
     let added = 0;
-    for (const t of tasks) {
+    const fresh = tasks.filter((t) => {
       const key = t.title.toLowerCase();
-      if (seen.has(key) || boardHasTitle(t.title)) continue;
-      const card = mkCard(t.title);
-      if (t.desc) card.desc = t.desc;
-      card.labels = [t.label ?? "blue"];
-      list.cards.push(card);
-      seen.add(key);
-      added += 1;
-    }
-    if (added > 0) {
-      saveSeen();
-      persist();
-      render();
-    }
+      return !seen.has(key) && !boardHasTitle(t.title);
+    });
+    if (!fresh.length) return 0;
+    await withBoard((b) => {
+      const list = findOrCreateListIn(b, PROPOSED_TITLE);
+      for (const t of fresh) {
+        const card = mkCard(t.title);
+        if (t.desc) card.desc = t.desc;
+        card.labels = [t.label ?? "blue"];
+        list.cards.push(card);
+        seen.add(t.title.toLowerCase());
+        added += 1;
+      }
+    });
+    saveSeen();
     return added;
   }
 
@@ -296,9 +300,10 @@ export function createKanban() {
         /* not a repo */
       }
     }
-    card.done = { repoRoot, files, summary, at: Date.now() };
-    persist();
-    render();
+    await withBoard((b) => {
+      const found = findCardIn(b, card.id);
+      if (found) found.card.done = { repoRoot, files, summary, at: Date.now() };
+    });
   }
 
   /** After a drag: if a card just landed in Done, capture its code evidence. */
@@ -313,9 +318,9 @@ export function createKanban() {
   }
 
   /* ---- B: agent reports a finished task → auto-move the card to Done ---- */
-  function findCardByTitle(title: string): { list: List; idx: number; card: Card } | null {
+  function findCardByTitleIn(b: Board, title: string): { list: List; idx: number; card: Card } | null {
     const t = title.trim().toLowerCase();
-    for (const list of board.lists) {
+    for (const list of b.lists) {
       const idx = list.cards.findIndex((c) => c.title.trim().toLowerCase() === t);
       if (idx >= 0) return { list, idx, card: list.cards[idx] };
     }
@@ -341,24 +346,25 @@ export function createKanban() {
     } catch {
       return; // no done file / invalid JSON
     }
-    const doneList = findOrCreateList(DONE_TITLE);
-    let changed = false;
-    for (const entry of entries) {
-      const key = entry.title.trim().toLowerCase();
-      if (doneSeen.has(key)) continue;
-      doneSeen.add(key);
-      changed = true;
-      const found = findCardByTitle(entry.title);
-      const card = found ? found.card : mkCard(entry.title);
-      if (found) found.list.cards.splice(found.idx, 1);
-      doneList.cards.push(card);
-      void attachDoneEvidence(card, entry.summary);
-    }
-    if (changed) {
-      saveDoneSeen();
-      persist();
-      render();
-    }
+    const fresh = entries.filter((entry) => !doneSeen.has(entry.title.trim().toLowerCase()));
+    if (!fresh.length) return;
+    // Move/create each card in a single board write, then attach code evidence
+    // per card (each of those is its own read-modify-write against the fresh
+    // board.json this write just produced).
+    const moved: { card: Card; summary?: string }[] = [];
+    await withBoard((b) => {
+      const doneList = findOrCreateListIn(b, DONE_TITLE);
+      for (const entry of fresh) {
+        doneSeen.add(entry.title.trim().toLowerCase());
+        const found = findCardByTitleIn(b, entry.title);
+        const card = found ? found.card : mkCard(entry.title);
+        if (found) found.list.cards.splice(found.idx, 1);
+        doneList.cards.push(card);
+        moved.push({ card, summary: entry.summary });
+      }
+    });
+    saveDoneSeen();
+    for (const { card, summary } of moved) void attachDoneEvidence(card, summary);
   }
 
   async function pollDone(): Promise<void> {
@@ -368,6 +374,33 @@ export function createKanban() {
       if (s.mtime !== doneMtime) await importDone();
     } catch {
       /* not written yet */
+    }
+  }
+
+  /** Background poll: when maestro-mcp (an agent) rewrites board.json, reload.
+   *  Skipped mid-drag and while an input inside the board is focused, so the
+   *  DOM isn't yanked out from under the user; the next tick catches up. */
+  async function pollBoardJson(): Promise<void> {
+    if (!dir || drag) return;
+    const active = document.activeElement;
+    if (
+      root &&
+      active &&
+      root.contains(active) &&
+      (active.tagName === "TEXTAREA" || active.tagName === "INPUT")
+    )
+      return;
+    const mtime = await statBoardFile(dir);
+    if (mtime === null || mtime === boardMtime) return;
+    try {
+      const bf = await readBoardFile(dir);
+      if (!bf) return;
+      board = bf.board;
+      boardMtime = bf.mtime;
+      rerender();
+      scheduleBoardFile(); // keep the board.md mirror in step
+    } catch {
+      /* corrupt right now (or mid-write) — retry next tick */
     }
   }
 
@@ -454,9 +487,82 @@ export function createKanban() {
   // start a rename).
   let dragged = false;
 
-  function persist() {
-    if (ctx) saveJSON(keyFor(ctx.key), board);
-    scheduleBoardFile();
+  /** Apply a model change. With a workspace dir the file is the source of
+   *  truth: re-read board.json, mutate the fresh copy, write it back guarded by
+   *  the mtime we read (an agent write in between = Conflict → retry once on
+   *  the newer copy). Dir-less contexts keep the old localStorage behaviour. */
+  async function withBoard(mutator: (b: Board) => void): Promise<void> {
+    if (!ctx) return;
+    if (!dir) {
+      mutator(board);
+      saveJSON(keyFor(ctx.key), board);
+      scheduleBoardFile();
+      rerender();
+      return;
+    }
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      let bf: BoardFile | null = null;
+      try {
+        bf = await readBoardFile(dir);
+      } catch {
+        // corrupt file: mutate the in-memory copy; the forced write below
+        // replaces the corrupt file — this is the user's explicit action.
+      }
+      const fresh = bf ? bf.board : board;
+      mutator(fresh);
+      try {
+        boardMtime = await writeBoardFile(dir, fresh, bf ? bf.mtime : null);
+        board = fresh;
+        scheduleBoardFile();
+        rerender();
+        return;
+      } catch {
+        /* Conflict — an agent wrote between our read and write; retry on its copy */
+      }
+    }
+  }
+
+  /** Re-render whichever view is open (board or card detail). */
+  function rerender(): void {
+    if (openCardId && findCard(openCardId)) renderDetail();
+    else {
+      openCardId = openCardId && findCard(openCardId) ? openCardId : null;
+      render();
+    }
+  }
+
+  /** Load the context's board: board.json when the workspace has a dir
+   *  (migrating the old localStorage board into the file on first run),
+   *  localStorage otherwise. Corrupt file → in-memory default; the file is
+   *  only replaced when the user makes a mutation (withBoard's forced write). */
+  async function loadBoardForContext(): Promise<void> {
+    if (!ctx) return;
+    if (!dir) {
+      board = normalize(loadJSON<unknown>(keyFor(ctx.key), null), ctx.key);
+      return;
+    }
+    try {
+      const bf = await readBoardFile(dir);
+      if (bf) {
+        board = bf.board;
+        boardMtime = bf.mtime;
+        return;
+      }
+    } catch {
+      console.warn(
+        "maestro: .maestro/board.json is corrupt — showing an in-memory board; fix or delete the file",
+      );
+      board = defaultBoard();
+      return;
+    }
+    // No file yet: seed it from the localStorage board (one-time migration; the
+    // localStorage copy stays behind as a backup but is no longer read).
+    board = normalize(loadJSON<unknown>(keyFor(ctx.key), null), ctx.key);
+    try {
+      boardMtime = await writeBoardFile(dir, board, null);
+    } catch {
+      /* folder unwritable — board stays in-memory for this session */
+    }
   }
 
   /* ---- live board mirror the agent reads (.maestro/board.md) ---- */
@@ -467,10 +573,12 @@ export function createKanban() {
     // Debounced: a burst of edits (or a drag reorder) writes the file once.
     boardWriteTimer = window.setTimeout(() => {
       boardWriteTimer = null;
-      void writeBoardFile();
+      void writeBoardMirror();
     }, 500);
   }
-  async function writeBoardFile() {
+  // Named distinctly from the imported `writeBoardFile` (board.json, from
+  // ./boardfile) — this one is the board.md mirror the agent reads.
+  async function writeBoardMirror() {
     if (!dir) return;
     try {
       await fsCreateDir(dir, RULES_DIR);
@@ -557,9 +665,10 @@ export function createKanban() {
       render();
       return;
     }
-    commitFromDom();
-    if (cardId) maybeFireDone(cardId, fromListId);
-    render();
+    void (async () => {
+      await commitFromDom();
+      if (cardId) maybeFireDone(cardId, fromListId);
+    })();
   }
 
   function beginDrag(e: PointerEvent, type: "card" | "list", el: HTMLElement) {
@@ -574,29 +683,21 @@ export function createKanban() {
   }
 
   /** Rebuild board (list order + each list's cards) from the current DOM order.
-   *  Called on dragend so a live-reordered DOM becomes the source of truth. */
-  function commitFromDom() {
+   *  Called on dragend so a live-reordered DOM becomes the source of truth —
+   *  applied onto the freshest board.json copy (see applyDomOrder for how
+   *  mid-drag agent edits are kept). */
+  async function commitFromDom(): Promise<void> {
     if (!root) return;
-    const cardById = new Map<string, Card>();
-    const listById = new Map<string, List>();
-    board.lists.forEach((l) => {
-      listById.set(l.id, l);
-      l.cards.forEach((c) => cardById.set(c.id, c));
-    });
-    const nextLists: List[] = [];
+    const order: { id: string; cardIds: string[] }[] = [];
     root.querySelectorAll<HTMLElement>(".kb-list").forEach((listNode) => {
-      const list = listById.get(listNode.dataset.list || "");
-      if (!list) return;
-      const cards: Card[] = [];
+      if (!listNode.dataset.list) return;
+      const cardIds: string[] = [];
       listNode.querySelectorAll<HTMLElement>(".kb-card").forEach((cardNode) => {
-        const c = cardById.get(cardNode.dataset.card || "");
-        if (c) cards.push(c);
+        if (cardNode.dataset.card) cardIds.push(cardNode.dataset.card);
       });
-      list.cards = cards;
-      nextLists.push(list);
+      order.push({ id: listNode.dataset.list, cardIds });
     });
-    if (nextLists.length) board.lists = nextLists;
-    persist();
+    await withBoard((b) => applyDomOrder(b, order));
   }
 
   /** First non-dragging card in `host` whose vertical midpoint is below `y`. */
@@ -615,45 +716,41 @@ export function createKanban() {
   function addList(title: string) {
     const t = title.trim();
     if (!t) return;
-    board.lists.push({ id: uid("l"), title: t, cards: [] });
-    persist();
-    render();
+    void withBoard((b) => {
+      b.lists.push({ id: uid("l"), title: t, cards: [] });
+    });
   }
   function renameList(id: string, title: string) {
-    const list = board.lists.find((l) => l.id === id);
-    if (!list) return;
     const t = title.trim();
-    if (t) list.title = t;
-    persist();
-    render();
+    void withBoard((b) => {
+      const list = b.lists.find((l) => l.id === id);
+      if (list && t) list.title = t;
+    });
   }
   function deleteList(id: string) {
-    board.lists = board.lists.filter((l) => l.id !== id);
-    persist();
-    render();
+    void withBoard((b) => {
+      b.lists = b.lists.filter((l) => l.id !== id);
+    });
   }
   function addCard(listId: string, title: string) {
     const t = title.trim();
     if (!t) return;
-    board.lists.find((l) => l.id === listId)?.cards.push(mkCard(t));
-    persist();
-    render();
+    void withBoard((b) => {
+      b.lists.find((l) => l.id === listId)?.cards.push(mkCard(t));
+    });
   }
   function patchCard(id: string, patch: Partial<Card>) {
-    const found = findCard(id);
-    if (!found) return;
-    Object.assign(found.card, patch);
-    persist();
-    if (openCardId === id) renderDetail();
-    else render();
+    void withBoard((b) => {
+      const found = findCardIn(b, id);
+      if (found) Object.assign(found.card, patch);
+    });
   }
   function deleteCard(id: string) {
-    const found = findCard(id);
-    if (!found) return;
-    found.list.cards.splice(found.idx, 1);
     openCardId = null;
-    persist();
-    render();
+    void withBoard((b) => {
+      const found = findCardIn(b, id);
+      if (found) found.list.cards.splice(found.idx, 1);
+    });
   }
 
   // ---------- card face ----------
@@ -1025,6 +1122,7 @@ export function createKanban() {
         watchTimer = window.setInterval(() => {
           void pollPlan();
           void pollDone();
+          void pollBoardJson();
         }, 3500);
       render();
     },
@@ -1034,13 +1132,19 @@ export function createKanban() {
       dir = next?.dir ?? null;
       planMtime = 0;
       doneMtime = 0;
+      boardMtime = null;
       seen = next ? loadSeen(next.key) : new Set();
       doneSeen = next ? new Set(loadJSON<string[]>(doneSeenKey(next.key), [])) : new Set();
-      board = ctx ? normalize(loadJSON<unknown>(keyFor(ctx.key), null), ctx.key) : defaultBoard();
+      board = defaultBoard();
       render();
-      void importFromFile(); // pull any existing plan for this folder
-      void importDone(); // and any already-reported done tasks
-      scheduleBoardFile(); // mirror the current board so the agent can read it
+      if (!ctx) return;
+      void (async () => {
+        await loadBoardForContext();
+        render();
+        void importFromFile(); // pull any existing plan for this folder
+        void importDone(); // and any already-reported done tasks
+        scheduleBoardFile(); // mirror the current board so the agent can read it
+      })();
     },
   };
 }

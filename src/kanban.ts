@@ -6,6 +6,20 @@
 
 import { loadJSON, saveJSON, type DockContext } from "./dockstore";
 import {
+  LABELS,
+  labelHex,
+  uid,
+  mkCard,
+  defaultBoard,
+  normalizeLists,
+  findCardIn,
+  type Board,
+  type Card,
+  type List,
+} from "./board";
+
+export type { Board, Card } from "./board"; // kanban.test.ts + panels import from here
+import {
   fsReadFile,
   fsStat,
   fsWriteFile,
@@ -59,55 +73,8 @@ next — it is refreshed automatically whenever the board changes.
 const PLAN_PRIMER =
   "Read .maestro/AGENTS.md and follow its plan-first protocol — write the breakdown to .maestro/plan.json, then stop. Task: ";
 
-interface ChecklistItem {
-  id: string;
-  text: string;
-  done: boolean;
-}
-/** Evidence attached when a task is finished: which files changed + a summary. */
-interface DoneInfo {
-  repoRoot: string;
-  files: string[]; // paths relative to repoRoot
-  summary?: string; // optional agent-written note
-  at: number; // ms timestamp
-}
-export interface Card {
-  id: string;
-  title: string;
-  desc: string;
-  labels: string[]; // label colour keys
-  due: string | null; // ISO date (yyyy-mm-dd) or null
-  checklist: ChecklistItem[];
-  done?: DoneInfo; // present once the task is marked Done (code evidence)
-}
-interface List {
-  id: string;
-  title: string;
-  cards: Card[];
-}
-export interface Board {
-  lists: List[];
-}
-
-/* Trello-flavoured label palette, tuned to the app's dark surfaces. */
-const LABELS: { key: string; hex: string; name: string }[] = [
-  { key: "green", hex: "#3ad29f", name: "Green" },
-  { key: "yellow", hex: "#e6c84a", name: "Yellow" },
-  { key: "orange", hex: "#e0913a", name: "Orange" },
-  { key: "red", hex: "#ff6b6b", name: "Red" },
-  { key: "purple", hex: "#b18cf0", name: "Purple" },
-  { key: "blue", hex: "#5ec2f0", name: "Blue" },
-];
-const labelHex = (k: string) => LABELS.find((l) => l.key === k)?.hex ?? "#7d8b99";
-
 const keyFor = (ctxKey: string) => `maestro.kanban.v2.${ctxKey}`;
 const legacyKeyFor = (ctxKey: string) => `maestro.kanban.v1.${ctxKey}`;
-
-let idSeq = 0;
-function uid(p: string): string {
-  idSeq += 1;
-  return `${p}${Date.now().toString(36)}${idSeq}`;
-}
 
 const enc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -119,28 +86,11 @@ function el(tag: string, cls?: string, html?: string): HTMLElement {
   return n;
 }
 
-function defaultBoard(): Board {
-  return {
-    lists: [
-      { id: uid("l"), title: "To do", cards: [] },
-      { id: uid("l"), title: "Doing", cards: [] },
-      { id: uid("l"), title: "Done", cards: [] },
-    ],
-  };
-}
-
 /** Bring any stored shape up to the current Board model — including the v1
  *  {todo,doing,done} format so existing boards survive the upgrade. */
 function normalize(raw: unknown, ctxKey: string): Board {
-  const r = raw as Record<string, unknown> | null;
-  if (r && Array.isArray((r as { lists?: unknown }).lists)) {
-    const lists = (r.lists as List[]).map((l) => ({
-      id: l.id || uid("l"),
-      title: typeof l.title === "string" ? l.title : "List",
-      cards: Array.isArray(l.cards) ? l.cards.map(normalizeCard) : [],
-    }));
-    return { lists };
-  }
+  const asLists = normalizeLists(raw);
+  if (asLists) return asLists;
   // legacy v1: { todo:[{id,text}], doing:[...], done:[...] }
   const legacy = loadJSON<Record<string, { id: string; text: string }[]>>(
     legacyKeyFor(ctxKey),
@@ -155,30 +105,6 @@ function normalize(raw: unknown, ctxKey: string): Board {
     return { lists: [mk("To do", legacy.todo), mk("Doing", legacy.doing), mk("Done", legacy.done)] };
   }
   return defaultBoard();
-}
-
-function normalizeCard(c: Partial<Card>): Card {
-  const card: Card = {
-    id: c.id || uid("c"),
-    title: typeof c.title === "string" ? c.title : "",
-    desc: typeof c.desc === "string" ? c.desc : "",
-    labels: Array.isArray(c.labels) ? c.labels : [],
-    due: typeof c.due === "string" ? c.due : null,
-    checklist: Array.isArray(c.checklist) ? c.checklist : [],
-  };
-  const d = c.done;
-  if (d && typeof d === "object" && Array.isArray(d.files) && typeof d.repoRoot === "string") {
-    card.done = {
-      repoRoot: d.repoRoot,
-      files: d.files.filter((f): f is string => typeof f === "string"),
-      summary: typeof d.summary === "string" ? d.summary : undefined,
-      at: typeof d.at === "number" ? d.at : 0,
-    };
-  }
-  return card;
-}
-function mkCard(title: string): Card {
-  return { id: uid("c"), title, desc: "", labels: [], due: null, checklist: [] };
 }
 
 /** The text typed into an agent's PTY when a card is dropped onto its pane:
@@ -683,13 +609,7 @@ export function createKanban() {
     return null;
   }
 
-  function findCard(id: string): { list: List; idx: number; card: Card } | null {
-    for (const list of board.lists) {
-      const idx = list.cards.findIndex((c) => c.id === id);
-      if (idx >= 0) return { list, idx, card: list.cards[idx] };
-    }
-    return null;
-  }
+  const findCard = (id: string) => findCardIn(board, id);
 
   // ---------- mutations ----------
   function addList(title: string) {

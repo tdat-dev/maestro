@@ -73,29 +73,31 @@
 .pane.err{box-shadow:inset 0 0 0 1px rgba(255,107,107,.4)}
 .pane.stopped{opacity:.66;transition:opacity .15s,box-shadow .15s}
 .pane.stopped:hover{opacity:1}
-/* slim in-flow header bar — glass strip above the terminal, never overlaps output */
-.pane-head{display:flex;align-items:center;gap:8px;height:26px;padding:0 4px 0 10px;background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));border-bottom:1px solid rgba(255,255,255,.06);box-shadow:inset 0 1px 0 rgba(255,255,255,.04);flex:none;cursor:grab;user-select:none}
-.pane-head:active{cursor:grabbing}
-/* the pane you're typing in lifts its bar slightly */
-.pane:focus-within .pane-head{background:linear-gradient(180deg,rgba(255,255,255,.075),rgba(255,255,255,.03))}
-.pane:focus-within .pane-name{color:var(--text)}
-.pane-head .pctrl{cursor:pointer}
-/* agent identity: just its color, as a dot — glows while running */
-.pane-dot{width:7px;height:7px;border-radius:50%;background:var(--c,#c6f135);flex:none}
-.pane.run .pane-dot{box-shadow:0 0 7px var(--c,#c6f135)}
-.pane-name{font-weight:600;font-size:11.5px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none;max-width:190px}
-/* sub (cli · branch) claims the middle slack, pushing time/status/controls right */
-.pane-sub{flex:1;min-width:0;font-family:var(--mono);font-size:9.5px;color:var(--muted-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.uptime{font-family:var(--mono);font-size:9.5px;font-variant-numeric:tabular-nums;color:var(--muted-2);flex:none}
-/* status: bare colored mono text — no chip box competing with terminal output */
-.pane-stat{flex:none;font-family:var(--mono);font-size:8.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-2);white-space:nowrap}
-.pane-stat.run{color:var(--run)}
-.pane-stat.idle{color:var(--info)}
-.pane-stat.err{color:var(--err)}
-/* "needs you" — the agent went quiet after output, probably waiting on the user */
-.pane-stat.wait{color:#ffb84c}
-/* a flagged pane tints its bar amber so it's spottable across the grid */
-.pane.attention .pane-head{background:rgba(255,184,76,.08);border-bottom-color:rgba(255,184,76,.45)}
+/* slim AI core floating header — glass strip above the terminal */
+.ai-core-container { position:absolute; top:16px; right:20px; z-index:100; cursor:grab; user-select:none; }
+.ai-core-container:active { cursor:grabbing; }
+
+.ai-core { height:28px; width:max-content; max-width:36px; border-radius:14px; background:rgba(15,15,15,0.4); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,0.05); display:flex; align-items:center; overflow:hidden; transition:max-width 0.4s cubic-bezier(0.34,1.56,0.64,1), background 0.3s ease, border-color 0.3s ease; }
+.ai-core-container:hover .ai-core { max-width:280px; background:rgba(24,24,27,0.85); border:1px solid rgba(255,255,255,0.15); box-shadow:0 10px 40px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.1); }
+
+.waveform-wrapper { min-width:36px; height:28px; display:flex; align-items:center; justify-content:center; gap:2px; transition:transform 0.3s ease; }
+.bar { width:2px; border-radius:2px; background:rgba(255,255,255,0.6); animation:wave 1.2s ease-in-out infinite; }
+.bar:nth-child(1) { height:6px; animation-delay:0.0s; }
+.bar:nth-child(2) { height:12px; animation-delay:-0.2s; }
+.bar:nth-child(3) { height:16px; animation-delay:-0.4s; }
+.bar:nth-child(4) { height:10px; animation-delay:-0.6s; }
+
+@keyframes wave { 0%, 100% { transform:scaleY(0.5); opacity:0.5; } 50% { transform:scaleY(1.2); opacity:1; background:#fff; } }
+
+.ai-core-container:hover .waveform-wrapper { transform:scale(0.7); }
+.ai-core-container:hover .bar { animation-play-state:paused; background:rgba(255,255,255,0.3); }
+
+.core-content { display:flex; align-items:center; padding-right:6px; opacity:0; transform:translateX(10px); transition:opacity 0.3s ease, transform 0.4s cubic-bezier(0.16,1,0.3,1); pointer-events:none; white-space:nowrap; }
+.ai-core-container:hover .core-content { opacity:1; transform:translateX(0); pointer-events:auto; transition-delay:0.1s; }
+
+.pane-name { font-weight:600; font-size:11.5px; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:none; max-width:130px; margin-left:4px; margin-right:6px; }
+.pane:focus-within .pane-name { color:var(--text); }
+.action-group { display:flex; align-items:center; gap:1px; }
 /* controls appear on pane hover / keyboard focus so the bar stays quiet */
 .ctrls{display:flex;gap:1px;flex:none;opacity:0;transition:opacity .12s}
 .pane:hover .ctrls,.ctrls:focus-within{opacity:1}

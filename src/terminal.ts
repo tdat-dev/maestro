@@ -20,6 +20,8 @@ export interface TerminalHandle {
   setFontSize(n: number): void;
   /** Subscribe to result-count changes (current index is 1-based, 0 = none). */
   onSearchResults(cb: (current: number, total: number) => void): void;
+  /** Subscribe to terminal title changes (OSC 0/1/2). */
+  onTitleChange(cb: (title: string) => void): void;
 }
 
 // WebGL renderer is DISABLED (budget 0 → every pane uses the DOM renderer).
@@ -225,5 +227,6 @@ export function mountTerminal(
         if (!r || r.resultCount === 0) cb(0, 0);
         else cb(r.resultIndex + 1, r.resultCount);
       }),
+    onTitleChange: (cb) => term.onTitleChange(cb),
   };
 }

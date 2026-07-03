@@ -874,17 +874,23 @@ function buildPaneEl(
   el.className = "pane";
   el.dataset.id = id;
   el.innerHTML = `
-    <div class="pane-head" data-drag>
-      <span class="pane-dot" style="--c:${color}"></span>
-      <span class="pane-name">${name}</span>
-      <span class="pane-sub" data-sub>${sub ? badge + " · " + sub : badge}</span>
-      <span class="uptime" data-uptime></span>
-      <span class="pane-stat" data-status>queued</span>
-      <div class="ctrls">
-        <button class="pctrl" data-search aria-label="Search output">${SEARCH_SVG}</button>
-        <button class="pctrl" data-max aria-label="Maximize pane">${MAX_SVG}</button>
-        <button class="pctrl" data-restart aria-label="Restart agent">${RESTART_SVG}</button>
-        <button class="pctrl danger" data-kill aria-label="Kill agent (tree)">${KILL_SVG}</button>
+    <div class="ai-core-container" data-drag>
+      <div class="ai-core">
+        <div class="waveform-wrapper">
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+        </div>
+        <div class="core-content ctrls">
+          <span class="pane-name">${name}</span>
+          <div class="action-group">
+            <button class="pctrl" data-search aria-label="Search output">${SEARCH_SVG}</button>
+            <button class="pctrl" data-max aria-label="Maximize pane">${MAX_SVG}</button>
+            <button class="pctrl" data-restart aria-label="Restart agent">${RESTART_SVG}</button>
+            <button class="pctrl danger" data-kill aria-label="Kill agent (tree)">${KILL_SVG}</button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="pane-find" data-find hidden>
@@ -984,6 +990,11 @@ function createAgent(
     },
     { openLink: (url) => void openExternal(url).catch(() => {}), fontSize: getTermFontSize() },
   );
+
+  term.onTitleChange((title) => {
+    const nameEl = el.querySelector<HTMLElement>(".pane-name");
+    if (nameEl && title.trim()) nameEl.textContent = title;
+  });
 
   const pane: Pane = { id, el, term, running: false, spawnedAt: null, lastOutputAt: 0, lastInputAt: 0, attention: false, attentionClearedAt: 0, attentionNotified: false, color: spec.color, spec };
   ws.panes.set(id, pane);

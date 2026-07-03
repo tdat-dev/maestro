@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { defaultBoard, BoardError, type Board } from "../src/board.js";
+import { defaultBoard, BoardError, uid, type Board } from "../src/board.js";
 import {
   resolveList,
   resolveOrCreateList,
@@ -66,6 +66,17 @@ describe("addCard", () => {
 
   it("rejects an empty title", () => {
     expect(() => addCard(board(), "To do", { title: "  " })).toThrow(BoardError);
+  });
+
+  it("rejects a blank/whitespace list ref before any resolution", () => {
+    expect(() => addCard(board(), "   ", { title: "t" })).toThrow(/list ref must not be empty/);
+  });
+
+  it("does not auto-create a list for a stale uid-shaped list id", () => {
+    const b = board();
+    const staleId = uid("l"); // shaped like a real list id but not on this board
+    expect(() => addCard(b, staleId, { title: "t" })).toThrow(BoardError);
+    expect(b.lists.some((l) => l.id === staleId || l.title === staleId)).toBe(false);
   });
 
   it("rejects unknown labels", () => {

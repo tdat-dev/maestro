@@ -35,7 +35,8 @@ export interface Board {
 }
 
 /** User-facing failure (bad input, missing card, corrupt file). The MCP layer
- *  turns these into isError tool results; anything else is a crash. */
+ *  (server.ts's `mutate`/`board_get` handlers) catches this — and any other
+ *  error — and turns it into an isError tool result instead of crashing. */
 export class BoardError extends Error {}
 
 export const LABELS = ["green", "yellow", "orange", "red", "purple", "blue"];
@@ -115,7 +116,19 @@ export function loadBoard(dir: string): Board {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new BoardError(".maestro/board.json is not valid JSON — fix or delete it, then retry");
+    // The app's fs_write_file (src/boardfile.ts) is not atomic — truncate +
+    // write in place — so a concurrent Maestro UI write can be caught
+    // mid-write here. Give it one short retry before assuming real
+    // corruption; a torn read self-heals within a handful of ms.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    try {
+      raw = fs.readFileSync(boardPath(dir), "utf8");
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new BoardError(
+        ".maestro/board.json is not valid JSON — it may be mid-write; retry in a moment, and only fix or delete the file if the error persists",
+      );
+    }
   }
   return normalizeBoard(parsed);
 }

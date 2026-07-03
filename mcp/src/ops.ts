@@ -18,12 +18,24 @@ export function resolveList(board: Board, ref: string): List {
   throw new BoardError(`No list "${ref}" — see board_get for lists`);
 }
 
+// board_get on a missing board.json mints fresh, unpersisted ids (see
+// board.ts loadBoard → defaultBoard). If an agent hangs onto a list id from a
+// stale read and passes it here, the id won't resolve — without this guard
+// that silently CREATES a new list titled like the id itself (e.g. "l9x7abc1"
+// on the board). `uid("l")` ids are "l" + a base36 timestamp + a counter,
+// always 8+ chars after the prefix — long enough that no human list title
+// ("l8", "Later", ...) can collide with the shape.
+const UID_LIST_ID_RE = /^l[0-9a-z]{8,}$/;
+
 export function resolveOrCreateList(board: Board, ref: string): List {
+  const title = ref.trim();
+  if (!title) throw new BoardError("list ref must not be empty");
   try {
     return resolveList(board, ref);
   } catch (e) {
     if (e instanceof BoardError && /^No list/.test(e.message)) {
-      const list: List = { id: uid("l"), title: ref.trim(), cards: [] };
+      if (UID_LIST_ID_RE.test(title)) throw e; // stale/unknown id — don't create a list named after it
+      const list: List = { id: uid("l"), title, cards: [] };
       board.lists.push(list);
       return list;
     }

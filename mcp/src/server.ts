@@ -1,10 +1,12 @@
 /* MCP surface: nine tools over the board store. Each mutating tool is one
  * load → mutate → save cycle (nothing cached between calls, so a long agent
- * session always sees the Maestro UI's edits). BoardError → isError result. */
+ * session always sees the Maestro UI's edits). Every error thrown along the
+ * way — BoardError or otherwise — is caught and returned as an isError tool
+ * result; nothing here propagates to a crash. */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { loadBoard, saveBoard, BoardError, LABELS, type Board } from "./board.js";
+import { loadBoard, saveBoard, LABELS, type Board } from "./board.js";
 import {
   addCard,
   updateCard,
@@ -39,7 +41,7 @@ const labelsSchema = z
 export function createServer(dir: string): McpServer {
   const server = new McpServer({ name: "maestro", version: "0.1.0" });
 
-  /** load → mutate → save, mapping BoardError to an isError tool result. */
+  /** load → mutate → save, mapping any thrown error to an isError tool result. */
   const mutate = (fn: (b: Board) => unknown): ToolResult => {
     try {
       const board = loadBoard(dir);

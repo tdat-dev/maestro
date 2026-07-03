@@ -62,7 +62,10 @@ describe("loadBoard", () => {
   it("throws BoardError on invalid JSON and leaves the file untouched", () => {
     fs.mkdirSync(path.join(dir, ".maestro"), { recursive: true });
     fs.writeFileSync(boardPath(dir), "{not json", "utf8");
+    // Persistently-invalid JSON survives loadBoard's one torn-read retry and
+    // surfaces the softened "may be mid-write" wording, not "fix or delete".
     expect(() => loadBoard(dir)).toThrow(BoardError);
+    expect(() => loadBoard(dir)).toThrow(/mid-write/);
     expect(fs.readFileSync(boardPath(dir), "utf8")).toBe("{not json");
   });
 

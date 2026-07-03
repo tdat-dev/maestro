@@ -1,6 +1,6 @@
 # Board
 
-## Proposed (26)
+## Proposed (19)
 
 - [ ] Lập danh mục chức năng
   Liệt kê toàn bộ feature từ README + src/ modules (wizard, terminal, broadcast, diff, kanban, pomodoro, dock, mascot)
@@ -38,20 +38,6 @@
   Mô hình mở rộng: monolith→service, DB read-replica/shard, cache, queue, multi-region; chịu tải dài hạn
 - [ ] Roadmap xây dựng hệ thống lớn
   Các bước build hệ thống lớn: discovery→PRD→RFC→data schema→API→build→test→release; mốc & thứ tự ưu tiên
-- [ ] Audit kanban công việc workspace hiện tại
-  Map TasksTrelloBoard.jsx (26.7K) + saveTask/reorderTasks + model task (status/checklist/labels/assignee/projectId/boardPosition); xác định chỗ UI bị rối và thiếu tính năng team
-- [ ] Chốt scope: UI mới + team + MCP
-  Quyết định nâng cấp hay thay board cũ; định nghĩa 'giống hệt Trello': cột tuỳ biến, card, nhiều assignee, team IT 2 người cùng làm 1 board
-- [ ] Model & API board + team
-  Thêm khái niệm board/team + membership nhiều người, nhiều assignee/card; migration + RBAC keys tasks.*; chạy sequelize db:migrate ngay
-- [ ] Cộng tác team kiểu Trello
-  Mời/gán 2 thành viên IT vào board, phân công card theo người, avatar/assignee, cập nhật realtime qua socket
-- [ ] AI phân tách task chuẩn (không rối)
-  YOUR quyết định rule tách: 1 task lớn → checklist/subtask có cấu trúc + nhãn + độ ưu tiên, để nhìn todo list gọn gàng
-- [ ] RBAC + audit cho tính năng mới
-  Mỗi action board/team/MCP kèm permission key + log sự kiện; kiểm tra scope own/any trước khi ship
-- [ ] Test kanban + MCP
-  Jest: saveTask/reorder/team + MCP tools; UI QA browser kéo-thả với 2 user; pass trước khi deploy
 - [ ] Deploy kanban mới
   YOUR gate: branch off develop, conventional commit, chạy migrate; workspace prod dính CF cache (nhớ purge zone)
 
@@ -63,7 +49,7 @@ _(empty)_
 
 _(empty)_
 
-## Done (8)
+## Done (15)
 
 - [x] Audit admin text-editing system
   Engine = global DOM string-replace; keyed component dead; 3679 strings harvested but 0 ever customized
@@ -81,3 +67,17 @@ _(empty)_
   React19/Vite: kéo-thả cột, card gọn, lọc theo người, checklist/subtask hiển thị rõ ràng chống rối todo list
 - [x] MCP server cho workspace kanban
   MCP tools: list/create/update/move task + decompose task→subtasks; nối AI đọc/ghi board qua API whalelo-backend (token + scope)
+- [x] Audit kanban công việc workspace hiện tại
+  Map TasksTrelloBoard.jsx (26.7K) + saveTask/reorderTasks + model task (status/checklist/labels/assignee/projectId/boardPosition); xác định chỗ UI bị rối và thiếu tính năng team
+- [x] Chốt scope: UI mới + team + MCP
+  Quyết định nâng cấp hay thay board cũ; định nghĩa 'giống hệt Trello': cột tuỳ biến, card, nhiều assignee, team IT 2 người cùng làm 1 board
+- [x] Model & API board + team
+  Thêm khái niệm board/team + membership nhiều người, nhiều assignee/card; migration + RBAC keys tasks.*; chạy sequelize db:migrate ngay
+- [x] AI phân tách task chuẩn (không rối)
+  YOUR quyết định rule tách: 1 task lớn → checklist/subtask có cấu trúc + nhãn + độ ưu tiên, để nhìn todo list gọn gàng
+- [x] RBAC + audit cho tính năng mới
+  Mỗi action board/team/MCP kèm permission key + log sự kiện; kiểm tra scope own/any trước khi ship
+- [x] Test kanban + MCP
+  Jest: saveTask/reorder/team + MCP tools; UI QA browser kéo-thả với 2 user; pass trước khi deploy
+- [x] Cộng tác team kiểu Trello
+  Mời/gán 2 thành viên IT vào board, phân công card theo người, avatar/assignee, cập nhật realtime qua socket

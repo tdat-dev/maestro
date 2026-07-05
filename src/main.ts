@@ -164,6 +164,43 @@ function syncResume() {
   const c = document.getElementById("homeResumeCount");
   if (c) c.textContent = workspaces.size ? `${workspaces.size} workspace${workspaces.size > 1 ? "s" : ""}` : "";
 }
+/** Show the "Resume all" topbar button when the active workspace has any parked
+ *  (stopped) or exited pane, with a live count — so the whole fleet can be booted
+ *  in one click instead of hitting ⟳ on every pane. */
+function syncResumeAll() {
+  const btn = document.getElementById("btnResumeAll");
+  if (!btn) return;
+  const n = activeWs ? [...activeWs.panes.values()].filter((p) => !p.running).length : 0;
+  btn.hidden = n === 0;
+  const c = document.getElementById("btnResumeAllCount");
+  if (c) c.textContent = n ? String(n) : "";
+}
+/** Boot every non-running pane in the active workspace, one at a time. Mirrors a
+ *  pane's ⟳ (removeAgent → createAgent), but SEQUENTIALLY on purpose: a parallel
+ *  fleet spawn hammers ConPTY + git worktree_add and freezes the UI (see the
+ *  sync-spawn freeze fix). Specs are snapshot first because booting swaps each
+ *  pane for a fresh id, which would mutate the map mid-iteration. */
+let resumingAll = false;
+async function resumeAllStopped() {
+  if (resumingAll || !activeWs) return;
+  const ws = activeWs;
+  const targets = [...ws.panes.values()].filter((p) => !p.running).map((p) => ({ id: p.id, spec: p.spec }));
+  if (!targets.length) return;
+  resumingAll = true;
+  const btn = document.getElementById("btnResumeAll") as HTMLButtonElement | null;
+  if (btn) btn.disabled = true;
+  try {
+    for (const t of targets) {
+      if (!ws.panes.has(t.id)) continue; // killed before its turn
+      await removeAgent(ws, t.id);
+      await createAgent(ws, t.spec)();
+    }
+  } finally {
+    resumingAll = false;
+    if (btn) btn.disabled = false;
+    syncResumeAll();
+  }
+}
 /** Go to the launcher without killing any tabs (agents keep running). */
 function goHome() {
   homeEl.hidden = false;
@@ -234,6 +271,7 @@ function activateWorkspace(ws: Workspace) {
   }
   showWorkspace();
   updateBcast();
+  syncResumeAll(); // the newly-active tab may have its own parked panes
   // Re-scope the tool dock (board / timer / diff) to this workspace's folder.
   dockSetContext({ key: ws.dir || ws.id, dir: ws.dir });
   // Re-root the code panel's file tree to this workspace's folder.
@@ -930,6 +968,7 @@ function updateCount() {
   const tot = document.getElementById("agentCount");
   if (tot) tot.textContent = String(total);
   updateBcast();
+  syncResumeAll(); // parked/exited count may have changed
   // Keep the tray tooltip in sync so a hidden window still shows it's alive.
   // The tray belongs to the main window; detached windows leave it alone.
   if (!isDetachedWindow) {
@@ -2078,6 +2117,7 @@ tabAdd?.addEventListener("click", () => openWizard());
 }
 document.getElementById("btnHome")?.addEventListener("click", goHome);
 document.getElementById("homeResume")?.addEventListener("click", resumeWorkspace);
+document.getElementById("btnResumeAll")?.addEventListener("click", () => void resumeAllStopped());
 
 document.getElementById("btnQuick")?.addEventListener("click", () => {
   const dir = getRecents()[0] ?? null;

@@ -11,6 +11,8 @@ src-tauri/gen/
 # hook logs / local agent data
 logs/
 .claude/
+# kanban board runtime state (MCP-shared, per-workspace)
+.maestro/
 # stray installer artifacts
 /maestro.exe
 /uninstall.exe

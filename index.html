@@ -117,7 +117,8 @@
     <div class="tb-right">
       <button class="tb-btn" id="btnMergeMain" hidden title="Move this workspace back into the main Maestro window"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M14 12H3M10 8l4 4-4 4M21 3v18"/></svg> Merge</button>
       <button class="tb-btn-icon" id="btnNewAgent" title="Spawn Agent"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
-      
+      <button class="tb-btn" id="btnResumeAll" hidden title="Resume every stopped agent in this project"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg> Resume all<span class="ra-count" id="btnResumeAllCount"></span></button>
+
       <div class="stats" data-tauri-drag-region hidden>
         <span class="stat live"><span class="pip"></span><b id="runCount">0</b> live</span>
         <span class="stat"><b id="agentCount">0</b> total</span>

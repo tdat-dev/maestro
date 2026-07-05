@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-07-05
+
+### Added
+
+- **Resume all** — reopening a project parks every agent as *stopped*, and you
+  used to have to click ⟳ on each pane to bring the fleet back. A new **Resume
+  all** button now appears in the topbar whenever the current project has any
+  stopped or exited agents (with a live count) — one click boots them all. They
+  start one at a time on purpose, so a large crew doesn't hammer the disk and
+  freeze the window the way a parallel spawn would.
+
 ## [0.3.4] - 2026-07-02
 
 ### Fixed

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-07-09
+
+### Removed
+
+- **Merge button** on the topbar in detached windows (workspace fold-back still
+  works via drag-and-drop between windows).
+- **Isolate each agent in its own git worktree** toggle from the spawn modal
+  and workspace wizard — new agents always run in the project folder.
+
 ## [0.3.8] - 2026-07-05
 
 ### Added

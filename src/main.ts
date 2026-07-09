@@ -17,7 +17,6 @@ import {
   setTrayVisible,
   setTrayTooltip,
   onTrayQuit,
-  gitRepoRoot,
   worktreeAdd,
   onDragDrop,
   openDetachWindow,
@@ -1322,24 +1321,6 @@ const crewGrid = document.getElementById("crewGrid") as HTMLElement;
 const crewTotalEl = document.getElementById("crewTotal") as HTMLElement;
 const spawnLabel = document.getElementById("mSpawnLabel") as HTMLElement;
 const mSkipPerms = document.getElementById("mSkipPerms") as HTMLInputElement;
-const mIsolate = document.getElementById("mIsolate") as HTMLInputElement;
-const mIsolateRow = document.getElementById("mIsolateRow") as HTMLElement;
-
-// Reveal the isolate toggle only when the working directory is a single git repo.
-async function refreshIsolateToggle() {
-  const dir = mDir.value.trim();
-  let isRepo = false;
-  if (dir) {
-    try {
-      isRepo = (await gitRepoRoot(dir)) !== null;
-    } catch {
-      isRepo = false;
-    }
-  }
-  if (mDir.value.trim() !== dir) return; // dir changed while awaiting — drop stale result
-  mIsolateRow.hidden = !isRepo;
-}
-mDir.addEventListener("change", () => void refreshIsolateToggle());
 
 interface SavedCrew extends CrewState {
   dir: string;
@@ -1424,7 +1405,6 @@ function openModal(mode: "new" | "current" = "new") {
   mCustom.value = crew.custom;
   mSkipPerms.checked = saved.skipPerms;
   renderCrew();
-  void refreshIsolateToggle();
   modal.classList.add("open");
   mDir.focus();
   mDir.select();
@@ -1462,7 +1442,6 @@ async function spawnCrew(
   dir: string | null,
   skipPerms: boolean,
   mode: "new" | "current",
-  wantIsolate: boolean,
 ): Promise<void> {
   const fleet = expandCrew(crewState);
   if (fleet.length === 0) return;
@@ -1475,16 +1454,6 @@ async function spawnCrew(
   // Spawn into the active workspace, or a brand-new tab.
   const ws = mode === "current" && activeWs ? activeWs : createWorkspace(dir);
   if (mode === "current" && activeWs && !activeWs.dir && dir) activeWs.dir = dir;
-
-  // Decide isolation once per spawn: only for a fresh git-repo workspace when
-  // the modal's toggle is on. (Existing isolated workspaces keep their setting.)
-  if (!ws.isolated && dir && wantIsolate) {
-    const root = await gitRepoRoot(dir).catch(() => null);
-    if (root) {
-      ws.repoRoot = root;
-      ws.isolated = true;
-    }
-  }
 
   const boots = fleet.map((p: CliPreset) => {
     perId[p.id] = (perId[p.id] ?? 0) + 1;
@@ -1524,7 +1493,7 @@ async function spawnFromModal() {
   if (dir) addRecent(dir);
   closeModal();
 
-  await spawnCrew(crew, dir, skipPerms, modalTarget, !mIsolateRow.hidden && mIsolate.checked);
+  await spawnCrew(crew, dir, skipPerms, modalTarget);
 }
 
 buildCrewGrid();
@@ -1657,8 +1626,6 @@ const wizCrewGrid = document.getElementById("wizCrewGrid") as HTMLElement;
 const wizCrewTotal = document.getElementById("wizCrewTotal") as HTMLElement;
 const wizSpawnLabel = document.getElementById("wizSpawnLabel") as HTMLElement;
 const wizSkipPerms = document.getElementById("wizSkipPerms") as HTMLInputElement;
-const wizIsolate = document.getElementById("wizIsolate") as HTMLInputElement;
-const wizIsolateRow = document.getElementById("wizIsolateRow") as HTMLElement;
 const wizStepLayout = document.getElementById("wizStepLayout") as HTMLElement;
 const wizStepAgents = document.getElementById("wizStepAgents") as HTMLElement;
 const wizTilesEl = document.getElementById("wizTiles") as HTMLElement;
@@ -1674,21 +1641,6 @@ const CHEVRON_SVG =
 
 let wizCount = sanitizeCount(localStorage.getItem(WIZ_COUNT_KEY));
 let wizStep: "layout" | "agents" = "layout";
-
-// Reveal the isolate toggle only when the working directory is a single git repo.
-async function refreshWizIsolate() {
-  const dir = wizDir.value.trim();
-  let isRepo = false;
-  if (dir) {
-    try {
-      isRepo = (await gitRepoRoot(dir)) !== null;
-    } catch {
-      isRepo = false;
-    }
-  }
-  if (wizDir.value.trim() !== dir) return; // dir changed while awaiting — drop stale result
-  wizIsolateRow.hidden = !isRepo;
-}
 
 function updateTileInfo() {
   const tc = document.getElementById("wizTileCount");
@@ -1752,7 +1704,6 @@ function renderWizRecents() {
     b.append(ic, meta, go);
     b.addEventListener("click", () => {
       wizDir.value = dir;
-      void refreshWizIsolate();
     });
     wizRecentEl.appendChild(b);
   }
@@ -1809,7 +1760,7 @@ function launchPreset(state: CrewState, presetDir: string, skipPerms: boolean) {
   const dir = presetDir || wizDir.value.trim() || null;
   if (dir) addRecent(dir);
   closeWizard();
-  void spawnCrew(state, dir, skipPerms, "new", false);
+  void spawnCrew(state, dir, skipPerms, "new");
 }
 
 function renderWizPresets() {
@@ -1982,7 +1933,6 @@ function openWizard(dir?: string) {
   wizModal.classList.add("open");
   wizDir.focus();
   wizDir.select();
-  void refreshWizIsolate();
   refreshCliAvailability(); // gray out CLIs that aren't installed
 }
 
@@ -1991,8 +1941,6 @@ function closeWizard() {
 }
 
 buildWizCrewGrid();
-
-wizDir.addEventListener("change", () => void refreshWizIsolate());
 
 // Typing a custom command opts it into the split; clearing it opts out.
 wizCustom.addEventListener("input", () => {
@@ -2006,7 +1954,6 @@ document.getElementById("wizBrowse")?.addEventListener("click", async () => {
   if (picked) {
     wizDir.value = picked;
     wizDir.focus();
-    void refreshWizIsolate();
   }
 });
 
@@ -2021,7 +1968,7 @@ document.getElementById("wizNoAi")?.addEventListener("click", () => {
   const dir = wizDir.value.trim() || null;
   if (dir) addRecent(dir);
   closeWizard();
-  void spawnCrew({ counts: { powershell: wizCount }, custom: "", customCount: 0 }, dir, false, "new", false);
+  void spawnCrew({ counts: { powershell: wizCount }, custom: "", customCount: 0 }, dir, false, "new");
 });
 
 document.getElementById("wizSpawn")?.addEventListener("click", () => void spawnFromWizard());
@@ -2043,7 +1990,7 @@ async function spawnFromWizard() {
   );
   if (dir) addRecent(dir);
   closeWizard();
-  await spawnCrew(state, dir, skipPerms, "new", !wizIsolateRow.hidden && wizIsolate.checked);
+  await spawnCrew(state, dir, skipPerms, "new");
 }
 
 /** Save the wizard's current setup (tile count split over the selected models)
@@ -2099,22 +2046,6 @@ document.getElementById("btnNewWorkspace")?.addEventListener("click", () => open
 document.getElementById("btnNewAgent")?.addEventListener("click", () => openModal("current"));
 tabAdd?.addEventListener("click", () => openWizard());
 
-// Explicit merge-back affordance — only meaningful (and only shown) in a
-// detached window: folds every workspace here back into the main window,
-// stopping early if the main window stops acking (closed / not listening).
-{
-  const btnMerge = document.getElementById("btnMergeMain") as HTMLButtonElement | null;
-  if (btnMerge && isDetachedWindow) {
-    btnMerge.hidden = false;
-    btnMerge.addEventListener("click", () => {
-      void (async () => {
-        for (const w of [...workspaces.values()]) {
-          if (!(await mergeWorkspaceToMain(w))) break;
-        }
-      })();
-    });
-  }
-}
 document.getElementById("btnHome")?.addEventListener("click", goHome);
 document.getElementById("homeResume")?.addEventListener("click", resumeWorkspace);
 document.getElementById("btnResumeAll")?.addEventListener("click", () => void resumeAllStopped());

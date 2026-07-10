@@ -15,6 +15,7 @@ export interface DoneInfo {
   files: string[];
   summary?: string;
   at: number;
+  by?: string; // which agent finished it (MAESTRO_AGENT)
 }
 export interface Card {
   id: string;
@@ -23,6 +24,7 @@ export interface Card {
   labels: string[];
   due: string | null;
   checklist: ChecklistItem[];
+  assignee?: string; // pane name of the agent working this card
   done?: DoneInfo;
 }
 export interface List {
@@ -74,6 +76,7 @@ function normalizeCard(c: Partial<Card>): Card {
           }))
       : [],
   };
+  if (typeof c.assignee === "string" && c.assignee.trim()) card.assignee = c.assignee;
   const d = c.done;
   if (d && typeof d === "object" && Array.isArray(d.files) && typeof d.repoRoot === "string") {
     card.done = {
@@ -81,6 +84,7 @@ function normalizeCard(c: Partial<Card>): Card {
       files: d.files.filter((f): f is string => typeof f === "string"),
       summary: typeof d.summary === "string" ? d.summary : undefined,
       at: typeof d.at === "number" ? d.at : 0,
+      by: typeof d.by === "string" && d.by.trim() ? d.by : undefined,
     };
   }
   return card;

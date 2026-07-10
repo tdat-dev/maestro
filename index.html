@@ -403,6 +403,13 @@
       </div>
       <div class="set-update">
         <span class="pt-text">
+          <b>Scheduled agents</b>
+          <span>Launch a saved crew preset automatically at a set time.</span>
+        </span>
+        <button class="btn-ghost" id="setOpenSched">Manage schedules</button>
+      </div>
+      <div class="set-update">
+        <span class="pt-text">
           <b>Updates</b>
           <span id="setVersion">Maestro</span>
         </span>
@@ -411,6 +418,31 @@
     </div>
     <div class="modal-foot">
       <button class="btn-ghost" id="setCloseBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="backdrop" id="schedModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Scheduled agents">
+    <div class="modal-head">
+      <span class="t">Scheduled agents</span>
+      <button class="x" id="schedClose" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div class="sched-add">
+        <select class="input" id="schedTpl" aria-label="Preset"></select>
+        <input class="input" id="schedTime" type="time" value="09:00" aria-label="Time">
+        <select class="input" id="schedRepeat" aria-label="Repeat">
+          <option value="daily">Daily</option>
+          <option value="once">Once</option>
+        </select>
+        <button class="btn" id="schedAdd">Add</button>
+      </div>
+      <p class="sched-empty" id="schedEmpty" hidden>Save a crew preset in the workspace wizard first, then schedule it here.</p>
+      <div class="sched-list" id="schedList"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" id="schedCloseBtn">Close</button>
     </div>
   </div>
 </div>

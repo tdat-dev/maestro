@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other agents and their status) and `fleet_send` (message another agent, or
   broadcast), delivered through a `.maestro/fleet.json` + `outbox.jsonl` file
   bridge so agents can hand off work to each other.
+- **Scheduled agents** — Settings → *Manage schedules*: launch a saved crew
+  preset automatically at a set time, once or daily. Each schedule shows its
+  next run and can be paused or deleted.
 - **Conductor** — an in-app auto-dispatch scheduler on the board toolbar,
   cycling Off → Semi → Auto → Pipeline. *Semi* hands each free agent the next
   approved ("To do") card automatically; *Auto* also promotes cards from

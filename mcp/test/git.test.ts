@@ -15,7 +15,7 @@ afterEach(() => {
 
 // Generous timeout: these shell out to real git; on a busy/slow disk a bare
 // `git init` alone can blow the default 5s and fail the suite spuriously.
-describe("changedFiles", { timeout: 30_000 }, () => {
+describe("changedFiles", { timeout: 60_000 }, () => {
   it("returns [] outside a git repo", () => {
     expect(changedFiles(dir)).toEqual([]);
   });

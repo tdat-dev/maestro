@@ -51,6 +51,7 @@ import {
   focusPane,
 } from "./agentbridge";
 import { dispatchPrompt } from "./dispatch";
+import { planConductor, type ConductorMode } from "./conductor";
 import { parsePlan, type PlanTask } from "./planparse";
 
 /* ---- agent ⇄ board plan gate ---- */
@@ -188,6 +189,13 @@ export function createKanban() {
   let watchTimer: number | null = null;
   let seen = new Set<string>(); // task titles already imported (survives deletes)
   let doneSeen = new Set<string>(); // done.json titles already moved to Done
+  let conductorMode: ConductorMode = "off"; // in-app auto-dispatch scheduler
+  const conductorKey = (k: string) => `maestro.kanban.conductor.${k}`;
+  // Reassigned by mount() to also persist + repaint the button; the default
+  // just updates the mode so setContext can restore before mount runs.
+  let setConductorMode: (m: ConductorMode) => void = (m) => {
+    conductorMode = m;
+  };
 
   const seenKey = (k: string) => `maestro.kanban.planseen.${k}`;
   const doneSeenKey = (k: string) => `maestro.kanban.doneseen.${k}`;
@@ -438,6 +446,35 @@ export function createKanban() {
       scheduleBoardFile(); // keep the board.md mirror in step
     } catch {
       /* corrupt right now (or mid-write) — retry next tick */
+    }
+  }
+
+  /** Conductor tick: when enabled, pair free agents with approved To-do cards
+   *  (auto also tops up To do from Proposed), dispatch, and move to Doing. */
+  async function conductorTick(): Promise<void> {
+    if (conductorMode === "off" || !ctx) return;
+    const agents = listAgents().map((a) => ({ id: a.id, name: a.name, running: a.running }));
+    const plan = planConductor(conductorMode, board, agents);
+    if (!plan.approvals.length && !plan.dispatches.length) return;
+    // Auto-approve: pull the planned Proposed cards into To do in one write.
+    if (plan.approvals.length) {
+      await withBoard((b) => {
+        const todo = findOrCreateListIn(b, "To do");
+        for (const id of plan.approvals) {
+          const found = findCardIn(b, id);
+          if (found && found.list !== todo) {
+            found.list.cards.splice(found.idx, 1);
+            todo.cards.push(found.card);
+          }
+        }
+      });
+    }
+    // Dispatch each pairing: type the prompt into the agent, claim + move to Doing.
+    for (const d of plan.dispatches) {
+      const found = findCard(d.cardId);
+      if (!found) continue;
+      if (sendToAgentById(d.agentId, dispatchPrompt(found.card), true))
+        assignCard(d.cardId, d.agentName, true);
     }
   }
 
@@ -1243,6 +1280,41 @@ export function createKanban() {
         mkBtn("Capture web", "Screenshot a web URL into .maestro/shots and open it", () =>
           void captureWeb(),
         );
+
+        // Conductor: cycles Off → Semi → Auto. Semi dispatches approved (To do)
+        // cards to free agents; Auto also tops up To do from Proposed. Click
+        // when Auto to return to Off (emergency stop).
+        const condBtn = mkBtn("", "", () => {
+          const next: Record<ConductorMode, ConductorMode> = {
+            off: "semi",
+            semi: "auto",
+            auto: "off",
+          };
+          setConductorMode(next[conductorMode]);
+        });
+        const LABELS_C: Record<ConductorMode, string> = {
+          off: "Conductor: Off",
+          semi: "Conductor: Semi",
+          auto: "Conductor: Auto",
+        };
+        const TITLES_C: Record<ConductorMode, string> = {
+          off: "Auto-dispatch is off. Click to have the conductor send approved (To do) cards to free agents.",
+          semi: "Semi: free agents get the next To-do card automatically. Click for Auto (also approves Proposed).",
+          auto: "Auto: also approves Proposed → To do to keep agents fed. Click to stop (Off).",
+        };
+        const paintConductor = () => {
+          condBtn.textContent = LABELS_C[conductorMode];
+          condBtn.title = TITLES_C[conductorMode];
+          condBtn.classList.toggle("on", conductorMode !== "off");
+          condBtn.classList.toggle("auto", conductorMode === "auto");
+        };
+        setConductorMode = (m: ConductorMode) => {
+          conductorMode = m;
+          if (ctx) saveJSON(conductorKey(ctx.key), m);
+          paintConductor();
+          if (m !== "off") void conductorTick(); // act immediately, don't wait a tick
+        };
+        paintConductor();
       }
 
       // Auto-watch plan.json + done.json so agent writes land on the board.
@@ -1251,6 +1323,7 @@ export function createKanban() {
           void pollPlan();
           void pollDone();
           void pollBoardJson();
+          void conductorTick();
         }, 3500);
       render();
     },
@@ -1263,6 +1336,8 @@ export function createKanban() {
       boardMtime = null;
       seen = next ? loadSeen(next.key) : new Set();
       doneSeen = next ? new Set(loadJSON<string[]>(doneSeenKey(next.key), [])) : new Set();
+      // Restore this workspace's conductor mode (persisted per folder).
+      setConductorMode(next ? loadJSON<ConductorMode>(conductorKey(next.key), "off") : "off");
       board = defaultBoard();
       render();
       if (!ctx) return;

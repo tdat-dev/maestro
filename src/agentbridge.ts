@@ -20,6 +20,43 @@ export function hasAgent(): boolean {
   return sender !== null;
 }
 
+/* ---- fleet directory: the board's agent picker + assignee chips ---- */
+
+export interface AgentInfo {
+  id: string;
+  name: string;
+  color: string;
+  running: boolean;
+}
+
+let fleet: (() => AgentInfo[]) | null = null;
+let senderById: ((id: string, text: string, submit: boolean) => boolean) | null = null;
+let paneFocuser: ((id: string) => boolean) | null = null;
+
+/** main.ts registers the running panes of the active workspace. */
+export function setFleet(fn: () => AgentInfo[]): void {
+  fleet = fn;
+}
+export function listAgents(): AgentInfo[] {
+  return fleet ? fleet() : [];
+}
+
+/** Types into a SPECIFIC pane's PTY (dispatch picks the agent, not focus). */
+export function setAgentSenderById(fn: (id: string, text: string, submit: boolean) => boolean): void {
+  senderById = fn;
+}
+export function sendToAgentById(id: string, text: string, submit: boolean): boolean {
+  return senderById ? senderById(id, text, submit) : false;
+}
+
+/** Focus a pane's terminal (assignee chip click). */
+export function setPaneFocuser(fn: (id: string) => boolean): void {
+  paneFocuser = fn;
+}
+export function focusPane(id: string): boolean {
+  return paneFocuser ? paneFocuser(id) : false;
+}
+
 /* ---- host hooks the board uses to drive the rest of the UI ---- */
 
 let fileOpener: ((path: string) => void) | null = null;
@@ -52,8 +89,9 @@ export interface PaneTargeting {
   hover(x: number, y: number): boolean;
   /** Drop the highlight (pointer left the panes or the drag ended off-target). */
   clear(): void;
-  /** Type `text` into the PTY of the pane under (x, y) — no Enter; true on hit. */
-  drop(x: number, y: number, text: string): boolean;
+  /** Type `text` into the PTY of the pane under (x, y) — no Enter; the hit
+   *  pane's identity on success, null on miss. */
+  drop(x: number, y: number, text: string): AgentInfo | null;
 }
 
 let paneTargeting: PaneTargeting | null = null;
@@ -67,6 +105,6 @@ export function hoverPaneAt(x: number, y: number): boolean {
 export function clearPaneTarget(): void {
   paneTargeting?.clear();
 }
-export function dropTextIntoPaneAt(x: number, y: number, text: string): boolean {
-  return paneTargeting ? paneTargeting.drop(x, y, text) : false;
+export function dropTextIntoPaneAt(x: number, y: number, text: string): AgentInfo | null {
+  return paneTargeting ? paneTargeting.drop(x, y, text) : null;
 }

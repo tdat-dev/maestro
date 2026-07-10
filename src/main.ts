@@ -53,7 +53,15 @@ import { Mascot } from "./mascot";
 import { initPanels } from "./panels";
 import { initFileTree } from "./filetree";
 import { initEditor } from "./editor";
-import { setAgentSender, setFileOpener, setDiffOpener, setPaneTargeting } from "./agentbridge";
+import {
+  setAgentSender,
+  setFileOpener,
+  setDiffOpener,
+  setPaneTargeting,
+  setFleet,
+  setAgentSenderById,
+  setPaneFocuser,
+} from "./agentbridge";
 
 /* Home launcher ⇄ Workspace grid.
  * Home is shown while there are 0 agents (the prominent "create" entry).
@@ -2766,11 +2774,36 @@ setPaneTargeting({
   drop: (x, y, text) => {
     const target = paneAtClient(x, y) ?? dropTarget;
     setDropTarget(null);
-    if (!target || !text) return false;
+    if (!target || !text) return null;
     void sendInput(target.id, text).catch(() => {});
     target.term.focus();
-    return true;
+    return { id: target.id, name: target.spec.name, color: target.color, running: target.running };
   },
+});
+// Fleet directory for the board: running panes of the active workspace.
+setFleet(() =>
+  activeWs
+    ? [...activeWs.panes.values()].map((p) => ({
+        id: p.id,
+        name: p.spec.name,
+        color: p.color,
+        running: p.running,
+      }))
+    : [],
+);
+setAgentSenderById((id, text, submit) => {
+  const pane = activeWs?.panes.get(id);
+  if (!pane || !pane.running) return false;
+  void sendInput(pane.id, text + (submit ? "\r" : "")).catch(() => {});
+  pane.term.focus();
+  return true;
+});
+setPaneFocuser((id) => {
+  const pane = activeWs?.panes.get(id);
+  if (!pane) return false;
+  pane.term.focus();
+  pane.el.scrollIntoView({ block: "nearest" });
+  return true;
 });
 void onDragDrop((e) => {
   if (e.type === "leave") return setDropTarget(null);

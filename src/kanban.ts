@@ -14,6 +14,7 @@ import {
   normalizeLists,
   findCardIn,
   applyDomOrder,
+  doneCardIds,
   type Board,
   type Card,
   type List,
@@ -36,6 +37,7 @@ import {
   reposUnder,
   gitChangedFiles,
   captureWebPage,
+  notify,
 } from "./ipc";
 import {
   sendToAgent,
@@ -44,7 +46,11 @@ import {
   hoverPaneAt,
   clearPaneTarget,
   dropTextIntoPaneAt,
+  listAgents,
+  sendToAgentById,
+  focusPane,
 } from "./agentbridge";
+import { dispatchPrompt } from "./dispatch";
 import { parsePlan, type PlanTask } from "./planparse";
 
 /* ---- agent ⇄ board plan gate ---- */
@@ -118,17 +124,7 @@ function normalize(raw: unknown, ctxKey: string): Board {
 /** The text typed into an agent's PTY when a card is dropped onto its pane:
  *  title, description, then any UNCHECKED checklist items. No trailing newline —
  *  the drop never presses Enter, so the user can edit before sending. */
-export function cardToAgentText(card: Card): string {
-  const lines = [`Task: ${card.title.trim()}`];
-  const desc = card.desc.trim();
-  if (desc) lines.push("", desc);
-  const todo = card.checklist.filter((i) => !i.done);
-  if (todo.length) {
-    lines.push("");
-    for (const i of todo) lines.push(`- [ ] ${i.text}`);
-  }
-  return lines.join("\n");
-}
+export { cardToAgentText } from "./dispatch";
 
 /** Serialise the whole board to the Markdown mirror the agent reads
  *  (`.maestro/board.md`): one section per list, cards as GitHub-style
@@ -405,8 +401,19 @@ export function createKanban() {
     try {
       const bf = await readBoardFile(dir);
       if (!bf) return;
+      const before = doneCardIds(board);
       board = bf.board;
       boardMtime = bf.mtime;
+      // An external write (maestro-mcp) landed a card in Done → tell the user.
+      for (const l of board.lists) {
+        if (l.title.trim().toLowerCase() !== DONE_TITLE.toLowerCase()) continue;
+        for (const c of l.cards) {
+          if (before.has(c.id)) continue;
+          const who = c.done?.by ?? c.assignee ?? "agent";
+          kbToast(`✅ ${who} finished: ${c.title}`);
+          if (!document.hasFocus()) void notify(`${who} finished a task`, c.title).catch(() => {});
+        }
+      }
       rerender();
       scheduleBoardFile(); // keep the board.md mirror in step
     } catch {
@@ -491,6 +498,17 @@ export function createKanban() {
   }
   function hidePill() {
     pill?.classList.remove("on");
+  }
+
+  /** Transient bottom-right toast (an agent finished a card). */
+  function kbToast(text: string): void {
+    const t = el("div", "kb-toast", enc(text));
+    document.body.appendChild(t);
+    requestAnimationFrame(() => t.classList.add("on"));
+    window.setTimeout(() => {
+      t.classList.remove("on");
+      window.setTimeout(() => t.remove(), 400);
+    }, 4000);
   }
   // True from the moment a real drag starts until the next pointerdown — lets
   // the trailing click after a drag be ignored (so it doesn't open a card or
@@ -684,7 +702,8 @@ export function createKanban() {
     // untouched (the card snaps back to where it was — no model change).
     if (overPane && cardId) {
       const found = findCard(cardId);
-      if (found) dropTextIntoPaneAt(e.clientX, e.clientY, cardToAgentText(found.card));
+      const hit = found ? dropTextIntoPaneAt(e.clientX, e.clientY, dispatchPrompt(found.card)) : null;
+      if (hit) assignCard(cardId, hit.name, true);
       else clearPaneTarget();
       hidePill();
       render();
@@ -778,6 +797,21 @@ export function createKanban() {
     });
   }
 
+  const DOING_TITLE = "Doing";
+  /** Record who a card is dispatched to; optionally pull it into Doing. */
+  function assignCard(cardId: string, name: string | undefined, moveToDoing: boolean): void {
+    void withBoard((b) => {
+      const found = findCardIn(b, cardId);
+      if (!found) return;
+      found.card.assignee = name;
+      if (moveToDoing && found.list.title.toLowerCase() !== DOING_TITLE.toLowerCase()) {
+        const doing = findOrCreateListIn(b, DOING_TITLE);
+        found.list.cards.splice(found.idx, 1);
+        doing.cards.push(found.card);
+      }
+    });
+  }
+
   // ---------- card face ----------
   function cardFace(card: Card, listId: string): HTMLElement {
     const node = el("article", "kb-card");
@@ -827,18 +861,31 @@ export function createKanban() {
         `</div>`
       : "";
 
+    const assignee = card.assignee
+      ? `<button class="kb-assignee" title="Focus this agent's pane">⚡ ${enc(card.assignee)}</button>`
+      : "";
+
     node.innerHTML =
       labels +
       `<span class="kb-card-title">${enc(card.title)}</span>` +
+      assignee +
       (badges.length ? `<div class="kb-badges">${badges.join("")}</div>` : "") +
       doneFooter;
 
     node.addEventListener("pointerdown", (e) => {
-      if ((e.target as HTMLElement).closest(".kb-done")) return; // chips aren't drag handles
+      // chips aren't drag handles
+      if ((e.target as HTMLElement).closest(".kb-done, .kb-assignee")) return;
       beginDrag(e, "card", node);
     });
     // A real drag sets `dragged`, which suppresses this click-to-open.
     node.addEventListener("click", (e) => {
+      const chip = (e.target as HTMLElement).closest<HTMLElement>(".kb-assignee");
+      if (chip) {
+        e.stopPropagation();
+        const agent = listAgents().find((a) => a.name === card.assignee);
+        if (agent) focusPane(agent.id);
+        return;
+      }
       const fileBtn = (e.target as HTMLElement).closest<HTMLElement>(".kb-file");
       if (fileBtn) {
         e.stopPropagation();
@@ -1056,6 +1103,42 @@ export function createKanban() {
     }
     due.appendChild(dueRow);
 
+    // agent assignment + dispatch
+    const agentSec = el("div", "kb-section");
+    agentSec.innerHTML = `<span class="kb-sec-l">Agent</span>`;
+    const agentRow = el("div", "kb-agent-row");
+    if (card.assignee) {
+      const chip = el("button", "kb-assignee big", `⚡ ${enc(card.assignee)}`);
+      chip.title = "Focus this agent's pane";
+      chip.addEventListener("click", () => {
+        const a = listAgents().find((x) => x.name === card.assignee);
+        if (a) focusPane(a.id);
+      });
+      const clear = el("button", "kb-due-clear", "Unassign");
+      clear.addEventListener("click", () => assignCard(card.id, undefined, false));
+      agentRow.append(chip, clear);
+    }
+    const running = listAgents().filter((a) => a.running);
+    if (running.length) {
+      const sel = document.createElement("select");
+      sel.className = "kb-agent-pick";
+      sel.innerHTML =
+        `<option value="">Send to agent…</option>` +
+        running.map((a) => `<option value="${enc(a.id)}">${enc(a.name)}</option>`).join("");
+      sel.addEventListener("change", () => {
+        const a = running.find((x) => x.id === sel.value);
+        if (!a) return;
+        if (sendToAgentById(a.id, dispatchPrompt(card), true)) {
+          assignCard(card.id, a.name, true);
+        }
+        sel.value = "";
+      });
+      agentRow.appendChild(sel);
+    } else if (!card.assignee) {
+      agentRow.appendChild(el("span", "kb-agent-none", "No running agents"));
+    }
+    agentSec.appendChild(agentRow);
+
     // description
     const desc = el("div", "kb-section");
     desc.innerHTML = `<span class="kb-sec-l">Description</span>`;
@@ -1108,7 +1191,7 @@ export function createKanban() {
       if (confirm("Delete this card?")) deleteCard(card.id);
     });
 
-    view.append(back, title, labels, due, desc, cl, del);
+    view.append(back, title, labels, due, agentSec, desc, cl, del);
     root.appendChild(view);
     requestAnimationFrame(growTitle);
   }

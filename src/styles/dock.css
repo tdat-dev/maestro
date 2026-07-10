@@ -287,3 +287,22 @@
 .dv-empty p{font-size:12.5px;max-width:34ch;line-height:1.5}
 .dv-empty-ic{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;color:var(--muted);border:1px solid var(--line-strong)}
 .dv-empty.clean .dv-empty-ic{color:var(--run);border-color:rgba(58,210,159,.4)}
+
+/* ---- kanban: agent assignment (chip, picker, done-toast) ---- */
+.kb-assignee{display:inline-flex;align-items:center;gap:4px;margin-top:6px;padding:2px 8px;
+  border:1px solid var(--accent-glow);border-radius:999px;background:var(--accent-glow);
+  color:var(--accent);font-size:11px;max-width:100%;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.kb-assignee:hover{background:rgba(198,241,53,.2)}
+.kb-assignee.big{font-size:12px;padding:4px 10px;margin-top:0}
+.kb-agent-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.kb-agent-pick{background:var(--surface-1);color:var(--text);border:1px solid var(--line-strong);
+  border-radius:var(--r1);padding:5px 8px;font-size:12px;font-family:inherit}
+.kb-agent-none{color:var(--muted-2);font-size:12px}
+.kb-toast{position:fixed;right:18px;bottom:18px;z-index:9999;max-width:340px;
+  padding:10px 14px;border-radius:var(--r3);background:var(--surface-1);
+  border:1px solid var(--line-strong);color:var(--text);font-size:12.5px;
+  box-shadow:0 8px 24px rgba(0,0,0,.45);opacity:0;transform:translateY(8px);
+  transition:opacity .25s,transform .25s;pointer-events:none}
+.kb-toast.on{opacity:1;transform:translateY(0)}
+@media (prefers-reduced-motion:reduce){.kb-toast{transition:none}}

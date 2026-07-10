@@ -118,7 +118,13 @@ export function updateCard(board: Board, cardRef: string, patch: Partial<CardInp
   return card;
 }
 
-export function moveCard(board: Board, cardRef: string, toListRef: string, position?: number): Card {
+export function moveCard(
+  board: Board,
+  cardRef: string,
+  toListRef: string,
+  position?: number,
+  actor?: string,
+): Card {
   const found = resolveCard(board, cardRef);
   const target = resolveOrCreateList(board, toListRef);
   found.list.cards.splice(found.idx, 1);
@@ -127,6 +133,9 @@ export function moveCard(board: Board, cardRef: string, toListRef: string, posit
       ? target.cards.length
       : Math.max(0, Math.min(position, target.cards.length));
   target.cards.splice(pos, 0, found.card);
+  // An agent moving a card into Doing claims it (never steals an assignment).
+  if (actor && !found.card.assignee && norm(target.title) === "doing")
+    found.card.assignee = actor;
   return found.card;
 }
 
@@ -159,7 +168,7 @@ export function deleteList(board: Board, listRef: string): void {
 export function markDone(
   board: Board,
   cardRef: string,
-  evidence: { repoRoot: string; files: string[]; summary?: string },
+  evidence: { repoRoot: string; files: string[]; summary?: string; by?: string },
 ): Card {
   const found = resolveCard(board, cardRef);
   const done = resolveOrCreateList(board, "Done");
@@ -170,6 +179,7 @@ export function markDone(
     files: evidence.files,
     summary: evidence.summary,
     at: Date.now(),
+    by: evidence.by,
   };
   return found.card;
 }

@@ -41,6 +41,10 @@ const labelsSchema = z
 export function createServer(dir: string): McpServer {
   const server = new McpServer({ name: "maestro", version: "0.1.0" });
 
+  // Maestro sets MAESTRO_AGENT=<pane name> on every terminal it spawns, so
+  // board mutations can record which agent acted (done.by, claim-on-move).
+  const agentName = process.env.MAESTRO_AGENT?.trim() || undefined;
+
   /** load → mutate → save, mapping any thrown error to an isError tool result. */
   const mutate = (fn: (b: Board) => unknown): ToolResult => {
     try {
@@ -115,7 +119,8 @@ export function createServer(dir: string): McpServer {
         position: z.number().int().min(0).optional(),
       },
     },
-    async ({ card, to_list, position }) => mutate((b) => moveCard(b, card, to_list, position)),
+    async ({ card, to_list, position }) =>
+      mutate((b) => moveCard(b, card, to_list, position, agentName)),
   );
 
   server.registerTool(
@@ -142,7 +147,9 @@ export function createServer(dir: string): McpServer {
       },
     },
     async ({ card, summary }) =>
-      mutate((b) => markDone(b, card, { repoRoot: dir, files: changedFiles(dir), summary })),
+      mutate((b) =>
+        markDone(b, card, { repoRoot: dir, files: changedFiles(dir), summary, by: agentName }),
+      ),
   );
 
   server.registerTool(

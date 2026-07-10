@@ -302,17 +302,6 @@ export function createKanban() {
     sendToAgent(PLAN_PRIMER, false);
   }
 
-  /** Tell the agent which tasks were approved (everything in To do). */
-  function sendApproved(): void {
-    const todo = board.lists.find((l) => l.title.toLowerCase() === "to do");
-    const titles = todo?.cards.map((c) => c.title) ?? [];
-    if (titles.length === 0) return;
-    const msg =
-      "Approved. Implement these tasks now, one at a time, and tell me when each is done:\n" +
-      titles.map((t, i) => `${i + 1}. ${t}`).join("\n");
-    sendToAgent(msg, true);
-  }
-
   /* ---- A: code evidence when a task reaches Done ---- */
   const fileBase = (p: string) => {
     const i = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"));
@@ -1321,14 +1310,21 @@ export function createKanban() {
           actions.appendChild(b);
           return b;
         };
+        // Two board verbs: plan the work, then run the fleet. (Import dropped —
+        // plan.json auto-imports on a watch; Send approved dropped — the
+        // Conductor dispatches approved cards now.)
         mkBtn("Plan with AI", "Drop the plan-first rules file + prime the agent", () =>
           void planWithAI(),
         );
-        mkBtn("Import", "Import tasks from .maestro/plan.json now", () => void importFromFile());
-        mkBtn("Send approved", "Tell the agent to implement the To do list", sendApproved);
-        mkBtn("Capture web", "Screenshot a web URL into .maestro/shots and open it", () =>
+        // Capture web is a side utility, not a board verb — demoted to an icon
+        // so it stays available without competing with the primary actions.
+        const capBtn = mkBtn("", "Screenshot a web URL into .maestro/shots and open it", () =>
           void captureWeb(),
         );
+        capBtn.classList.add("kb-tool-icon");
+        capBtn.setAttribute("aria-label", "Capture a web page");
+        capBtn.innerHTML =
+          `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M8 5l1.5-2h5L16 5"/></svg>`;
 
         // Conductor: cycles Off → Semi → Auto. Semi dispatches approved (To do)
         // cards to free agents; Auto also tops up To do from Proposed. Click

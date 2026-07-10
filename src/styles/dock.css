@@ -58,6 +58,10 @@
 .kb-tool{height:24px;padding:0 9px;border-radius:6px;border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text-2);font-size:11px;font-weight:600;white-space:nowrap;transition:border-color .14s,color .14s,background .14s}
 .kb-tool:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--accent-glow)}
 .kb-tool:first-child{border-color:var(--accent-dim);color:var(--accent)}
+/* Icon-only utility button (Capture web): square, recessed, no label */
+.kb-tool-icon{width:24px;padding:0;display:grid;place-items:center;color:var(--muted);
+  border-color:var(--line-strong);background:transparent}
+.kb-tool-icon:hover{color:var(--accent);border-color:var(--accent-dim);background:var(--accent-glow)}
 /* Conductor toggle: lit when semi, filled + pulsing when auto */
 .kb-tool.on{border-color:var(--accent);color:var(--accent-ink);background:var(--accent)}
 .kb-tool.on:hover{color:var(--accent-ink);background:var(--accent)}

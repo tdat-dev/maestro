@@ -14,6 +14,7 @@ export interface DoneInfo {
   files: string[]; // paths relative to repoRoot
   summary?: string; // optional agent-written note
   at: number; // ms timestamp
+  by?: string; // which agent finished it (MAESTRO_AGENT)
 }
 export interface Card {
   id: string;
@@ -22,6 +23,7 @@ export interface Card {
   labels: string[]; // label colour keys
   due: string | null; // ISO date (yyyy-mm-dd) or null
   checklist: ChecklistItem[];
+  assignee?: string; // pane name of the agent working this card
   done?: DoneInfo; // present once the task is marked Done (code evidence)
 }
 export interface List {
@@ -73,6 +75,7 @@ export function normalizeCard(c: Partial<Card>): Card {
     due: typeof c.due === "string" ? c.due : null,
     checklist: Array.isArray(c.checklist) ? c.checklist : [],
   };
+  if (typeof c.assignee === "string" && c.assignee.trim()) card.assignee = c.assignee;
   const d = c.done;
   if (d && typeof d === "object" && Array.isArray(d.files) && typeof d.repoRoot === "string") {
     card.done = {
@@ -80,9 +83,19 @@ export function normalizeCard(c: Partial<Card>): Card {
       files: d.files.filter((f): f is string => typeof f === "string"),
       summary: typeof d.summary === "string" ? d.summary : undefined,
       at: typeof d.at === "number" ? d.at : 0,
+      by: typeof d.by === "string" && d.by.trim() ? d.by : undefined,
     };
   }
   return card;
+}
+
+/** Ids of every card sitting in a list titled "Done" (any case). */
+export function doneCardIds(board: Board): Set<string> {
+  const out = new Set<string>();
+  for (const l of board.lists)
+    if (l.title.trim().toLowerCase() === "done")
+      for (const c of l.cards) out.add(c.id);
+  return out;
 }
 
 /** Normalize a raw `{lists:[...]}` value to a Board, or null when the shape

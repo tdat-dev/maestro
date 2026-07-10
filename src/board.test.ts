@@ -2,10 +2,13 @@ import { describe, it, expect } from "vitest";
 import {
   defaultBoard,
   normalizeLists,
+  normalizeCard,
   findCardIn,
   applyDomOrder,
+  doneCardIds,
   mkCard,
   type Board,
+  type Card,
 } from "./board";
 
 describe("normalizeLists", () => {
@@ -17,6 +20,37 @@ describe("normalizeLists", () => {
   it("normalizes sparse cards", () => {
     const b = normalizeLists({ lists: [{ id: "l1", title: "T", cards: [{ id: "c1", title: "x" }] }] })!;
     expect(b.lists[0].cards[0]).toMatchObject({ desc: "", labels: [], due: null, checklist: [] });
+  });
+});
+
+describe("assignee + done.by", () => {
+  it("normalizeCard keeps a string assignee and done.by, drops non-strings", () => {
+    const c = normalizeCard({
+      title: "t",
+      assignee: "Claude Code #1",
+      done: { repoRoot: "r", files: ["a.ts"], at: 1, by: "Claude Code #1" },
+    } as Partial<Card>);
+    expect(c.assignee).toBe("Claude Code #1");
+    expect(c.done?.by).toBe("Claude Code #1");
+    const bad = normalizeCard({ title: "t", assignee: 42 as unknown as string });
+    expect(bad.assignee).toBeUndefined();
+  });
+
+  it("legacy cards without assignee still normalize", () => {
+    const c = normalizeCard({ title: "old" });
+    expect(c.assignee).toBeUndefined();
+  });
+});
+
+describe("doneCardIds", () => {
+  it("collects ids of cards in any list titled Done (case-insensitive)", () => {
+    const b: Board = {
+      lists: [
+        { id: "l1", title: "To do", cards: [normalizeCard({ id: "a", title: "a" })] },
+        { id: "l2", title: "DONE", cards: [normalizeCard({ id: "b", title: "b" })] },
+      ],
+    };
+    expect([...doneCardIds(b)]).toEqual(["b"]);
   });
 });
 

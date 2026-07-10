@@ -903,9 +903,9 @@ function errMsg(e: unknown): string {
 function buildPaneEl(
   id: string,
   name: string,
-  sub: string,
-  badge: string,
-  color: string,
+  _sub: string,
+  _badge: string,
+  _color: string,
 ): HTMLElement {
   const el = document.createElement("section");
   el.className = "pane";

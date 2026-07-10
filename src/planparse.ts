@@ -7,6 +7,7 @@ export interface PlanTask {
   title: string;
   desc?: string;
   label?: string;
+  subtasks?: string[]; // small steps — become the card's checklist
 }
 
 const LABEL_KEYS = new Set(["green", "yellow", "orange", "red", "purple", "blue"]);
@@ -24,6 +25,15 @@ function normalizeTask(raw: unknown): PlanTask | null {
     if (typeof o.desc === "string" && o.desc.trim()) t.desc = o.desc.trim();
     else if (typeof o.detail === "string" && o.detail.trim()) t.desc = o.detail.trim();
     if (typeof o.label === "string" && LABEL_KEYS.has(o.label)) t.label = o.label;
+    // A big task carries its small steps: "subtasks" (or "checklist"/"steps")
+    // is an array of strings that becomes the card's checklist.
+    const rawSteps = o.subtasks ?? o.checklist ?? o.steps;
+    if (Array.isArray(rawSteps)) {
+      const steps = rawSteps
+        .map((s) => (typeof s === "string" ? s.trim() : ""))
+        .filter((s) => s.length > 0);
+      if (steps.length) t.subtasks = steps;
+    }
     return t;
   }
   return null;

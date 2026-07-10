@@ -28,6 +28,17 @@ describe("parsePlan", () => {
     ]);
   });
 
+  it("keeps subtasks (or checklist/steps) as the card's checklist", () => {
+    const got = parsePlan(
+      '[{"title":"Build login","subtasks":["form UI","API call","  ", 7,"error states"]},' +
+        '{"title":"Ship","steps":["bump version"]}]',
+    );
+    expect(got).toEqual([
+      { title: "Build login", subtasks: ["form UI", "API call", "error states"] },
+      { title: "Ship", subtasks: ["bump version"] },
+    ]);
+  });
+
   it("returns [] for empty or junk", () => {
     expect(parsePlan("")).toEqual([]);
     expect(parsePlan("just a sentence with no list")).toEqual([]);

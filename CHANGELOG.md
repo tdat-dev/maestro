@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other agents and their status) and `fleet_send` (message another agent, or
   broadcast), delivered through a `.maestro/fleet.json` + `outbox.jsonl` file
   bridge so agents can hand off work to each other.
+- **Remote fleet dashboard** — Settings → *Remote fleet dashboard*: Maestro
+  serves a small web page (default localhost, LAN opt-in) showing every agent
+  and its status, so you can watch the fleet from your phone and tap an agent
+  to type a message into its terminal. The LAN toggle is off by default since
+  the page can drive an agent.
 - **Scheduled agents** — Settings → *Manage schedules*: launch a saved crew
   preset automatically at a set time, once or daily. Each schedule shows its
   next run and can be paused or deleted.

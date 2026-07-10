@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Maestro — Fleet</title>
+<style>
+  :root{--bg:#090a0c;--s0:#0f1115;--s1:#16181d;--s2:#20232a;--line:#20232a;--line2:#323842;
+    --text:#f8fafc;--muted:#94a3b8;--muted2:#64748b;--accent:#c6f135;--ink:#1a2e05;
+    --run:#34d399;--idle:#64748b;--err:#f87171}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    padding:16px;max-width:640px;margin:0 auto;-webkit-font-smoothing:antialiased}
+  header{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}
+  h1{font-size:18px;font-style:italic;font-weight:800;letter-spacing:-.01em}
+  h1 span{color:var(--accent)}
+  .sum{font-size:12.5px;color:var(--muted)}
+  .sum b{color:var(--text)}
+  .sum .n{color:var(--accent)}
+  .list{display:flex;flex-direction:column;gap:8px}
+  .row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px 12px;
+    padding:12px 13px;border:1px solid var(--line);border-radius:11px;background:var(--s1)}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--idle);grid-row:1/span 2}
+  .st-active .dot{background:var(--run)}
+  .st-needs .dot{background:var(--accent);box-shadow:0 0 0 4px rgba(198,241,53,.18)}
+  .st-stopped{opacity:.55}
+  .name{font-size:14px;font-weight:650}
+  .meta{grid-column:2;font-size:11.5px;color:var(--muted2)}
+  .st{grid-column:3;grid-row:1/span 2;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;
+    padding:3px 9px;border-radius:999px;background:var(--s2);color:var(--muted)}
+  .st-active .st{background:var(--run);color:#052e16}
+  .st-needs .st{background:var(--accent);color:var(--ink)}
+  .send{display:none;grid-column:1/-1;gap:8px;margin-top:4px}
+  .row.open .send{display:flex}
+  .send input{flex:1;background:var(--s0);border:1px solid var(--line2);color:var(--text);
+    border-radius:8px;padding:9px 11px;font-size:13px;font-family:inherit}
+  .send button{background:var(--accent);color:var(--ink);border:none;border-radius:8px;
+    padding:0 15px;font-weight:700;font-size:13px}
+  .empty{color:var(--muted2);text-align:center;padding:48px 0;font-size:13px}
+  .foot{margin-top:18px;text-align:center;color:var(--muted2);font-size:11px}
+  .off{color:var(--err)}
+</style>
+</head>
+<body>
+<header><h1>Maestro <span>fleet</span></h1><div class="sum" id="sum"></div></header>
+<div class="list" id="list"></div>
+<div class="foot" id="foot">live</div>
+<script>
+  const enc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+  let openId = null;
+
+  async function send(paneId, input) {
+    const message = input.value.trim();
+    if (!message) return;
+    input.value = "";
+    try {
+      await fetch("/api/send", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paneId, message }) });
+    } catch (e) {}
+  }
+
+  function render(data) {
+    const agents = (data && data.agents) || [];
+    const list = document.getElementById("list");
+    const needs = agents.filter((a) => a.status === "needs").length;
+    const active = agents.filter((a) => a.status === "active").length;
+    document.getElementById("sum").innerHTML = agents.length
+      ? `<b>${agents.length}</b> agents` + (needs ? ` · <span class="n">${needs} need you</span>` : "")
+        + (active ? ` · ${active} working` : "")
+      : "";
+    if (!agents.length) { list.innerHTML = '<div class="empty">No agents running.</div>'; return; }
+    list.innerHTML = agents.map((a) => {
+      const open = a.id === openId ? " open" : "";
+      return `<div class="row st-${enc(a.status)}${open}" data-id="${enc(a.id)}">
+        <span class="dot"></span>
+        <span class="name">${enc(a.name)}</span>
+        <span class="meta">${enc(a.wsName || "")}${a.uptime ? " · " + enc(a.uptime) : ""}</span>
+        <span class="st">${enc(a.status)}</span>
+        <div class="send">
+          <input placeholder="Message this agent…" autocomplete="off">
+          <button>Send</button>
+        </div>
+      </div>`;
+    }).join("");
+    for (const row of list.querySelectorAll(".row")) {
+      const id = row.dataset.id;
+      const input = row.querySelector("input");
+      const btn = row.querySelector("button");
+      row.addEventListener("click", (e) => {
+        if (e.target.closest(".send")) return;
+        openId = openId === id ? null : id;
+        render(data);
+        if (openId === id) row.querySelector("input").focus();
+      });
+      btn.addEventListener("click", () => send(id, input));
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(id, input); });
+    }
+  }
+
+  async function tick() {
+    try {
+      const r = await fetch("/api/fleet");
+      render(await r.json());
+      document.getElementById("foot").textContent = "live · updated " + new Date().toLocaleTimeString();
+      document.getElementById("foot").classList.remove("off");
+    } catch (e) {
+      document.getElementById("foot").textContent = "disconnected";
+      document.getElementById("foot").classList.add("off");
+    }
+  }
+  tick();
+  setInterval(tick, 2000);
+</script>
+</body>
+</html>

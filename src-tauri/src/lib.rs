@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod core;
+pub mod dashboard;
 pub mod error;
 pub mod state;
 pub mod review;
@@ -104,6 +105,10 @@ pub fn run() {
             core::fs::fs_rename,
             core::fs::fs_delete,
             core::screenshot::capture_window,
+            dashboard::dashboard_status,
+            dashboard::dashboard_start,
+            dashboard::dashboard_stop,
+            dashboard::dashboard_push,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

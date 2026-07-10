@@ -74,6 +74,13 @@ import {
   nextRun,
   type Schedule,
 } from "./schedule";
+import {
+  dashboardStatus,
+  dashboardStart,
+  dashboardStop,
+  dashboardPush,
+  onDashboardSend,
+} from "./ipc";
 
 /* Home launcher ⇄ Workspace grid.
  * Home is shown while there are 0 agents (the prominent "create" entry).
@@ -3148,6 +3155,98 @@ window.setInterval(() => {
   saveSchedules(list.map((s) => (fired.has(s.id) ? afterFire(s, now) : s)));
   if (schedModal?.classList.contains("open")) renderSchedList();
 }, 30_000);
+
+/* ---------------- local web dashboard (remote fleet view) ---------------- */
+function fmtUptimeShort(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  return h > 0 ? `${h}h${m % 60}m` : m > 0 ? `${m}m` : `${s}s`;
+}
+
+/** JSON snapshot the dashboard HTTP page renders. */
+function fleetSnapshotJson(): string {
+  const now = Date.now();
+  const agents = [];
+  for (const ws of workspaces.values())
+    for (const p of ws.panes.values())
+      agents.push({
+        id: p.id,
+        name: p.spec.name,
+        wsId: ws.id,
+        wsName: ws.name,
+        status: paneStatus(
+          {
+            id: p.id, name: p.spec.name, color: p.color, wsId: ws.id, wsName: ws.name,
+            running: p.running, attention: p.attention, spawnedAt: p.spawnedAt, lastOutputAt: p.lastOutputAt,
+          },
+          now,
+        ),
+        uptime: p.spawnedAt && p.running ? fmtUptimeShort(now - p.spawnedAt) : "",
+      });
+  return JSON.stringify({ agents });
+}
+
+let dashboardOn = false;
+window.setInterval(() => {
+  if (dashboardOn) void dashboardPush(fleetSnapshotJson()).catch(() => {});
+}, 2000);
+
+// A message typed on the dashboard page → deliver into the target pane's PTY.
+void onDashboardSend((body) => {
+  try {
+    const o = JSON.parse(body) as { paneId?: unknown; message?: unknown };
+    if (typeof o.paneId !== "string" || typeof o.message !== "string" || !o.message.trim()) return;
+    for (const ws of workspaces.values()) {
+      const pane = ws.panes.get(o.paneId);
+      if (pane && pane.running) {
+        void sendInput(pane.id, o.message + "\r").catch(() => {});
+        return;
+      }
+    }
+  } catch {
+    /* malformed body — ignore */
+  }
+});
+
+const dashToggle = document.getElementById("setDashOn") as HTMLInputElement | null;
+const dashLan = document.getElementById("setDashLan") as HTMLInputElement | null;
+const dashUrl = document.getElementById("setDashUrl");
+const DASH_PORT = 8477;
+
+function paintDash(info: { running: boolean; lan: boolean; urls: string[] }): void {
+  dashboardOn = info.running;
+  if (dashToggle) dashToggle.checked = info.running;
+  if (dashLan) dashLan.checked = info.lan;
+  if (dashUrl)
+    dashUrl.textContent = info.running
+      ? "Open on any device on your network: " + (info.urls.join("  ·  ") || `http://127.0.0.1:${DASH_PORT}`)
+      : "Off — turn on to view the fleet from your phone.";
+}
+
+async function refreshDash(): Promise<void> {
+  try {
+    paintDash(await dashboardStatus());
+  } catch {
+    /* backend not ready */
+  }
+}
+async function applyDash(): Promise<void> {
+  const lan = dashLan?.checked ?? false;
+  try {
+    if (dashToggle?.checked) paintDash(await dashboardStart(DASH_PORT, lan));
+    else paintDash(await dashboardStop());
+  } catch (e) {
+    if (dashUrl) dashUrl.textContent = `Couldn't start on port ${DASH_PORT}: ${errMsg(e)}`;
+    if (dashToggle) dashToggle.checked = false;
+    dashboardOn = false;
+  }
+}
+dashToggle?.addEventListener("change", () => void applyDash());
+dashLan?.addEventListener("change", () => {
+  if (dashToggle?.checked) void applyDash(); // re-bind on the new interface
+});
+void refreshDash();
 
 /* ---------------- close / quit / hide-to-tray ---------------- */
 let closing = false;

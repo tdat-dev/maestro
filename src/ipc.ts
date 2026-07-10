@@ -138,6 +138,33 @@ export async function onTrayQuit(cb: () => void | Promise<void>): Promise<Unlist
   return listen("tray-quit", () => void cb());
 }
 
+/* ---- local web dashboard ---- */
+
+export interface DashboardInfo {
+  running: boolean;
+  port: number;
+  lan: boolean;
+  urls: string[];
+}
+
+export async function dashboardStatus(): Promise<DashboardInfo> {
+  return invoke<DashboardInfo>("dashboard_status");
+}
+export async function dashboardStart(port: number, lan: boolean): Promise<DashboardInfo> {
+  return invoke<DashboardInfo>("dashboard_start", { port, lan });
+}
+export async function dashboardStop(): Promise<DashboardInfo> {
+  return invoke<DashboardInfo>("dashboard_stop");
+}
+/** Push the current fleet snapshot JSON for the dashboard to serve. */
+export async function dashboardPush(snapshot: string): Promise<void> {
+  await invoke("dashboard_push", { snapshot });
+}
+/** Fire `cb` with the raw JSON body when the dashboard POSTs a send request. */
+export async function onDashboardSend(cb: (body: string) => void): Promise<UnlistenFn> {
+  return listen<string>("dashboard-send", (e) => cb(e.payload));
+}
+
 /* ---- detached (multi-window) support ---- */
 
 /** Open a new Maestro window that boots straight into a detached workspace.

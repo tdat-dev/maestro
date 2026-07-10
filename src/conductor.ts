@@ -9,7 +9,8 @@
 
 import type { Board } from "./board";
 
-export type ConductorMode = "off" | "semi" | "auto";
+// "pipeline" is driven by planPipeline (see pipeline.ts), not planConductor.
+export type ConductorMode = "off" | "semi" | "auto" | "pipeline";
 
 export interface ConductorAgent {
   id: string;
@@ -34,7 +35,8 @@ export function planConductor(
   board: Board,
   agents: ConductorAgent[],
 ): ConductorPlan {
-  if (mode === "off") return EMPTY;
+  // Only semi/auto run here; off does nothing and pipeline is planned elsewhere.
+  if (mode !== "semi" && mode !== "auto") return EMPTY;
 
   const doing = byTitle(board, "doing");
   const busy = new Set(

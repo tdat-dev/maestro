@@ -52,6 +52,12 @@ import {
 } from "./agentbridge";
 import { dispatchPrompt } from "./dispatch";
 import { planConductor, type ConductorMode } from "./conductor";
+import {
+  planPipeline,
+  pipelinePrompt,
+  DEFAULT_PIPELINE,
+  ENTRY as PIPE_ENTRY,
+} from "./pipeline";
 import { parsePlan, type PlanTask } from "./planparse";
 
 /* ---- agent ⇄ board plan gate ---- */
@@ -191,6 +197,9 @@ export function createKanban() {
   let doneSeen = new Set<string>(); // done.json titles already moved to Done
   let conductorMode: ConductorMode = "off"; // in-app auto-dispatch scheduler
   const conductorKey = (k: string) => `maestro.kanban.conductor.${k}`;
+  // Pipeline in-flight memory: card id → the stage it was dispatched into, so a
+  // stage change (agent moved the card on) is detected and the assignee cleared.
+  const assignedStage = new Map<string, string>();
   // Reassigned by mount() to also persist + repaint the button; the default
   // just updates the mode so setContext can restore before mount runs.
   let setConductorMode: (m: ConductorMode) => void = (m) => {
@@ -454,6 +463,7 @@ export function createKanban() {
   async function conductorTick(): Promise<void> {
     if (conductorMode === "off" || !ctx) return;
     const agents = listAgents().map((a) => ({ id: a.id, name: a.name, running: a.running }));
+    if (conductorMode === "pipeline") return pipelineTick(agents);
     const plan = planConductor(conductorMode, board, agents);
     if (!plan.approvals.length && !plan.dispatches.length) return;
     // Auto-approve: pull the planned Proposed cards into To do in one write.
@@ -475,6 +485,45 @@ export function createKanban() {
       if (!found) continue;
       if (sendToAgentById(d.agentId, dispatchPrompt(found.card), true))
         assignCard(d.cardId, d.agentName, true);
+    }
+  }
+
+  const lc = (s: string) => s.trim().toLowerCase();
+
+  /** Pipeline tick: advance cards through Build → Test → Review. Clears stale
+   *  assignees (a hand-off completed) then dispatches each free agent the next
+   *  work-stage card with a stage-specific prompt. */
+  async function pipelineTick(
+    agents: { id: string; name: string; running: boolean }[],
+  ): Promise<void> {
+    const plan = planPipeline(board, agents, DEFAULT_PIPELINE, assignedStage);
+    if (plan.unassign.length) {
+      for (const id of plan.unassign) assignedStage.delete(id);
+      await withBoard((b) => {
+        for (const id of plan.unassign) {
+          const f = findCardIn(b, id);
+          if (f) f.card.assignee = undefined;
+        }
+      });
+    }
+    for (const d of plan.dispatches) {
+      const found = findCard(d.cardId);
+      if (!found) continue;
+      // A To-do card enters the first work stage; a work-stage card stays put.
+      const destStage = lc(d.fromTitle) === lc(PIPE_ENTRY) ? DEFAULT_PIPELINE[0].title : d.fromTitle;
+      const prompt = pipelinePrompt(dispatchPrompt(found.card), DEFAULT_PIPELINE, destStage);
+      if (!sendToAgentById(d.agentId, prompt, true)) continue;
+      await withBoard((b) => {
+        const f = findCardIn(b, d.cardId);
+        if (!f) return;
+        f.card.assignee = d.agentName;
+        if (lc(f.list.title) !== lc(destStage)) {
+          const dest = findOrCreateListIn(b, destStage);
+          f.list.cards.splice(f.idx, 1);
+          dest.cards.push(f.card);
+        }
+      });
+      assignedStage.set(d.cardId, destStage);
     }
   }
 
@@ -1288,7 +1337,8 @@ export function createKanban() {
           const next: Record<ConductorMode, ConductorMode> = {
             off: "semi",
             semi: "auto",
-            auto: "off",
+            auto: "pipeline",
+            pipeline: "off",
           };
           setConductorMode(next[conductorMode]);
         });
@@ -1296,21 +1346,30 @@ export function createKanban() {
           off: "Conductor: Off",
           semi: "Conductor: Semi",
           auto: "Conductor: Auto",
+          pipeline: "Conductor: Pipeline",
         };
         const TITLES_C: Record<ConductorMode, string> = {
           off: "Auto-dispatch is off. Click to have the conductor send approved (To do) cards to free agents.",
           semi: "Semi: free agents get the next To-do card automatically. Click for Auto (also approves Proposed).",
-          auto: "Auto: also approves Proposed → To do to keep agents fed. Click to stop (Off).",
+          auto: "Auto: also approves Proposed → To do to keep agents fed. Click for Pipeline.",
+          pipeline:
+            "Pipeline: cards flow To do → Build → Test → Review → Done, each stage handed to a free agent. Click to stop (Off).",
         };
         const paintConductor = () => {
           condBtn.textContent = LABELS_C[conductorMode];
           condBtn.title = TITLES_C[conductorMode];
           condBtn.classList.toggle("on", conductorMode !== "off");
-          condBtn.classList.toggle("auto", conductorMode === "auto");
+          condBtn.classList.toggle("auto", conductorMode === "auto" || conductorMode === "pipeline");
         };
         setConductorMode = (m: ConductorMode) => {
           conductorMode = m;
           if (ctx) saveJSON(conductorKey(ctx.key), m);
+          // Entering pipeline: seed in-flight memory from cards already assigned
+          // so a hand-off isn't misread after a restart. Leaving: forget it.
+          assignedStage.clear();
+          if (m === "pipeline")
+            for (const l of board.lists)
+              for (const c of l.cards) if (c.assignee) assignedStage.set(c.id, l.title);
           paintConductor();
           if (m !== "off") void conductorTick(); // act immediately, don't wait a tick
         };

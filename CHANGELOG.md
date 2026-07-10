@@ -28,10 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   broadcast), delivered through a `.maestro/fleet.json` + `outbox.jsonl` file
   bridge so agents can hand off work to each other.
 - **Conductor** — an in-app auto-dispatch scheduler on the board toolbar,
-  cycling Off → Semi → Auto. *Semi* hands each free agent the next approved
-  ("To do") card automatically; *Auto* also promotes cards from Proposed to
-  keep agents fed. It's deterministic (no extra LLM cost — the agents do the
-  work), scoped per workspace, and clicking through to Off is the stop.
+  cycling Off → Semi → Auto → Pipeline. *Semi* hands each free agent the next
+  approved ("To do") card automatically; *Auto* also promotes cards from
+  Proposed to keep agents fed; *Pipeline* flows each card through Build → Test
+  → Review → Done, handing every stage to a free agent with a stage-specific
+  prompt and detecting each hand-off. Deterministic (no extra LLM cost — the
+  agents do the work), scoped per workspace, click through to Off to stop.
 
 ### Fixed
 

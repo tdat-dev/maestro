@@ -1117,7 +1117,13 @@ function createAgent(
       // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows
       // can actually launch them — see launchSpec.
       const launch = launchSpec(spec.program, spec.args);
-      await spawnPty(id, launch.program, launch.args, cwd, cols, rows, (bytes) => {
+      // Identity for the child process: maestro-mcp uses MAESTRO_AGENT to
+      // stamp who moved/finished a board card (see mcp/src/server.ts).
+      const envPairs: Array<[string, string]> = [
+        ["MAESTRO_AGENT", spec.name],
+        ["MAESTRO_WORKSPACE", cwd ?? ""],
+      ];
+      await spawnPty(id, launch.program, launch.args, cwd, cols, rows, envPairs, (bytes) => {
         pane.lastOutputAt = Date.now();
         if (pane.attention) clearAttention(pane); // agent is producing output again
         // After a tab detach this xterm is disposed but the PTY lives on (the

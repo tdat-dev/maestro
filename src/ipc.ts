@@ -24,6 +24,7 @@ export async function spawnPty(
   cwd: string | null,
   cols: number,
   rows: number,
+  env: Array<[string, string]>,
   onBytes: (bytes: Uint8Array) => void,
 ): Promise<void> {
   // PTY output streams as raw binary (ArrayBuffer), NOT a JSON number[]. The
@@ -31,7 +32,7 @@ export async function spawnPty(
   // choked the whole app under a chatty fleet; a raw buffer is ~100x cheaper.
   const ch = new Channel<ArrayBuffer>();
   ch.onmessage = (buf) => onBytes(new Uint8Array(buf));
-  await invoke("pty_spawn", { agentId, program, args, cwd, cols, rows, onBytes: ch });
+  await invoke("pty_spawn", { agentId, program, args, cwd, cols, rows, env, onBytes: ch });
 }
 
 /** Re-attach a RUNNING agent's output to this window (tab detach hand-off).

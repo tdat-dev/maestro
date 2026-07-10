@@ -26,6 +26,7 @@ pub async fn pty_spawn(
     program: String,
     args: Vec<String>,
     cwd: Option<String>,
+    env: Option<Vec<(String, String)>>,
     cols: u16,
     rows: u16,
     // Raw-bytes channel: PTY output is streamed as binary (ArrayBuffer on the JS
@@ -39,6 +40,7 @@ pub async fn pty_spawn(
         spec = spec.arg(a);
     }
     spec.cwd = cwd.filter(|s| !s.is_empty());
+    spec.env = env.unwrap_or_default();
     let size = PtySize {
         rows,
         cols,

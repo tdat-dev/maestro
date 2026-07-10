@@ -57,6 +57,38 @@ export function focusPane(id: string): boolean {
   return paneFocuser ? paneFocuser(id) : false;
 }
 
+/* ---- fleet monitor: every agent across ALL workspaces + reveal ---- */
+
+export interface FleetPane {
+  id: string;
+  name: string;
+  color: string;
+  wsId: string;
+  wsName: string;
+  running: boolean;
+  attention: boolean; // agent went quiet after output → probably waiting on you
+  spawnedAt: number | null;
+  lastOutputAt: number;
+}
+
+let fleetSnapshot: (() => FleetPane[]) | null = null;
+let paneRevealer: ((wsId: string, paneId: string) => boolean) | null = null;
+
+/** main.ts registers a snapshot of every pane in every workspace. */
+export function setFleetSnapshot(fn: () => FleetPane[]): void {
+  fleetSnapshot = fn;
+}
+export function fleetSnapshotNow(): FleetPane[] {
+  return fleetSnapshot ? fleetSnapshot() : [];
+}
+/** main.ts registers how to switch to a workspace and focus one of its panes. */
+export function setPaneRevealer(fn: (wsId: string, paneId: string) => boolean): void {
+  paneRevealer = fn;
+}
+export function revealPane(wsId: string, paneId: string): boolean {
+  return paneRevealer ? paneRevealer(wsId, paneId) : false;
+}
+
 /* ---- host hooks the board uses to drive the rest of the UI ---- */
 
 let fileOpener: ((path: string) => void) | null = null;

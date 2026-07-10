@@ -9,9 +9,10 @@
 import { createKanban } from "./kanban";
 import { createPomodoro } from "./pomodoro";
 import { createDiffView } from "./diffview";
+import { createFleet } from "./fleet";
 import type { DockContext } from "./dockstore";
 
-export type ToolId = "kanban" | "pomodoro" | "diff";
+export type ToolId = "kanban" | "pomodoro" | "diff" | "fleet";
 
 interface ToolController {
   mount(body: HTMLElement, actions: HTMLElement): void;
@@ -25,7 +26,10 @@ const TITLES: Record<ToolId, string> = {
   kanban: "Board",
   pomodoro: "Pomodoro",
   diff: "Changes",
+  fleet: "Fleet",
 };
+
+const TOOL_IDS: ToolId[] = ["kanban", "pomodoro", "diff", "fleet"];
 
 let panel: HTMLElement | null = null;
 let titleEl: HTMLElement | null = null;
@@ -50,7 +54,7 @@ export function dockOpen(id: ToolId) {
   panel.dataset.tool = id;
   panel.setAttribute("aria-hidden", "false");
   if (titleEl) titleEl.textContent = TITLES[id];
-  (["kanban", "pomodoro", "diff"] as ToolId[]).forEach((t) => {
+  TOOL_IDS.forEach((t) => {
     bodies[t].hidden = t !== id;
     actionGroups[t].hidden = t !== id;
     railBtn(t)?.classList.toggle("on", t === id);
@@ -77,9 +81,7 @@ export function dockToggle(id: ToolId) {
 /** Active workspace changed (or went home). Every tool re-scopes its state. */
 export function dockSetContext(ctx: DockContext | null) {
   // May be called during early workspace restore, before initDock() runs.
-  (["kanban", "pomodoro", "diff"] as ToolId[]).forEach((t) =>
-    tools[t]?.setContext?.(ctx),
-  );
+  TOOL_IDS.forEach((t) => tools[t]?.setContext?.(ctx));
 }
 
 export function initDock() {
@@ -107,8 +109,9 @@ export function initDock() {
   tools.kanban = createKanban();
   tools.pomodoro = createPomodoro();
   tools.diff = createDiffView();
+  tools.fleet = createFleet();
 
-  (["kanban", "pomodoro", "diff"] as ToolId[]).forEach((id) => {
+  TOOL_IDS.forEach((id) => {
     const body = document.createElement("div");
     body.className = `dp-body dp-${id}`;
     body.hidden = true;
@@ -129,6 +132,9 @@ export function initDock() {
   // Live timer badge on the pomodoro rail button.
   const pomoBtn = railBtn("pomodoro");
   if (pomoBtn) tools.pomodoro.attachBadge?.(pomoBtn);
+  // Live "needs you" count badge on the fleet rail button.
+  const fleetBtn = railBtn("fleet");
+  if (fleetBtn) tools.fleet.attachBadge?.(fleetBtn);
 
   panel.querySelector(".dp-close")?.addEventListener("click", dockClose);
 

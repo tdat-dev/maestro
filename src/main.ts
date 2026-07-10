@@ -61,6 +61,9 @@ import {
   setFleet,
   setAgentSenderById,
   setPaneFocuser,
+  setFleetSnapshot,
+  setPaneRevealer,
+  type FleetPane,
 } from "./agentbridge";
 
 /* Home launcher ⇄ Workspace grid.
@@ -2550,6 +2553,9 @@ document.addEventListener("keydown", (e) => {
   } else if (k === "d") {
     e.preventDefault();
     dockToggle("diff");
+  } else if (k === "l") {
+    e.preventDefault();
+    dockToggle("fleet");
   }
 });
 
@@ -2801,6 +2807,34 @@ setAgentSenderById((id, text, submit) => {
 setPaneFocuser((id) => {
   const pane = activeWs?.panes.get(id);
   if (!pane) return false;
+  pane.term.focus();
+  pane.el.scrollIntoView({ block: "nearest" });
+  return true;
+});
+// Fleet monitor: a snapshot of every pane in every workspace, and a reveal
+// action that switches to the owning workspace tab before focusing the pane.
+setFleetSnapshot(() => {
+  const out: FleetPane[] = [];
+  for (const ws of workspaces.values())
+    for (const p of ws.panes.values())
+      out.push({
+        id: p.id,
+        name: p.spec.name,
+        color: p.color,
+        wsId: ws.id,
+        wsName: ws.name,
+        running: p.running,
+        attention: p.attention,
+        spawnedAt: p.spawnedAt,
+        lastOutputAt: p.lastOutputAt,
+      });
+  return out;
+});
+setPaneRevealer((wsId, paneId) => {
+  const ws = workspaces.get(wsId);
+  const pane = ws?.panes.get(paneId);
+  if (!ws || !pane) return false;
+  if (ws !== activeWs) activateWorkspace(ws);
   pane.term.focus();
   pane.el.scrollIntoView({ block: "nearest" });
   return true;

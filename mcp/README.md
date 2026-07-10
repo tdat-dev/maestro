@@ -36,14 +36,22 @@ claude mcp add --scope user maestro -- node <absolute path to mcp/dist/index.js>
 | `board_get` | Read the whole board (lists, cards, ids) |
 | `card_add` | Add a card (`list`, `title`, `desc?`, `labels?`, `due?`, `checklist?`) |
 | `card_update` | Patch a card's fields |
-| `card_move` | Move a card to another list / position |
+| `card_move` | Move a card to another list / position (moving into "Doing" claims the card for the calling agent) |
 | `card_delete` | Delete a card |
-| `card_done` | Move a card to Done + attach git change evidence |
+| `card_done` | Move a card to Done + attach git change evidence and who finished it |
 | `list_add` / `list_rename` / `list_delete` | Manage lists |
 
 Cards and lists are addressed by id (from `board_get`) or by title; ambiguous
 titles are rejected with a hint to use the id. Labels:
 `green | yellow | orange | red | purple | blue`. Due dates: `yyyy-mm-dd`.
+
+## Agent identity
+
+Maestro sets `MAESTRO_AGENT=<pane name>` (and `MAESTRO_WORKSPACE=<folder>`) in
+every terminal it spawns. When present, `card_done` records it as `done.by`
+and `card_move` into "Doing" sets it as the card's `assignee` (never
+overwriting an existing one) — so the Maestro board shows which agent is
+working on, and finished, each card.
 
 ## How it stays in sync
 

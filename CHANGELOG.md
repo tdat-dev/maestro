@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Board ⇄ Agent loop** — kanban cards can be dispatched to a specific
+  running agent ("Send to agent…" in the card detail, or drag the card onto a
+  pane): the agent receives a structured prompt, the card records its
+  `assignee` and jumps to Doing, and the card shows a clickable agent chip
+  that focuses the pane. Maestro sets `MAESTRO_AGENT` on every spawn so
+  maestro-mcp records who moved/finished each card, and the app toasts (+ OS
+  notification when unfocused) when an agent lands a card in Done.
+- **Right-click copies the terminal selection** — copy-on-select can lose the
+  clipboard write when another Windows process holds the clipboard lock;
+  right-clicking a selection retries the copy.
+
 ## [0.3.9] - 2026-07-09
 
 ### Removed

@@ -40,6 +40,8 @@ claude mcp add --scope user maestro -- node <absolute path to mcp/dist/index.js>
 | `card_delete` | Delete a card |
 | `card_done` | Move a card to Done + attach git change evidence and who finished it |
 | `list_add` / `list_rename` / `list_delete` | Manage lists |
+| `fleet_status` | List the other agents Maestro runs in this workspace + their live status (needs / active / idle / stopped) |
+| `fleet_send` | Send a message into another agent's terminal (or broadcast to all) — for hand-offs and coordination |
 
 Cards and lists are addressed by id (from `board_get`) or by title; ambiguous
 titles are rejected with a hint to use the id. Labels:
@@ -52,6 +54,15 @@ every terminal it spawns. When present, `card_done` records it as `done.by`
 and `card_move` into "Doing" sets it as the card's `assignee` (never
 overwriting an existing one) — so the Maestro board shows which agent is
 working on, and finished, each card.
+
+## Fleet coordination
+
+`fleet_status` and `fleet_send` let an agent see and message the rest of the
+fleet through a file bridge (same idea as the board): Maestro publishes the
+roster to `<workspace>/.maestro/fleet.json`, and `fleet_send` appends to
+`<workspace>/.maestro/outbox.jsonl`, which Maestro watches and types into the
+target agent's terminal. This is the substrate a "conductor" agent uses to
+hand work to idle agents.
 
 ## How it stays in sync
 

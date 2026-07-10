@@ -28,7 +28,7 @@ const text = (res: unknown): string =>
   (res as { content: { type: string; text: string }[] }).content[0].text;
 
 describe("maestro-mcp server", () => {
-  it("lists all nine tools", async () => {
+  it("lists all board + fleet tools", async () => {
     const tools = (await client.listTools()).tools.map((t) => t.name).sort();
     expect(tools).toEqual([
       "board_get",
@@ -37,6 +37,8 @@ describe("maestro-mcp server", () => {
       "card_done",
       "card_move",
       "card_update",
+      "fleet_send",
+      "fleet_status",
       "list_add",
       "list_delete",
       "list_rename",

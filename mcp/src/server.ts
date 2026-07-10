@@ -18,6 +18,7 @@ import {
   deleteList,
 } from "./ops.js";
 import { changedFiles } from "./git.js";
+import { readFleet, queueMessage } from "./fleet.js";
 
 type ToolResult = {
   content: { type: "text"; text: string }[];
@@ -184,6 +185,45 @@ export function createServer(dir: string): McpServer {
         deleteList(b, list);
         return "deleted";
       }),
+  );
+
+  server.registerTool(
+    "fleet_status",
+    {
+      description:
+        "List the other agents Maestro is running in this workspace and their live status (needs = waiting on the user, active = working, idle, stopped). Use to coordinate — e.g. see who is free before handing off work.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        return ok(readFleet(dir));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "fleet_send",
+    {
+      description:
+        "Send a message to another agent in this workspace (or the whole fleet). Maestro types it into the target agent's terminal. Use to hand off a task or coordinate. Omit `to` to broadcast to every agent.",
+      inputSchema: {
+        message: z.string().describe("The text to deliver"),
+        to: z
+          .string()
+          .optional()
+          .describe("Target agent name (from fleet_status). Omit to broadcast to all agents."),
+      },
+    },
+    async ({ message, to }) => {
+      try {
+        const m = queueMessage(dir, { from: agentName, to, message, now: Date.now() });
+        return ok(m.to ? `sent to ${m.to}` : "broadcast to the fleet");
+      } catch (e) {
+        return fail(e);
+      }
+    },
   );
 
   return server;

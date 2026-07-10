@@ -19,6 +19,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Right-click copies the terminal selection** — copy-on-select can lose the
   clipboard write when another Windows process holds the clipboard lock;
   right-clicking a selection retries the copy.
+- **Fleet monitor** (`Ctrl+Shift+L`) — a dock panel listing every agent across
+  all workspaces with live status (needs-you / working / idle / stopped),
+  uptime, and owning workspace; click to jump to any agent, and a rail badge
+  counts how many are waiting on you.
+- **Fleet coordination for agents** — maestro-mcp gains `fleet_status` (see the
+  other agents and their status) and `fleet_send` (message another agent, or
+  broadcast), delivered through a `.maestro/fleet.json` + `outbox.jsonl` file
+  bridge so agents can hand off work to each other.
+
+### Fixed
+
+- **MCP wrote to the wrong project's board** — maestro-mcp resolved the board
+  from the agent's current directory, so an agent whose cwd drifted (a `cd`, a
+  subdir, a git worktree) could write cards into a different project's board.
+  It now prefers the `MAESTRO_WORKSPACE` env Maestro sets on every spawn.
 
 ## [0.3.9] - 2026-07-09
 

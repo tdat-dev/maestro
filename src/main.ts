@@ -65,6 +65,8 @@ import {
   setPaneRevealer,
   type FleetPane,
 } from "./agentbridge";
+import { paneStatus } from "./fleet";
+import { initFleetBridge } from "./fleetbridge";
 
 /* Home launcher ⇄ Workspace grid.
  * Home is shown while there are 0 agents (the prominent "create" entry).
@@ -2838,6 +2840,49 @@ setPaneRevealer((wsId, paneId) => {
   pane.term.focus();
   pane.el.scrollIntoView({ block: "nearest" });
   return true;
+});
+
+// Fleet file-bridge: publish each workspace's roster to .maestro/fleet.json and
+// deliver messages the maestro-mcp `fleet_send` tool drops into outbox.jsonl.
+initFleetBridge({
+  workspaces: () => {
+    const now = Date.now();
+    const out = [];
+    for (const ws of workspaces.values()) {
+      if (!ws.dir) continue;
+      out.push({
+        dir: ws.dir,
+        name: ws.name,
+        agents: [...ws.panes.values()].map((p) => ({
+          id: p.id,
+          name: p.spec.name,
+          status: paneStatus(
+            {
+              id: p.id,
+              name: p.spec.name,
+              color: p.color,
+              wsId: ws.id,
+              wsName: ws.name,
+              running: p.running,
+              attention: p.attention,
+              spawnedAt: p.spawnedAt,
+              lastOutputAt: p.lastOutputAt,
+            },
+            now,
+          ),
+        })),
+      });
+    }
+    return out;
+  },
+  deliver: (dir, to, message) => {
+    const ws = [...workspaces.values()].find((w) => w.dir === dir);
+    if (!ws) return;
+    const targets = to
+      ? [...ws.panes.values()].filter((p) => p.running && p.spec.name === to)
+      : [...ws.panes.values()].filter((p) => p.running);
+    for (const p of targets) void sendInput(p.id, message + "\r").catch(() => {});
+  },
 });
 void onDragDrop((e) => {
   if (e.type === "leave") return setDropTarget(null);

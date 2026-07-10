@@ -187,6 +187,18 @@ export function mountTerminal(
     if (sel) void navigator.clipboard.writeText(sel).catch(() => {});
   });
 
+  // Right-click = copy the selection too. Copy-on-select can silently lose
+  // the clipboard write on Windows (another process holding the clipboard
+  // lock makes writeText reject), so a right-click retries the copy —
+  // deliberate and dependable, like Windows Terminal. With no selection the
+  // default context menu behaviour is left untouched.
+  container.addEventListener("contextmenu", (e) => {
+    const sel = term.getSelection();
+    if (!sel) return;
+    e.preventDefault();
+    void navigator.clipboard.writeText(sel).catch(() => {});
+  });
+
   const ro = new ResizeObserver(() => {
     fit.fit();
     onResize(term.cols, term.rows);

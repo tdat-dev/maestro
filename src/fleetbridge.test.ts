@@ -50,7 +50,7 @@ describe("parseSpawnLine", () => {
       count: 3,
     });
     expect(parseSpawnLine('{"cli":"codex"}')).toEqual({ cli: "codex", task: null, count: 1 });
-    expect(parseSpawnLine('{"cli":"x","count":99}').count).toBe(6);
+    expect(parseSpawnLine('{"cli":"x","count":99}')?.count).toBe(6);
   });
   it("returns null without a cli or for junk", () => {
     expect(parseSpawnLine('{"task":"x"}')).toBeNull();

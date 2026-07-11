@@ -6,6 +6,9 @@ export interface CliPreset {
   args: string[];
   badge: string;
   shell?: boolean;
+  /** A conductor runs the same CLI but with the orchestration system prompt —
+   *  it directs the fleet (spawns workers, hands out cards) instead of coding. */
+  role?: "conductor";
   /** Flag(s) that make this CLI skip its permission/approval prompts (full
    *  access). Omitted for CLIs that only configure this via a file/env. */
   skipPermsArgs?: string[];
@@ -15,6 +18,7 @@ export interface CliPreset {
  *  PATH; use the Custom row for anything not listed or named differently.
  *  `skipPermsArgs` verified against each tool's docs (June 2026). */
 export const CLI_PRESETS: CliPreset[] = [
+  { id: "conductor", label: "Conductor", program: "claude", args: [], badge: "claude", role: "conductor", skipPermsArgs: ["--dangerously-skip-permissions"] },
   { id: "claude", label: "Claude Code", program: "claude", args: [], badge: "claude", skipPermsArgs: ["--dangerously-skip-permissions"] },
   { id: "codex", label: "Codex", program: "codex", args: [], badge: "codex", skipPermsArgs: ["--yolo"] },
   { id: "gemini", label: "Gemini", program: "gemini", args: [], badge: "gemini", skipPermsArgs: ["--yolo"] },

@@ -118,6 +118,11 @@ const DASH_OUTPUT_ROWS = 40;
 const MAESTRO_LAWS =
   "You are running inside Maestro, which gives this workspace a shared kanban board through the maestro MCP tools. For any non-trivial task you MUST plan on the board before implementing. First call board_get. Then for each deliverable call card_add in the Proposed list with a short title, a one-line desc, and the small concrete steps as the checklist array. Prefer few big cards over many tiny ones. Wait for the user to approve by moving cards to To do. While working, card_move your card to Doing when you start it and card_done with a one-line summary when it is finished. Keep card titles stable so the board can track them.";
 
+// The conductor role: orchestrate the fleet, do not implement. Single line, free
+// of cmd.exe metacharacters so it survives the cmd /c launch path.
+const CONDUCTOR_LAWS =
+  "You are the CONDUCTOR of a Maestro agent fleet, not a worker. Do NOT write code or do tasks yourself. Orchestrate through the maestro MCP tools. When the user gives you a goal: call board_get, break the goal into cards with card_add, then spawn worker agents with agent_spawn and hand each worker a specific card with fleet_send. Track progress with fleet_status and agent_output, read a worker screen when it looks stuck, move cards with card_move, and mark card_done when a worker reports finished. Keep every worker busy and the board current until the goal is complete. Spawn more workers if there is idle capacity and pending work.";
+
 // Per-CLI identity color for the monogram tile (brand-adjacent, distinct on dark).
 const CLI_COLORS: Record<string, string> = {
   claude: "#d97757",
@@ -1023,6 +1028,7 @@ interface AgentSpec {
   badge: string;
   color: string;
   mono: string;
+  role?: "conductor"; // a conductor gets the orchestration system prompt
   worktree?: string;  // worktree path once created (isolated agents)
   branch?: string;    // the agent's git branch (isolated agents)
 }
@@ -1153,13 +1159,15 @@ function createAgent(
       } else if (spec.worktree) {
         cwd = spec.worktree;
       }
-      // Enforce Maestro's board protocol at the system-prompt level so a
-      // Claude agent MUST plan on the board (not a soft MCP hint, not a button).
+      // Enforce Maestro's protocol at the system-prompt level so a Claude agent
+      // MUST follow it (not a soft MCP hint, not a button). A conductor gets the
+      // orchestration prompt; every other Claude gets the plan-first worker one.
       // Only claude exposes --append-system-prompt; other CLIs still get the MCP
       // tools + server instructions. New array — never mutate spec.args, or a
       // restart would append the flag again and again.
+      const laws = spec.role === "conductor" ? CONDUCTOR_LAWS : MAESTRO_LAWS;
       const args =
-        spec.badge === "claude" ? [...spec.args, "--append-system-prompt", MAESTRO_LAWS] : spec.args;
+        spec.badge === "claude" ? [...spec.args, "--append-system-prompt", laws] : spec.args;
       // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows
       // can actually launch them — see launchSpec.
       const launch = launchSpec(spec.program, args);
@@ -1517,6 +1525,7 @@ async function spawnCrew(
       cwd: dir,
       name,
       badge: p.badge,
+      role: p.role,
       ...cliLook(p.badge, p.label),
     });
   });

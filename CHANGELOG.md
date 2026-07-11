@@ -18,7 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   streamed over a **WebSocket** (on the dashboard port + 1) with TCP_NODELAY, so
   typing and deleting feel near-direct — bidirectional, ordered by nature, no
   per-keystroke HTTP round-trip. (An earlier SSE + POST transport was too laggy:
-  tiny_http buffers streaming responses and can't set TCP_NODELAY.)
+  tiny_http buffers streaming responses and can't set TCP_NODELAY.) The terminal
+  view has a **tab bar** of all agents (tap to switch without going back to the
+  roster) and a **Grid** toggle that tiles every running agent's terminal so you
+  can watch many at once and tap one to open it full.
 
 ### Changed
 

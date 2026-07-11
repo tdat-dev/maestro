@@ -60,9 +60,32 @@
   .term-head{display:flex;align-items:center;gap:10px;padding:10px 14px;
     background:var(--s1);border-bottom:1px solid var(--line)}
   .term-head b{font-size:14px}
-  .term-back{margin-left:auto;background:var(--s2);border:1px solid var(--line2);color:var(--text);
+  .term-gridbtn{margin-left:auto;background:var(--s2);border:1px solid var(--line2);color:var(--text);
+    border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600}
+  .term-gridbtn.on{background:var(--accent);color:var(--ink);border-color:var(--accent)}
+  .term-back{background:var(--s2);border:1px solid var(--line2);color:var(--text);
     border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
+  #term-tabs{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;background:var(--s1);
+    border-bottom:1px solid var(--line);flex:0 0 auto;scrollbar-width:thin}
+  #term-tabs:empty{display:none}
+  .ttab{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:8px;
+    background:var(--s2);border:1px solid var(--line2);color:var(--text2,#cbd5e1);font-size:12.5px;
+    font-weight:600;white-space:nowrap;cursor:pointer}
+  .ttab .d{width:7px;height:7px;border-radius:50%;background:var(--idle)}
+  .ttab.st-active .d{background:var(--run)} .ttab.st-needs .d{background:var(--accent)}
+  .ttab.on{background:var(--accent);color:var(--ink);border-color:var(--accent)}
+  .ttab.on .d{background:var(--ink)}
   #termxt{flex:1;min-height:0;padding:6px 8px}
+  #term-grid{flex:1;min-height:0;display:none;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+    grid-auto-rows:1fr;gap:6px;padding:6px}
+  .gcell{display:flex;flex-direction:column;min-height:0;background:#0b0d12;border:1px solid var(--line);
+    border-radius:8px;overflow:hidden}
+  .gcell-h{display:flex;align-items:center;gap:6px;padding:5px 9px;background:var(--s1);
+    border-bottom:1px solid var(--line);font-size:11.5px;font-weight:600;cursor:pointer}
+  .gcell-h .d{width:7px;height:7px;border-radius:50%;background:var(--idle)}
+  .gcell-h.st-active .d{background:var(--run)} .gcell-h.st-needs .d{background:var(--accent)}
+  .gcell-h .exp{margin-left:auto;color:var(--muted2);font-size:11px}
+  .gcell-x{flex:1;min-height:0;padding:3px 5px}
   .xterm{height:100%}
 </style>
 <link rel="stylesheet" href="/xterm.css">
@@ -71,8 +94,14 @@
 <header><h1>Maestro <span>fleet</span></h1><div class="sum" id="sum"></div></header>
 <div class="list" id="list"></div>
 <div id="term">
-  <div class="term-head"><b id="term-name"></b><button class="term-back" id="term-back">← Fleet</button></div>
+  <div class="term-head">
+    <b id="term-name"></b>
+    <button class="term-gridbtn" id="term-gridbtn" title="Tile all agents">⊞ Grid</button>
+    <button class="term-back" id="term-back">← Fleet</button>
+  </div>
+  <div id="term-tabs"></div>
   <div id="termxt"></div>
+  <div id="term-grid"></div>
 </div>
 <div class="foot" id="foot">live</div>
 <script>
@@ -102,6 +131,7 @@
 
   function render(data) {
     const agents = (data && data.agents) || [];
+    allAgents = agents; // cached for the terminal tab bar / grid
     const output = (data && data.output) || {};
     const list = document.getElementById("list");
     const needs = agents.filter((a) => a.status === "needs").length;
@@ -186,63 +216,134 @@
   /* ---- full web terminal (xterm.js over SSE + input POST) ---- */
   const b64enc = (bytes) => btoa(String.fromCharCode(...bytes));
   const b64dec = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  let allAgents = [];
   let term = null, fit = null, ws = null, termId = null, tro = null;
+  let gridMode = false, gridCells = [];
+  const wsUrl = (id) => "ws://" + location.hostname + ":" + (Number(location.port) + 1) + "/term?id=" + encodeURIComponent(id);
 
+  const enc2 = new TextEncoder();
+
+  // Open the terminal view for one agent, with a tab bar of all agents on top.
   function openTerm(id, name) {
-    termId = id;
-    document.getElementById("term-name").textContent = name;
     document.getElementById("term").classList.add("on");
-    const host = document.getElementById("termxt");
-    host.innerHTML = "";
-    term = new Terminal({ fontSize: 13, cursorBlink: true, convertEol: false,
-      theme: { background: "#0b0d12", foreground: "#e2e8f0", cursor: "#c6f135" } });
-    fit = new FitAddon.FitAddon();
-    term.loadAddon(fit);
-    term.open(host);
-    // Fit after layout has flushed, else the container measures 0.
-    requestAnimationFrame(() => { try { fit.fit(); } catch (e) {} sendResize(); });
-    // WebSocket on port+1: bidirectional, low-latency (TCP_NODELAY on the app
-    // side), ordered by nature — keystrokes go straight to the PTY, output
-    // streams straight back. No per-key HTTP round-trip, no scramble.
-    const enc2 = new TextEncoder();
-    ws = new WebSocket("ws://" + location.hostname + ":" + (Number(location.port) + 1) + "/term?id=" + encodeURIComponent(id));
-    ws.binaryType = "arraybuffer";
-    ws.onmessage = (e) => { if (term) term.write(new Uint8Array(e.data)); };
-    term.onData((d) => { if (ws && ws.readyState === 1) ws.send(enc2.encode(d)); });
-    term.onResize(sendResize);
-    // The PTY is shared with Maestro's own pane, and a PTY has ONE size — when
-    // the app pane regains focus it re-imposes its size, so on Alt+Tab back the
-    // web view can be mismatched. Re-fit + re-sync whenever WE regain focus /
-    // become visible / resize, so the last-focused client's size wins.
+    switchTerm(id, name);
+    // Re-assert our size on regain-focus (shared PTY: last-focused client wins).
     window.addEventListener("resize", refit);
     window.addEventListener("focus", refit);
     document.addEventListener("visibilitychange", onVisible);
-    tro = new ResizeObserver(() => refit());
-    tro.observe(host);
+  }
+
+  // Switch the single terminal to a different agent (from a tab click) without
+  // going back to the roster.
+  function switchTerm(id, name) {
+    closeSingle();
+    termId = id;
+    const a = allAgents.find((x) => x.id === id);
+    document.getElementById("term-name").textContent = name || (a && a.name) || id;
+    buildTabs(id);
+    const host = document.getElementById("termxt");
+    host.style.display = ""; host.innerHTML = "";
+    // WebSocket on port+1: bidirectional, low-latency (TCP_NODELAY), ordered.
+    term = new Terminal({ fontSize: 13, cursorBlink: true, convertEol: false,
+      theme: { background: "#0b0d12", foreground: "#e2e8f0", cursor: "#c6f135" } });
+    fit = new FitAddon.FitAddon(); term.loadAddon(fit); term.open(host);
+    requestAnimationFrame(() => { try { fit.fit(); } catch (e) {} sendResize(); });
+    ws = new WebSocket(wsUrl(id)); ws.binaryType = "arraybuffer";
+    ws.onmessage = (e) => { if (term) term.write(new Uint8Array(e.data)); };
+    term.onData((d) => { if (ws && ws.readyState === 1) ws.send(enc2.encode(d)); });
+    term.onResize(sendResize);
+    if (tro) tro.disconnect();
+    tro = new ResizeObserver(() => refit()); tro.observe(host);
     setTimeout(() => term && term.focus(), 60);
   }
+
+  function buildTabs(activeId) {
+    const bar = document.getElementById("term-tabs");
+    bar.innerHTML = "";
+    for (const a of allAgents) {
+      const b = document.createElement("button");
+      b.className = "ttab st-" + enc(a.status) + (a.id === activeId ? " on" : "");
+      b.innerHTML = '<span class="d"></span>' + enc(a.name);
+      b.addEventListener("click", () => switchTerm(a.id, a.name));
+      bar.appendChild(b);
+    }
+  }
+
   function sendResize() {
     if (!term || !termId) return;
     fetch("/term/resize", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: termId, cols: term.cols, rows: term.rows }) }).catch(() => {});
   }
   function refit() {
+    if (gridMode) { for (const c of gridCells) { try { c.fit.fit(); } catch (e) {} } return; }
     if (!fit || !term) return;
     try { fit.fit(); } catch (e) {}
     sendResize(); // re-assert our size even if fit() didn't change cols/rows
   }
   function onVisible() { if (document.visibilityState === "visible") setTimeout(refit, 40); }
-  function closeTerm() {
+
+  function closeSingle() {
     if (ws) { try { ws.close(); } catch (e) {} ws = null; }
+    if (tro) { tro.disconnect(); tro = null; }
+    if (term) { term.dispose(); term = null; }
+    fit = null;
+  }
+  function closeTerm() {
+    gridMode = false;
+    hideGrid();
+    closeSingle();
+    termId = null;
+    document.getElementById("term-gridbtn").classList.remove("on");
+    document.getElementById("term-grid").style.display = "none";
+    document.getElementById("termxt").style.display = "";
+    document.getElementById("term-tabs").style.display = "";
+    document.getElementById("term-tabs").innerHTML = "";
     window.removeEventListener("resize", refit);
     window.removeEventListener("focus", refit);
     document.removeEventListener("visibilitychange", onVisible);
-    if (tro) { tro.disconnect(); tro = null; }
-    if (term) { term.dispose(); term = null; }
-    fit = null; termId = null;
     document.getElementById("term").classList.remove("on");
   }
+
+  /* ---- grid mode: tile every running agent (read-only monitor, tap to open) ---- */
+  function setGrid(on) {
+    gridMode = on;
+    document.getElementById("term-gridbtn").classList.toggle("on", on);
+    document.getElementById("term-tabs").style.display = on ? "none" : "";
+    document.getElementById("termxt").style.display = on ? "none" : "";
+    document.getElementById("term-grid").style.display = on ? "grid" : "none";
+    if (on) { closeSingle(); document.getElementById("term-name").textContent = "All agents"; showGrid(); }
+    else { hideGrid(); }
+  }
+  function showGrid() {
+    const g = document.getElementById("term-grid"); g.innerHTML = "";
+    gridCells = allAgents.filter((a) => a.status !== "stopped").slice(0, 6).map((a) => mountCell(a, g));
+  }
+  function hideGrid() {
+    for (const c of gridCells) { try { c.ws.close(); } catch (e) {} try { c.term.dispose(); } catch (e) {} }
+    gridCells = [];
+    document.getElementById("term-grid").innerHTML = "";
+  }
+  function mountCell(a, container) {
+    const cell = document.createElement("div"); cell.className = "gcell";
+    const head = document.createElement("div"); head.className = "gcell-h st-" + enc(a.status);
+    head.innerHTML = '<span class="d"></span>' + enc(a.name) + '<span class="exp">⤢ open</span>';
+    const host = document.createElement("div"); host.className = "gcell-x";
+    cell.append(head, host); container.appendChild(cell);
+    const t = new Terminal({ fontSize: 11, cursorBlink: false, convertEol: false, scrollback: 600,
+      theme: { background: "#0b0d12", foreground: "#e2e8f0", cursor: "#c6f135" } });
+    const f = new FitAddon.FitAddon(); t.loadAddon(f); t.open(host);
+    requestAnimationFrame(() => { try { f.fit(); } catch (e) {} });
+    const w = new WebSocket(wsUrl(a.id)); w.binaryType = "arraybuffer";
+    w.onmessage = (e) => t.write(new Uint8Array(e.data)); // monitor only — no input
+    head.addEventListener("click", () => { setGrid(false); switchTerm(a.id, a.name); });
+    return { id: a.id, term: t, ws: w, fit: f };
+  }
+
   document.getElementById("term-back").addEventListener("click", closeTerm);
+  document.getElementById("term-gridbtn").addEventListener("click", () => {
+    if (gridMode) { setGrid(false); if (termId) switchTerm(termId); }
+    else setGrid(true);
+  });
 </script>
 <script src="/xterm.js"></script>
 <script src="/addon-fit.js"></script>

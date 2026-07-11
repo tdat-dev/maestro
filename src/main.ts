@@ -106,6 +106,26 @@ interface Pane {
 // No PTY output for this long while alive ⇒ the agent is idle (waiting at a prompt).
 const IDLE_MS = 1200;
 
+// Rolling tail of each pane's terminal output (id → recent text), so the remote
+// dashboard can show what an agent is doing, not just its name. Capped per pane;
+// pruned to live panes when a snapshot is built.
+const outTails = new Map<string, string>();
+const outDecoder = new TextDecoder();
+const TAIL_RAW_CAP = 6000; // chars kept raw (before ANSI stripping)
+const TAIL_VIEW_CAP = 2500; // chars shown after stripping
+/** Strip ANSI/OSC escapes + stray control bytes for a readable plain-text tail. */
+function stripAnsi(s: string): string {
+  return s
+    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "") // CSI sequences (colors, cursor)
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "") // OSC (title, etc.)
+    .replace(/\x1b[()][0-9A-Za-z]/g, "") // charset selects
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ""); // control chars except \t \n \r
+}
+function appendTail(id: string, bytes: Uint8Array): void {
+  const next = (outTails.get(id) ?? "") + outDecoder.decode(bytes);
+  outTails.set(id, next.length > TAIL_RAW_CAP ? next.slice(-TAIL_RAW_CAP) : next);
+}
+
 // The board protocol every Maestro-spawned Claude agent is forced to follow
 // (injected via --append-system-prompt). One line, and free of cmd.exe
 // metacharacters (& | < > % ! ^ ( ) " ') so it survives the cmd /c launch path.
@@ -1165,6 +1185,7 @@ function createAgent(
       ];
       await spawnPty(id, launch.program, launch.args, cwd, cols, rows, envPairs, (bytes) => {
         pane.lastOutputAt = Date.now();
+        appendTail(id, bytes); // rolling tail for the remote dashboard
         if (pane.attention) clearAttention(pane); // agent is producing output again
         // After a tab detach this xterm is disposed but the PTY lives on (the
         // new window owns it) — never write into a dropped pane.
@@ -3177,12 +3198,16 @@ function fmtUptimeShort(ms: number): string {
   return h > 0 ? `${h}h${m % 60}m` : m > 0 ? `${m}m` : `${s}s`;
 }
 
-/** JSON snapshot the dashboard HTTP page renders. */
+/** JSON snapshot the dashboard HTTP page renders: the roster plus a recent
+ *  plain-text tail of each agent's output so it can be managed, not just seen. */
 function fleetSnapshotJson(): string {
   const now = Date.now();
   const agents = [];
+  const output: Record<string, string> = {};
+  const live = new Set<string>();
   for (const ws of workspaces.values())
-    for (const p of ws.panes.values())
+    for (const p of ws.panes.values()) {
+      live.add(p.id);
       agents.push({
         id: p.id,
         name: p.spec.name,
@@ -3197,7 +3222,12 @@ function fleetSnapshotJson(): string {
         ),
         uptime: p.spawnedAt && p.running ? fmtUptimeShort(now - p.spawnedAt) : "",
       });
-  return JSON.stringify({ agents });
+      const tail = outTails.get(p.id);
+      if (tail) output[p.id] = stripAnsi(tail).slice(-TAIL_VIEW_CAP);
+    }
+  // Drop tails for panes that no longer exist (killed/detached).
+  for (const id of outTails.keys()) if (!live.has(id)) outTails.delete(id);
+  return JSON.stringify({ agents, output });
 }
 
 let dashboardOn = false;

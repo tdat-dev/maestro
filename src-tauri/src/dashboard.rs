@@ -9,9 +9,9 @@
 //! LAN (0.0.0.0) is opt-in since the send endpoint can drive an agent.
 
 use std::io::Read;
-use std::net::{Ipv4Addr, UdpSocket};
+use std::net::{Ipv4Addr, TcpListener, TcpStream, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -122,20 +122,27 @@ pub async fn dashboard_start(
     }
 
     // Binding to 0.0.0.0 (LAN) and probing the local IP can block; do it OFF the
-    // main/UI thread so toggling LAN never freezes the app.
+    // main/UI thread so toggling LAN never freezes the app. The full web
+    // terminal uses a WebSocket on port+1 (own the TcpStream → set TCP_NODELAY).
     let bind = if lan { Ipv4Addr::UNSPECIFIED } else { Ipv4Addr::LOCALHOST };
-    let (server, urls) = run_blocking(move || {
+    let (server, ws_listener, urls) = run_blocking(move || {
         let server = Server::http((bind, port)).map_err(|e| {
             CommandError::Failed(format!("dashboard: cannot bind port {port}: {e}"))
         })?;
-        Ok((server, urls_for(port, lan)))
+        let ws_listener = TcpListener::bind((bind, port + 1)).map_err(|e| {
+            CommandError::Failed(format!("dashboard: cannot bind ws port {}: {e}", port + 1))
+        })?;
+        Ok((server, ws_listener, urls_for(port, lan)))
     })
     .await?;
 
     let stop = Arc::new(AtomicBool::new(false));
     let stop_thread = stop.clone();
     let app_thread = app.clone();
+    let registry_ws = registry.clone();
     std::thread::spawn(move || serve(server, snapshot, stop_thread, app_thread, registry));
+    let stop_ws = stop.clone();
+    std::thread::spawn(move || serve_ws(ws_listener, stop_ws, registry_ws));
 
     let mut inner = state.dashboard.inner.lock().unwrap();
     inner.running = true;
@@ -279,6 +286,94 @@ fn sse_terminal(request: Request, registry: Arc<Mutex<Registry>>, id: Option<Str
     // data_length None → chunked transfer, streamed as the reader yields.
     let resp = Response::new(StatusCode(200), headers, reader, None, None);
     let _ = request.respond(resp);
+}
+
+/// WebSocket terminal server (port+1). A real bidirectional low-latency channel
+/// for the full web terminal: TCP_NODELAY on, ordered by nature, no per-key HTTP
+/// round-trips — so typing feels near-direct.
+fn serve_ws(listener: TcpListener, stop: Arc<AtomicBool>, registry: Arc<Mutex<Registry>>) {
+    // Non-blocking accept so the stop flag is honoured with no traffic.
+    let _ = listener.set_nonblocking(true);
+    loop {
+        if stop.load(Ordering::SeqCst) {
+            break;
+        }
+        match listener.accept() {
+            Ok((stream, _)) => {
+                let registry = registry.clone();
+                let stop = stop.clone();
+                std::thread::spawn(move || ws_conn(stream, registry, stop));
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(_) => break,
+        }
+    }
+}
+
+fn ws_query_id(uri: &str) -> String {
+    uri.split_once('?')
+        .and_then(|(_, q)| q.split('&').find_map(|p| p.strip_prefix("id=")))
+        .unwrap_or("")
+        .to_string()
+}
+
+fn ws_conn(stream: TcpStream, registry: Arc<Mutex<Registry>>, stop: Arc<AtomicBool>) {
+    let _ = stream.set_nodelay(true); // the whole point — no Nagle coalescing
+    let mut agent_id = String::new();
+    let ws = tungstenite::accept_hdr(
+        stream,
+        |req: &tungstenite::handshake::server::Request,
+         resp: tungstenite::handshake::server::Response| {
+            agent_id = ws_query_id(&req.uri().to_string());
+            Ok(resp)
+        },
+    );
+    let mut ws = match ws {
+        Ok(w) => w,
+        Err(_) => return,
+    };
+    if agent_id.is_empty() {
+        return;
+    }
+    let rx = match registry.lock().unwrap().tap(&agent_id) {
+        Ok(r) => r,
+        Err(_) => return,
+    };
+    let _ = ws.get_mut().set_nonblocking(true);
+    loop {
+        if stop.load(Ordering::SeqCst) {
+            break;
+        }
+        // Output: forward every available PTY chunk to the browser.
+        loop {
+            match rx.try_recv() {
+                Ok(chunk) => {
+                    if ws.write(tungstenite::Message::Binary(chunk)).is_err() {
+                        return;
+                    }
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => return, // agent exited
+            }
+        }
+        let _ = ws.flush();
+        // Input: keystrokes from the browser → PTY (in order, no round-trips).
+        match ws.read() {
+            Ok(tungstenite::Message::Binary(d)) => {
+                let _ = registry.lock().unwrap().write_input(&agent_id, &d);
+            }
+            Ok(tungstenite::Message::Text(t)) => {
+                let _ = registry.lock().unwrap().write_input(&agent_id, t.as_bytes());
+            }
+            Ok(tungstenite::Message::Close(_)) => return,
+            Ok(_) => {}
+            Err(tungstenite::Error::Io(ref e)) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(_) => return,
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
 }
 
 /// A blocking `Read` that turns an agent's output channel into an SSE byte

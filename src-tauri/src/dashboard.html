@@ -186,22 +186,7 @@
   /* ---- full web terminal (xterm.js over SSE + input POST) ---- */
   const b64enc = (bytes) => btoa(String.fromCharCode(...bytes));
   const b64dec = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-  let term = null, fit = null, es = null, termId = null;
-  // Input ordering: each keystroke can't be its own racing POST (they arrive
-  // out of order and scramble the line). Keep ONE request in flight; keys typed
-  // while it's away accumulate and go next, so bytes reach the PTY in order.
-  let sendQ = "", sendBusy = false;
-  async function flushInput() {
-    if (sendBusy || !sendQ || !termId) return;
-    sendBusy = true;
-    const data = sendQ; sendQ = "";
-    try {
-      await fetch("/term/input", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: termId, data: b64enc(new TextEncoder().encode(data)) }) });
-    } catch (e) {}
-    sendBusy = false;
-    if (sendQ) flushInput();
-  }
+  let term = null, fit = null, ws = null, termId = null;
 
   function openTerm(id, name) {
     termId = id;
@@ -216,15 +201,16 @@
     term.open(host);
     // Fit after layout has flushed, else the container measures 0.
     requestAnimationFrame(() => { try { fit.fit(); } catch (e) {} sendResize(); });
-    // Keystrokes (incl. arrows/Enter/Ctrl+C as escape sequences) → PTY, queued
-    // so a fast burst can't arrive out of order.
-    sendQ = ""; sendBusy = false;
-    term.onData((d) => { sendQ += d; flushInput(); });
+    // WebSocket on port+1: bidirectional, low-latency (TCP_NODELAY on the app
+    // side), ordered by nature — keystrokes go straight to the PTY, output
+    // streams straight back. No per-key HTTP round-trip, no scramble.
+    const enc2 = new TextEncoder();
+    ws = new WebSocket("ws://" + location.hostname + ":" + (Number(location.port) + 1) + "/term?id=" + encodeURIComponent(id));
+    ws.binaryType = "arraybuffer";
+    ws.onmessage = (e) => { if (term) term.write(new Uint8Array(e.data)); };
+    term.onData((d) => { if (ws && ws.readyState === 1) ws.send(enc2.encode(d)); });
     term.onResize(sendResize);
     window.addEventListener("resize", onWinResize);
-    // Live output stream.
-    es = new EventSource("/term?id=" + encodeURIComponent(id));
-    es.onmessage = (e) => { if (term) term.write(b64dec(e.data)); };
     setTimeout(() => term && term.focus(), 60);
   }
   function sendResize() {
@@ -234,7 +220,7 @@
   }
   function onWinResize() { if (fit) { try { fit.fit(); } catch (e) {} } }
   function closeTerm() {
-    if (es) { es.close(); es = null; }
+    if (ws) { try { ws.close(); } catch (e) {} ws = null; }
     window.removeEventListener("resize", onWinResize);
     if (term) { term.dispose(); term = null; }
     fit = null; termId = null;

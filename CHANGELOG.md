@@ -15,9 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   editing) sent straight to the agent's PTY. Type directly and interactively
   from your phone — no key buttons needed — the same as sitting at the machine.
   xterm.js is bundled and served same-origin so it works offline/LAN. Output is
-  flushed per frame (tiny_http's 1 KB buffer otherwise stalled the stream) and
-  keystrokes are sent through a single-in-flight queue so a fast burst can't
-  arrive out of order and scramble the line.
+  streamed over a **WebSocket** (on the dashboard port + 1) with TCP_NODELAY, so
+  typing and deleting feel near-direct — bidirectional, ordered by nature, no
+  per-keystroke HTTP round-trip. (An earlier SSE + POST transport was too laggy:
+  tiny_http buffers streaming responses and can't set TCP_NODELAY.)
 
 ### Changed
 

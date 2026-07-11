@@ -1381,6 +1381,8 @@ const crewGrid = document.getElementById("crewGrid") as HTMLElement;
 const crewTotalEl = document.getElementById("crewTotal") as HTMLElement;
 const spawnLabel = document.getElementById("mSpawnLabel") as HTMLElement;
 const mSkipPerms = document.getElementById("mSkipPerms") as HTMLInputElement;
+const mConductor = document.getElementById("mConductor") as HTMLInputElement | null;
+mConductor?.addEventListener("change", () => renderCrew());
 
 interface SavedCrew extends CrewState {
   dir: string;
@@ -1405,7 +1407,8 @@ function loadCrew(): SavedCrew {
 }
 
 function renderCrew() {
-  const total = expandCrew(crew).length;
+  const withCond = mConductor?.checked ? 1 : 0;
+  const total = expandCrew(crew).length + withCond;
   crewTotalEl.textContent = String(total);
   spawnLabel.textContent = total > 0 ? `Spawn ${total} agent${total > 1 ? "s" : ""}` : "Spawn";
   (document.getElementById("mSpawn") as HTMLButtonElement).disabled = total === 0;
@@ -1502,9 +1505,10 @@ async function spawnCrew(
   dir: string | null,
   skipPerms: boolean,
   mode: "new" | "current",
+  conductor = false,
 ): Promise<void> {
   const fleet = expandCrew(crewState);
-  if (fleet.length === 0) return;
+  if (fleet.length === 0 && !conductor) return;
 
   // Name agents per CLI: "Claude Code #1", "Claude Code #2"; plain label when one.
   const perId: Record<string, number> = {};
@@ -1530,9 +1534,44 @@ async function spawnCrew(
     });
   });
 
+  // Optional Conductor: one extra agent that orchestrates the crew. It uses the
+  // SAME CLI as the first worker you picked (claude if none), so switching to
+  // Codex/Gemini makes a Codex/Gemini conductor — not a hardcoded Claude.
+  let conductorName: string | null = null;
+  let conductorIsClaude = false;
+  if (conductor) {
+    const cp =
+      CLI_PRESETS.find((x) => (crewState.counts[x.id] ?? 0) > 0) ??
+      CLI_PRESETS.find((x) => x.id === "claude")!;
+    conductorName = "Conductor";
+    conductorIsClaude = cp.badge === "claude";
+    boots.push(
+      createAgent(ws, {
+        program: cp.program,
+        args: effectiveArgs(cp, skipPerms),
+        cwd: dir,
+        name: conductorName,
+        badge: cp.badge,
+        role: "conductor",
+        ...cliLook(cp.badge, cp.label),
+      }),
+    );
+  }
+
   // Boot through a concurrency-limited queue so many heavy CLIs don't all start
   // at once and spike the CPU (panes already appeared above as "queued…").
   await runLimited(boots, MAX_CONCURRENT_BOOT);
+
+  // A Claude conductor gets CONDUCTOR_LAWS via --append-system-prompt at launch.
+  // Other CLIs have no such flag, so prime the conductor by typing the same
+  // instructions once it reaches its prompt.
+  if (conductorName && !conductorIsClaude) {
+    const name = conductorName;
+    window.setTimeout(() => {
+      const pane = [...ws.panes.values()].find((x) => x.spec.name === name);
+      if (pane && pane.running) void sendInput(pane.id, CONDUCTOR_LAWS + "\r").catch(() => {});
+    }, 3500);
+  }
 }
 
 /** A conductor agent asked (via the maestro-mcp agent_spawn tool) to grow its
@@ -1599,7 +1638,7 @@ async function spawnFromModal() {
   if (dir) addRecent(dir);
   closeModal();
 
-  await spawnCrew(crew, dir, skipPerms, modalTarget);
+  await spawnCrew(crew, dir, skipPerms, modalTarget, mConductor?.checked ?? false);
 }
 
 buildCrewGrid();

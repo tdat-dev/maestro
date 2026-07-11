@@ -149,9 +149,11 @@ fn serve(server: Server, snapshot: Arc<Mutex<String>>, stop: Arc<AtomicBool>, ap
         let method = request.method().clone();
 
         if method == Method::Get && (url == "/" || url.starts_with("/?")) {
-            let header = Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
+            let ct = Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
                 .unwrap();
-            let _ = request.respond(Response::from_string(PAGE).with_header(header));
+            // No-cache so a rebuilt page always loads fresh on refresh.
+            let nc = Header::from_bytes(&b"Cache-Control"[..], &b"no-cache, no-store"[..]).unwrap();
+            let _ = request.respond(Response::from_string(PAGE).with_header(ct).with_header(nc));
         } else if method == Method::Get && url == "/api/fleet" {
             let body = snapshot.lock().unwrap().clone();
             let body = if body.is_empty() { "{\"agents\":[]}".to_string() } else { body };

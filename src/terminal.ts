@@ -22,6 +22,10 @@ export interface TerminalHandle {
   onSearchResults(cb: (current: number, total: number) => void): void;
   /** Subscribe to terminal title changes (OSC 0/1/2). */
   onTitleChange(cb: (title: string) => void): void;
+  /** Plain-text snapshot of the last `lines` rendered rows (what's on screen,
+   *  de-duplicated by the emulator — not the raw byte stream). For the remote
+   *  dashboard's read-only view. */
+  snapshot(lines?: number): string;
 }
 
 // WebGL renderer is DISABLED (budget 0 → every pane uses the DOM renderer).
@@ -240,5 +244,21 @@ export function mountTerminal(
         else cb(r.resultIndex + 1, r.resultCount);
       }),
     onTitleChange: (cb) => term.onTitleChange(cb),
+    snapshot: (lines = 40) => {
+      try {
+        const buf = term.buffer.active;
+        const end = buf.length; // includes scrollback
+        const start = Math.max(0, end - lines);
+        const rows: string[] = [];
+        for (let i = start; i < end; i += 1) {
+          rows.push(buf.getLine(i)?.translateToString(true) ?? "");
+        }
+        // Drop trailing blank rows so idle prompts don't pad the view.
+        while (rows.length && rows[rows.length - 1].trim() === "") rows.pop();
+        return rows.join("\n");
+      } catch {
+        return ""; // terminal disposed (e.g. after a tab detach)
+      }
+    },
   };
 }

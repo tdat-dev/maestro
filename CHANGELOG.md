@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Board toolbar simplified** — the maestro-mcp server now ships the plan-first
+  convention (few big cards, small steps as each card's checklist, report via
+  `card_move`/`card_done`) as its MCP instructions, so an agent with the board
+  tools plans and adds cards directly. The **Plan with AI** button (which used
+  to drop a rules file and prime the agent) is therefore gone, alongside the
+  earlier **Import** and **Send approved** removals — the board toolbar is now
+  just the Conductor and a compact Capture-web icon.
+
 ### Added
 
 - **Board ⇄ Agent loop** — kanban cards can be dispatched to a specific

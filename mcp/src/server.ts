@@ -39,8 +39,23 @@ const labelsSchema = z
   .optional()
   .describe(`Label colour keys: ${LABELS.join("|")}`);
 
+const INSTRUCTIONS = `Maestro board — how to work in this workspace.
+
+For any non-trivial task, plan on the board BEFORE implementing:
+1. Call board_get to see the current lists and cards.
+2. Break the work into FEW, BIG tasks — one card per deliverable — and put the
+   small concrete steps INSIDE each card as its checklist. Do NOT create one
+   card per tiny step. Use card_add with list "Proposed", a short title, a
+   one-line desc, and the checklist array.
+3. Stop and let the user review (they move cards to "To do" to approve).
+4. While working: card_move your card to "Doing" when you start it, and
+   card_done with a one-line summary when it is finished.
+
+Keep card titles stable so the board can track them. Use fleet_status to see
+the other agents here and fleet_send to hand work to a specific one.`;
+
 export function createServer(dir: string): McpServer {
-  const server = new McpServer({ name: "maestro", version: "0.1.0" });
+  const server = new McpServer({ name: "maestro", version: "0.1.0" }, { instructions: INSTRUCTIONS });
 
   // Maestro sets MAESTRO_AGENT=<pane name> on every terminal it spawns, so
   // board mutations can record which agent acted (done.by, claim-on-move).

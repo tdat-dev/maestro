@@ -40,7 +40,6 @@ import {
   notify,
 } from "./ipc";
 import {
-  sendToAgent,
   openFileInPanel,
   openDiff,
   hoverPaneAt,
@@ -65,51 +64,8 @@ const PLAN_REL = ".maestro\\plan.json";
 const DONE_REL = ".maestro\\done.json";
 const BOARD_REL = ".maestro\\board.md";
 const RULES_DIR = ".maestro";
-const RULES_REL = ".maestro\\AGENTS.md";
 const PROPOSED_TITLE = "Proposed";
 const DONE_TITLE = "Done";
-
-// Written into the workspace so every agent session follows plan-first.
-const RULES_TEXT = `# Maestro — plan-first protocol
-
-For ANY task in this workspace, do NOT implement immediately.
-
-Shape the plan as FEW, BIG tasks — one card per deliverable — and put the
-small concrete steps INSIDE each task as its checklist. Do not create one
-task per tiny step.
-
-## If you have the maestro MCP tools (board_get, card_add, …) — preferred
-
-1. Call \`board_get\` to see the current board.
-2. Create one card per big task in the "Proposed" list:
-   \`card_add\` with \`list\`: "Proposed", a short \`title\`, a one-line \`desc\`,
-   and \`checklist\`: the small steps.
-3. STOP and wait for the user to review and approve (they move cards to To do).
-4. While working: \`card_move\` your card to "Doing" when you start,
-   \`card_done\` with a one-line summary when you finish.
-
-## Fallback — no maestro tools
-
-1. Write \`.maestro/plan.json\` as a JSON array of BIG tasks, e.g.
-   [{"title":"big task","desc":"one-line detail","label":"blue",
-     "subtasks":["small step 1","small step 2"]}]
-   (label optional: green | yellow | orange | red | purple | blue;
-   subtasks become the card's checklist)
-2. STOP and wait. The tasks appear on the Maestro board for review.
-3. Only implement the tasks I confirm as approved.
-4. When you FINISH a task, append it to \`.maestro/done.json\` (a JSON array):
-   [{"title":"<the exact task title>","summary":"one line on what changed"}]
-   Keep titles identical to the plan so the board can match and move the card
-   to Done automatically. Do not remove earlier entries.
-
-The live board is always mirrored to \`.maestro/board.md\`. Read it at the START of
-any task to see the current To do / Doing / Done lists and decide what to work on
-next — it is refreshed automatically whenever the board changes.
-`;
-
-// Typed into the focused agent; the user appends their actual task, then Enter.
-const PLAN_PRIMER =
-  "Read .maestro/AGENTS.md and follow its plan-first protocol — few BIG tasks, small steps as each card's checklist; use the maestro MCP board tools if you have them, else write .maestro/plan.json, then stop. Task: ";
 
 const keyFor = (ctxKey: string) => `maestro.kanban.v2.${ctxKey}`;
 const legacyKeyFor = (ctxKey: string) => `maestro.kanban.v1.${ctxKey}`;
@@ -277,29 +233,6 @@ export function createKanban() {
     } catch {
       /* file not written yet */
     }
-  }
-
-  /** Drop the plan-first rules file into the workspace, then prime the agent. */
-  async function planWithAI(): Promise<void> {
-    if (dir) {
-      try {
-        await fsCreateDir(dir, RULES_DIR);
-      } catch {
-        /* already exists */
-      }
-      try {
-        await fsCreateFile(dir, RULES_REL);
-      } catch {
-        /* already exists */
-      }
-      try {
-        await fsWriteFile(dir, RULES_REL, RULES_TEXT, null);
-      } catch {
-        /* non-fatal */
-      }
-    }
-    // Prime the focused agent; the user appends the task and presses Enter.
-    sendToAgent(PLAN_PRIMER, false);
   }
 
   /* ---- A: code evidence when a task reaches Done ---- */
@@ -1310,12 +1243,9 @@ export function createKanban() {
           actions.appendChild(b);
           return b;
         };
-        // Two board verbs: plan the work, then run the fleet. (Import dropped —
-        // plan.json auto-imports on a watch; Send approved dropped — the
-        // Conductor dispatches approved cards now.)
-        mkBtn("Plan with AI", "Drop the plan-first rules file + prime the agent", () =>
-          void planWithAI(),
-        );
+        // Planning lives in the agents now: the maestro MCP server ships the
+        // plan-first convention as its instructions, so an MCP agent reads the
+        // board and adds cards directly — no "Plan with AI" button needed.
         // Capture web is a side utility, not a board verb — demoted to an icon
         // so it stays available without competing with the primary actions.
         const capBtn = mkBtn("", "Screenshot a web URL into .maestro/shots and open it", () =>

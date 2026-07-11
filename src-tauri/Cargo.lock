@@ -2093,6 +2093,7 @@ name = "maestro"
 version = "0.3.9"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "png 0.17.16",
  "portable-pty",
  "serde",

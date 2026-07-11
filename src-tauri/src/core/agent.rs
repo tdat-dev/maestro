@@ -10,6 +10,7 @@
 
 use std::collections::VecDeque;
 use std::io::Read;
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
@@ -30,6 +31,10 @@ const SCROLLBACK_CAP: usize = 512 * 1024;
 struct Output {
     buf: VecDeque<u8>,
     sink: Sink,
+    // Extra live subscribers (the remote web terminal). Each gets every output
+    // chunk; a closed channel is pruned. The single `sink` above is the owning
+    // window; taps are additional read-only mirrors.
+    taps: Vec<Sender<Vec<u8>>>,
 }
 
 pub struct Agent {
@@ -71,6 +76,7 @@ impl Agent {
         let output = Arc::new(Mutex::new(Output {
             buf: VecDeque::new(),
             sink: Box::new(on_bytes),
+            taps: Vec::new(),
         }));
         let reader_thread = spawn_reader(reader, output.clone());
         let wait_thread = spawn_waiter(child, on_exit);
@@ -100,6 +106,23 @@ impl Agent {
         o.sink = sink;
     }
 
+    /// Subscribe to this agent's live output. The current scrollback is replayed
+    /// into the channel first (so a fresh terminal paints immediately), then
+    /// every new chunk arrives until the receiver is dropped or the agent exits.
+    pub fn tap(&self) -> Receiver<Vec<u8>> {
+        let (tx, rx) = channel::<Vec<u8>>();
+        let mut o = self.output.lock().unwrap_or_else(|p| p.into_inner());
+        let (a, b) = o.buf.as_slices();
+        if !a.is_empty() || !b.is_empty() {
+            let mut replay = Vec::with_capacity(a.len() + b.len());
+            replay.extend_from_slice(a);
+            replay.extend_from_slice(b);
+            let _ = tx.send(replay);
+        }
+        o.taps.push(tx);
+        rx
+    }
+
     pub fn write_input(&mut self, bytes: &[u8]) -> Result<()> {
         self.session.write_input(bytes)
     }
@@ -123,6 +146,11 @@ fn spawn_reader(mut reader: Box<dyn Read + Send>, output: Arc<Mutex<Output>>) ->
                         o.buf.drain(..over);
                     }
                     (o.sink)(&buf[..n]);
+                    // Mirror to live taps (remote terminals); drop closed ones.
+                    if !o.taps.is_empty() {
+                        let chunk = buf[..n].to_vec();
+                        o.taps.retain(|t| t.send(chunk.clone()).is_ok());
+                    }
                 }
                 Err(_) => break,
             }

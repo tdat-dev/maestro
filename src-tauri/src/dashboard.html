@@ -50,11 +50,30 @@
   .empty{color:var(--muted2);text-align:center;padding:48px 0;font-size:13px}
   .foot{margin-top:18px;text-align:center;color:var(--muted2);font-size:11px}
   .off{color:var(--err)}
+  .termbtn-full{display:none;grid-column:1/-1;margin-top:8px;width:100%;background:var(--accent);
+    color:var(--ink);border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:700}
+  .row.open .termbtn-full{display:block}
+  .termbtn-full:active{filter:brightness(.92)}
+  /* full web terminal overlay */
+  #term{position:fixed;inset:0;z-index:50;background:#0b0d12;display:none;flex-direction:column}
+  #term.on{display:flex}
+  .term-head{display:flex;align-items:center;gap:10px;padding:10px 14px;
+    background:var(--s1);border-bottom:1px solid var(--line)}
+  .term-head b{font-size:14px}
+  .term-back{margin-left:auto;background:var(--s2);border:1px solid var(--line2);color:var(--text);
+    border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
+  #termxt{flex:1;min-height:0;padding:6px 8px}
+  .xterm{height:100%}
 </style>
+<link rel="stylesheet" href="/xterm.css">
 </head>
 <body>
 <header><h1>Maestro <span>fleet</span></h1><div class="sum" id="sum"></div></header>
 <div class="list" id="list"></div>
+<div id="term">
+  <div class="term-head"><b id="term-name"></b><button class="term-back" id="term-back">← Fleet</button></div>
+  <div id="termxt"></div>
+</div>
 <div class="foot" id="foot">live</div>
 <script>
   const enc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -107,6 +126,7 @@
         <span class="meta">${enc(a.wsName || "")}${a.uptime ? " · " + enc(a.uptime) : ""}</span>
         <span class="st">${enc(a.status)}</span>
         <pre class="out">${body}</pre>
+        <button class="termbtn-full" data-term>⛶ Open full terminal — type directly</button>
         <div class="keys">${KEYS.map((k, i) => `<button data-k="${i}">${enc(k[1])}</button>`).join("")}</div>
         <div class="send">
           <input placeholder="Message this agent…" autocomplete="off">
@@ -132,6 +152,8 @@
       input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(id, input); });
       for (const kb of row.querySelectorAll(".keys button"))
         kb.addEventListener("click", () => post(id, { keys: KEYS[+kb.dataset.k][0] }));
+      const nm = (agents.find((a) => a.id === id) || {}).name || id;
+      row.querySelector("[data-term]").addEventListener("click", () => openTerm(id, nm));
     }
     // Restore the in-progress message + focus after the rebuild.
     if (typingId != null) {
@@ -159,6 +181,53 @@
   }
   tick();
   setInterval(tick, 1000);
+
+  /* ---- full web terminal (xterm.js over SSE + input POST) ---- */
+  const b64enc = (bytes) => btoa(String.fromCharCode(...bytes));
+  const b64dec = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  let term = null, fit = null, es = null, termId = null;
+
+  function openTerm(id, name) {
+    termId = id;
+    document.getElementById("term-name").textContent = name;
+    document.getElementById("term").classList.add("on");
+    const host = document.getElementById("termxt");
+    host.innerHTML = "";
+    term = new Terminal({ fontSize: 13, cursorBlink: true, convertEol: false,
+      theme: { background: "#0b0d12", foreground: "#e2e8f0", cursor: "#c6f135" } });
+    fit = new FitAddon.FitAddon();
+    term.loadAddon(fit);
+    term.open(host);
+    // Fit after layout has flushed, else the container measures 0.
+    requestAnimationFrame(() => { try { fit.fit(); } catch (e) {} sendResize(); });
+    // Keystrokes (incl. arrows/Enter/Ctrl+C as escape sequences) → PTY.
+    term.onData((d) => {
+      fetch("/term/input", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, data: b64enc(new TextEncoder().encode(d)) }) }).catch(() => {});
+    });
+    term.onResize(sendResize);
+    window.addEventListener("resize", onWinResize);
+    // Live output stream.
+    es = new EventSource("/term?id=" + encodeURIComponent(id));
+    es.onmessage = (e) => { if (term) term.write(b64dec(e.data)); };
+    setTimeout(() => term && term.focus(), 60);
+  }
+  function sendResize() {
+    if (!term || !termId) return;
+    fetch("/term/resize", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: termId, cols: term.cols, rows: term.rows }) }).catch(() => {});
+  }
+  function onWinResize() { if (fit) { try { fit.fit(); } catch (e) {} } }
+  function closeTerm() {
+    if (es) { es.close(); es = null; }
+    window.removeEventListener("resize", onWinResize);
+    if (term) { term.dispose(); term = null; }
+    fit = null; termId = null;
+    document.getElementById("term").classList.remove("on");
+  }
+  document.getElementById("term-back").addEventListener("click", closeTerm);
 </script>
+<script src="/xterm.js"></script>
+<script src="/addon-fit.js"></script>
 </body>
 </html>

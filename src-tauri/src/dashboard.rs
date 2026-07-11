@@ -8,15 +8,19 @@
 //! turns into a keystroke to the target pane. Bound to localhost by default;
 //! LAN (0.0.0.0) is opt-in since the send endpoint can drive an agent.
 
+use std::io::Read;
 use std::net::{Ipv4Addr, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
-use tiny_http::{Header, Method, Response, Server};
+use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
+use crate::core::registry::Registry;
 use crate::error::CommandError;
 use crate::state::AppState;
 
@@ -43,6 +47,10 @@ pub struct DashboardInfo {
 }
 
 const PAGE: &str = include_str!("dashboard.html");
+// xterm.js bundled + served same-origin so the full web terminal works offline.
+const XTERM_JS: &str = include_str!("../../node_modules/@xterm/xterm/lib/xterm.js");
+const XTERM_CSS: &str = include_str!("../../node_modules/@xterm/xterm/css/xterm.css");
+const ADDON_FIT_JS: &str = include_str!("../../node_modules/@xterm/addon-fit/lib/addon-fit.js");
 
 /// Best-effort primary LAN IPv4 (no packet is actually sent — the connect just
 /// picks the outbound interface). None if it can't be determined.
@@ -120,7 +128,8 @@ pub fn dashboard_start(
     let stop = Arc::new(AtomicBool::new(false));
     let stop_thread = stop.clone();
     let app_thread = app.clone();
-    std::thread::spawn(move || serve(server, snapshot, stop_thread, app_thread));
+    let registry = state.registry.clone();
+    std::thread::spawn(move || serve(server, snapshot, stop_thread, app_thread, registry));
 
     inner.running = true;
     inner.port = port;
@@ -134,38 +143,157 @@ fn json_response(body: String) -> Response<std::io::Cursor<Vec<u8>>> {
     Response::from_string(body).with_header(header)
 }
 
-fn serve(server: Server, snapshot: Arc<Mutex<String>>, stop: Arc<AtomicBool>, app: AppHandle) {
+fn header(name: &[u8], value: &[u8]) -> Header {
+    Header::from_bytes(name, value).unwrap()
+}
+
+fn respond_404(request: Request) {
+    let _ = request.respond(Response::from_string("not found").with_status_code(404));
+}
+
+/// Serve a bundled static asset (xterm.js / css) with a content type.
+fn asset(request: Request, body: &'static str, mime: &[u8]) {
+    let _ = request.respond(Response::from_string(body).with_header(header(b"Content-Type", mime)));
+}
+
+/// Extract `id` from a `?id=...&...` query string.
+fn query_id(url: &str) -> Option<String> {
+    let q = url.split_once('?')?.1;
+    q.split('&').find_map(|p| p.strip_prefix("id=").map(|v| v.to_string()))
+}
+
+fn read_body(request: &mut Request) -> serde_json::Value {
+    let mut body = String::new();
+    let _ = request.as_reader().read_to_string(&mut body);
+    serde_json::from_str(&body).unwrap_or(serde_json::Value::Null)
+}
+
+fn serve(
+    server: Server,
+    snapshot: Arc<Mutex<String>>,
+    stop: Arc<AtomicBool>,
+    app: AppHandle,
+    registry: Arc<Mutex<Registry>>,
+) {
     loop {
         if stop.load(Ordering::SeqCst) {
             break;
         }
         // Timeout so the stop flag is checked even with no traffic.
-        let mut request = match server.recv_timeout(Duration::from_millis(500)) {
+        let request = match server.recv_timeout(Duration::from_millis(500)) {
             Ok(Some(r)) => r,
             Ok(None) => continue,
             Err(_) => break,
         };
-        let url = request.url().to_string();
-        let method = request.method().clone();
+        // One thread per request: a /term SSE stream holds its connection open
+        // for the life of the terminal, so it must not block the accept loop.
+        let (snapshot, app, registry) = (snapshot.clone(), app.clone(), registry.clone());
+        std::thread::spawn(move || handle(request, snapshot, app, registry));
+    }
+}
 
-        if method == Method::Get && (url == "/" || url.starts_with("/?")) {
-            let ct = Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
-                .unwrap();
+fn handle(
+    mut request: Request,
+    snapshot: Arc<Mutex<String>>,
+    app: AppHandle,
+    registry: Arc<Mutex<Registry>>,
+) {
+    let url = request.url().to_string();
+    let method = request.method().clone();
+    let path = url.split('?').next().unwrap_or("").to_string();
+
+    match (method, path.as_str()) {
+        (Method::Get, "/") => {
+            let ct = header(b"Content-Type", b"text/html; charset=utf-8");
             // No-cache so a rebuilt page always loads fresh on refresh.
-            let nc = Header::from_bytes(&b"Cache-Control"[..], &b"no-cache, no-store"[..]).unwrap();
+            let nc = header(b"Cache-Control", b"no-cache, no-store");
             let _ = request.respond(Response::from_string(PAGE).with_header(ct).with_header(nc));
-        } else if method == Method::Get && url == "/api/fleet" {
+        }
+        (Method::Get, "/xterm.js") => asset(request, XTERM_JS, b"application/javascript"),
+        (Method::Get, "/addon-fit.js") => asset(request, ADDON_FIT_JS, b"application/javascript"),
+        (Method::Get, "/xterm.css") => asset(request, XTERM_CSS, b"text/css"),
+        (Method::Get, "/api/fleet") => {
             let body = snapshot.lock().unwrap().clone();
             let body = if body.is_empty() { "{\"agents\":[]}".to_string() } else { body };
             let _ = request.respond(json_response(body));
-        } else if method == Method::Post && url == "/api/send" {
+        }
+        (Method::Post, "/api/send") => {
             let mut body = String::new();
             let _ = request.as_reader().read_to_string(&mut body);
             // Forward the raw JSON to the frontend, which validates + delivers.
             let _ = app.emit("dashboard-send", body);
             let _ = request.respond(json_response("{\"ok\":true}".into()));
-        } else {
-            let _ = request.respond(Response::from_string("not found").with_status_code(404));
         }
+        // Full web terminal: SSE output stream + raw input + resize.
+        (Method::Get, "/term") => sse_terminal(request, registry, query_id(&url)),
+        (Method::Post, "/term/input") => {
+            let v = read_body(&mut request);
+            if let (Some(id), Some(data)) = (
+                v.get("id").and_then(|x| x.as_str()),
+                v.get("data").and_then(|x| x.as_str()),
+            ) {
+                if let Ok(bytes) = STANDARD.decode(data) {
+                    let _ = registry.lock().unwrap().write_input(id, &bytes);
+                }
+            }
+            let _ = request.respond(json_response("{\"ok\":true}".into()));
+        }
+        (Method::Post, "/term/resize") => {
+            let v = read_body(&mut request);
+            if let Some(id) = v.get("id").and_then(|x| x.as_str()) {
+                let cols = v.get("cols").and_then(|x| x.as_u64()).unwrap_or(80) as u16;
+                let rows = v.get("rows").and_then(|x| x.as_u64()).unwrap_or(24) as u16;
+                let _ = registry.lock().unwrap().resize(id, cols, rows);
+            }
+            let _ = request.respond(json_response("{\"ok\":true}".into()));
+        }
+        _ => respond_404(request),
+    }
+}
+
+/// Stream an agent's live output to the browser as Server-Sent Events. Each PTY
+/// chunk is base64-encoded into one `data:` frame; xterm.js decodes and writes
+/// it. Blocks in its own thread until the agent exits or the client disconnects.
+fn sse_terminal(request: Request, registry: Arc<Mutex<Registry>>, id: Option<String>) {
+    let id = match id {
+        Some(i) => i,
+        None => return respond_404(request),
+    };
+    let rx = match registry.lock().unwrap().tap(&id) {
+        Ok(r) => r,
+        Err(_) => return respond_404(request),
+    };
+    let headers = vec![
+        header(b"Content-Type", b"text/event-stream"),
+        header(b"Cache-Control", b"no-cache"),
+    ];
+    let reader = SseReader { rx, pending: Vec::new(), pos: 0 };
+    // data_length None → chunked transfer, streamed as the reader yields.
+    let resp = Response::new(StatusCode(200), headers, reader, None, None);
+    let _ = request.respond(resp);
+}
+
+/// A blocking `Read` that turns an agent's output channel into an SSE byte
+/// stream. Reads block on the channel; a closed channel (agent gone) ends it.
+struct SseReader {
+    rx: Receiver<Vec<u8>>,
+    pending: Vec<u8>,
+    pos: usize,
+}
+impl Read for SseReader {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        if self.pos >= self.pending.len() {
+            match self.rx.recv() {
+                Ok(chunk) => {
+                    self.pending = format!("data: {}\n\n", STANDARD.encode(&chunk)).into_bytes();
+                    self.pos = 0;
+                }
+                Err(_) => return Ok(0), // agent exited → EOF closes the stream
+            }
+        }
+        let n = std::cmp::min(out.len(), self.pending.len() - self.pos);
+        out[..n].copy_from_slice(&self.pending[self.pos..self.pos + n]);
+        self.pos += n;
+        Ok(n)
     }
 }

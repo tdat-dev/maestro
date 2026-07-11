@@ -54,6 +54,16 @@ impl Registry {
         Ok(())
     }
 
+    /// Subscribe to an agent's live output (remote web terminal). Scrollback is
+    /// replayed into the returned channel first.
+    pub fn tap(&self, id: &str) -> Result<std::sync::mpsc::Receiver<Vec<u8>>> {
+        Ok(self
+            .agents
+            .get(id)
+            .ok_or_else(|| anyhow!("no agent '{id}'"))?
+            .tap())
+    }
+
     pub fn write_input(&mut self, id: &str, bytes: &[u8]) -> Result<()> {
         self.agents
             .get_mut(id)

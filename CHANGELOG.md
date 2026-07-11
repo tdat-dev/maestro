@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Maestro enforces its board protocol on Claude agents** — every Claude Code
+  agent Maestro spawns is launched with `--append-system-prompt` carrying the
+  plan-first rules, so it *must* plan on the board (call `board_get`, add cards,
+  report via `card_move`/`card_done`) rather than treating the MCP hint as
+  optional. No button, no terminal noise; other CLIs still get the MCP tools
+  and server instructions.
 - **Board toolbar simplified** — the maestro-mcp server now ships the plan-first
   convention (few big cards, small steps as each card's checklist, report via
   `card_move`/`card_done`) as its MCP instructions, so an agent with the board

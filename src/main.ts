@@ -106,6 +106,12 @@ interface Pane {
 // No PTY output for this long while alive ⇒ the agent is idle (waiting at a prompt).
 const IDLE_MS = 1200;
 
+// The board protocol every Maestro-spawned Claude agent is forced to follow
+// (injected via --append-system-prompt). One line, and free of cmd.exe
+// metacharacters (& | < > % ! ^ ( ) " ') so it survives the cmd /c launch path.
+const MAESTRO_LAWS =
+  "You are running inside Maestro, which gives this workspace a shared kanban board through the maestro MCP tools. For any non-trivial task you MUST plan on the board before implementing. First call board_get. Then for each deliverable call card_add in the Proposed list with a short title, a one-line desc, and the small concrete steps as the checklist array. Prefer few big cards over many tiny ones. Wait for the user to approve by moving cards to To do. While working, card_move your card to Doing when you start it and card_done with a one-line summary when it is finished. Keep card titles stable so the board can track them.";
+
 // Per-CLI identity color for the monogram tile (brand-adjacent, distinct on dark).
 const CLI_COLORS: Record<string, string> = {
   claude: "#d97757",
@@ -1141,9 +1147,16 @@ function createAgent(
       } else if (spec.worktree) {
         cwd = spec.worktree;
       }
+      // Enforce Maestro's board protocol at the system-prompt level so a
+      // Claude agent MUST plan on the board (not a soft MCP hint, not a button).
+      // Only claude exposes --append-system-prompt; other CLIs still get the MCP
+      // tools + server instructions. New array — never mutate spec.args, or a
+      // restart would append the flag again and again.
+      const args =
+        spec.badge === "claude" ? [...spec.args, "--append-system-prompt", MAESTRO_LAWS] : spec.args;
       // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows
       // can actually launch them — see launchSpec.
-      const launch = launchSpec(spec.program, spec.args);
+      const launch = launchSpec(spec.program, args);
       // Identity for the child process: maestro-mcp uses MAESTRO_AGENT to
       // stamp who moved/finished a board card (see mcp/src/server.ts).
       const envPairs: Array<[string, string]> = [

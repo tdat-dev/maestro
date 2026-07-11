@@ -285,7 +285,21 @@ impl Read for SseReader {
         if self.pos >= self.pending.len() {
             match self.rx.recv() {
                 Ok(chunk) => {
-                    self.pending = format!("data: {}\n\n", STANDARD.encode(&chunk)).into_bytes();
+                    // tiny_http wraps the socket in a 1024-byte BufWriter and only
+                    // flushes when it fills or the response ends — but an SSE stream
+                    // never ends, so small frames (a keystroke echo) stall in the
+                    // buffer. Pad each frame past 1 KB with an ignored `:` comment
+                    // line so every frame overflows the buffer and flushes at once.
+                    let mut frame = format!("data: {}\n", STANDARD.encode(&chunk));
+                    const MIN: usize = 1500;
+                    let l = frame.len();
+                    if l + 3 < MIN {
+                        frame.push(':');
+                        frame.push_str(&" ".repeat(MIN - l - 3));
+                        frame.push('\n');
+                    }
+                    frame.push('\n');
+                    self.pending = frame.into_bytes();
                     self.pos = 0;
                 }
                 Err(_) => return Ok(0), // agent exited → EOF closes the stream

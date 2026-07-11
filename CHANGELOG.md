@@ -14,7 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Server-Sent Events, with keystrokes (including arrows, Enter, Ctrl+C, and
   editing) sent straight to the agent's PTY. Type directly and interactively
   from your phone — no key buttons needed — the same as sitting at the machine.
-  xterm.js is bundled and served same-origin so it works offline/LAN.
+  xterm.js is bundled and served same-origin so it works offline/LAN. Output is
+  flushed per frame (tiny_http's 1 KB buffer otherwise stalled the stream) and
+  keystrokes are sent through a single-in-flight queue so a fast burst can't
+  arrive out of order and scramble the line.
 
 ### Changed
 

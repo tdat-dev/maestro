@@ -169,6 +169,7 @@
   }
 
   async function tick() {
+    if (term) return; // don't poll the roster while a full terminal is open
     try {
       const r = await fetch("/api/fleet");
       render(await r.json());
@@ -186,6 +187,21 @@
   const b64enc = (bytes) => btoa(String.fromCharCode(...bytes));
   const b64dec = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
   let term = null, fit = null, es = null, termId = null;
+  // Input ordering: each keystroke can't be its own racing POST (they arrive
+  // out of order and scramble the line). Keep ONE request in flight; keys typed
+  // while it's away accumulate and go next, so bytes reach the PTY in order.
+  let sendQ = "", sendBusy = false;
+  async function flushInput() {
+    if (sendBusy || !sendQ || !termId) return;
+    sendBusy = true;
+    const data = sendQ; sendQ = "";
+    try {
+      await fetch("/term/input", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: termId, data: b64enc(new TextEncoder().encode(data)) }) });
+    } catch (e) {}
+    sendBusy = false;
+    if (sendQ) flushInput();
+  }
 
   function openTerm(id, name) {
     termId = id;
@@ -200,11 +216,10 @@
     term.open(host);
     // Fit after layout has flushed, else the container measures 0.
     requestAnimationFrame(() => { try { fit.fit(); } catch (e) {} sendResize(); });
-    // Keystrokes (incl. arrows/Enter/Ctrl+C as escape sequences) → PTY.
-    term.onData((d) => {
-      fetch("/term/input", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, data: b64enc(new TextEncoder().encode(d)) }) }).catch(() => {});
-    });
+    // Keystrokes (incl. arrows/Enter/Ctrl+C as escape sequences) → PTY, queued
+    // so a fast burst can't arrive out of order.
+    sendQ = ""; sendBusy = false;
+    term.onData((d) => { sendQ += d; flushInput(); });
     term.onResize(sendResize);
     window.addEventListener("resize", onWinResize);
     // Live output stream.

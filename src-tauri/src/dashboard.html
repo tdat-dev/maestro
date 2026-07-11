@@ -186,7 +186,7 @@
   /* ---- full web terminal (xterm.js over SSE + input POST) ---- */
   const b64enc = (bytes) => btoa(String.fromCharCode(...bytes));
   const b64dec = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-  let term = null, fit = null, ws = null, termId = null;
+  let term = null, fit = null, ws = null, termId = null, tro = null;
 
   function openTerm(id, name) {
     termId = id;
@@ -210,7 +210,15 @@
     ws.onmessage = (e) => { if (term) term.write(new Uint8Array(e.data)); };
     term.onData((d) => { if (ws && ws.readyState === 1) ws.send(enc2.encode(d)); });
     term.onResize(sendResize);
-    window.addEventListener("resize", onWinResize);
+    // The PTY is shared with Maestro's own pane, and a PTY has ONE size — when
+    // the app pane regains focus it re-imposes its size, so on Alt+Tab back the
+    // web view can be mismatched. Re-fit + re-sync whenever WE regain focus /
+    // become visible / resize, so the last-focused client's size wins.
+    window.addEventListener("resize", refit);
+    window.addEventListener("focus", refit);
+    document.addEventListener("visibilitychange", onVisible);
+    tro = new ResizeObserver(() => refit());
+    tro.observe(host);
     setTimeout(() => term && term.focus(), 60);
   }
   function sendResize() {
@@ -218,10 +226,18 @@
     fetch("/term/resize", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: termId, cols: term.cols, rows: term.rows }) }).catch(() => {});
   }
-  function onWinResize() { if (fit) { try { fit.fit(); } catch (e) {} } }
+  function refit() {
+    if (!fit || !term) return;
+    try { fit.fit(); } catch (e) {}
+    sendResize(); // re-assert our size even if fit() didn't change cols/rows
+  }
+  function onVisible() { if (document.visibilityState === "visible") setTimeout(refit, 40); }
   function closeTerm() {
     if (ws) { try { ws.close(); } catch (e) {} ws = null; }
-    window.removeEventListener("resize", onWinResize);
+    window.removeEventListener("resize", refit);
+    window.removeEventListener("focus", refit);
+    document.removeEventListener("visibilitychange", onVisible);
+    if (tro) { tro.disconnect(); tro = null; }
     if (term) { term.dispose(); term = null; }
     fit = null; termId = null;
     document.getElementById("term").classList.remove("on");

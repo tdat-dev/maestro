@@ -3216,15 +3216,21 @@ window.setInterval(() => {
   if (dashboardOn) void dashboardPush(fleetSnapshotJson()).catch(() => {});
 }, 2000);
 
-// A message typed on the dashboard page → deliver into the target pane's PTY.
+// A message OR a raw key from the dashboard page → deliver into the pane's PTY.
+// `keys` is a raw escape sequence sent as-is (arrows, Enter alone, Esc, ^C, Tab)
+// so an interactive menu like /resume can be driven; `message` is text + Enter.
 void onDashboardSend((body) => {
   try {
-    const o = JSON.parse(body) as { paneId?: unknown; message?: unknown };
-    if (typeof o.paneId !== "string" || typeof o.message !== "string" || !o.message.trim()) return;
+    const o = JSON.parse(body) as { paneId?: unknown; message?: unknown; keys?: unknown };
+    if (typeof o.paneId !== "string") return;
+    let data: string | null = null;
+    if (typeof o.keys === "string" && o.keys) data = o.keys;
+    else if (typeof o.message === "string" && o.message.trim()) data = o.message + "\r";
+    if (data === null) return;
     for (const ws of workspaces.values()) {
       const pane = ws.panes.get(o.paneId);
       if (pane && pane.running) {
-        void sendInput(pane.id, o.message + "\r").catch(() => {});
+        void sendInput(pane.id, data).catch(() => {});
         return;
       }
     }

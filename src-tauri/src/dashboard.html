@@ -36,6 +36,11 @@
     white-space:pre-wrap;word-break:break-word;color:#cbd5e1}
   .row.open .out{display:block}
   .out .empty-out{color:var(--muted2)}
+  .keys{display:none;grid-column:1/-1;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .row.open .keys{display:flex}
+  .keys button{flex:0 0 auto;min-width:42px;height:36px;padding:0 10px;background:var(--s2);
+    border:1px solid var(--line2);border-radius:8px;color:var(--text);font-size:14px;font-weight:600}
+  .keys button:active{background:var(--accent);color:var(--ink)}
   .send{display:none;grid-column:1/-1;gap:8px;margin-top:8px}
   .row.open .send{display:flex}
   .send input{flex:1;background:var(--s0);border:1px solid var(--line2);color:var(--text);
@@ -55,15 +60,24 @@
   const enc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
   let openId = null;
 
-  async function send(paneId, input) {
+  async function post(paneId, payload) {
+    try {
+      await fetch("/api/send", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paneId, ...payload }) });
+      setTimeout(tick, 250); // refresh soon so the effect shows quickly
+    } catch (e) {}
+  }
+  function send(paneId, input) {
     const message = input.value.trim();
     if (!message) return;
     input.value = "";
-    try {
-      await fetch("/api/send", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paneId, message }) });
-    } catch (e) {}
+    post(paneId, { message });
   }
+  // Raw key sequences an interactive TUI (e.g. /resume) needs.
+  const KEYS = [
+    ["[A", "↑"], ["[B", "↓"], ["\r", "⏎ Enter"],
+    ["", "Esc"], ["\t", "Tab"], ["", "^C"],
+  ];
 
   function render(data) {
     const agents = (data && data.agents) || [];
@@ -91,18 +105,18 @@
         <span class="meta">${enc(a.wsName || "")}${a.uptime ? " · " + enc(a.uptime) : ""}</span>
         <span class="st">${enc(a.status)}</span>
         <pre class="out">${body}</pre>
+        <div class="keys">${KEYS.map((k, i) => `<button data-k="${i}">${enc(k[1])}</button>`).join("")}</div>
         <div class="send">
           <input placeholder="Message this agent…" autocomplete="off">
-          <button>Send</button>
+          <button class="send-btn">Send</button>
         </div>
       </div>`;
     }).join("");
     for (const row of list.querySelectorAll(".row")) {
       const id = row.dataset.id;
       const input = row.querySelector("input");
-      const btn = row.querySelector("button");
       row.addEventListener("click", (e) => {
-        if (e.target.closest(".send") || e.target.closest(".out")) return;
+        if (e.target.closest(".send") || e.target.closest(".out") || e.target.closest(".keys")) return;
         openId = openId === id ? null : id;
         render(data);
         if (openId === id) {
@@ -112,8 +126,10 @@
           if (pre) pre.scrollTop = pre.scrollHeight; // jump to latest
         }
       });
-      btn.addEventListener("click", () => send(id, input));
+      row.querySelector(".send-btn").addEventListener("click", () => send(id, input));
       input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(id, input); });
+      for (const kb of row.querySelectorAll(".keys button"))
+        kb.addEventListener("click", () => post(id, { keys: KEYS[+kb.dataset.k][0] }));
     }
     // Restore the in-progress message + focus after the rebuild.
     if (typingId != null) {

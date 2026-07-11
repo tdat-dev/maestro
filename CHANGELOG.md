@@ -45,10 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bridge so agents can hand off work to each other.
 - **Remote fleet dashboard** — Settings → *Remote fleet dashboard*: Maestro
   serves a small web page (default localhost, LAN opt-in) showing every agent
-  and its status. Tap an agent to see a live plain-text tail of its terminal
-  output *and* send it a message — so you can actually read what it is doing
-  before acting, not just fire commands blind. The LAN toggle is off by default
-  since the page can drive an agent.
+  and its status. Tap an agent to see a live tail of its terminal output (read
+  straight from the rendered screen, so a TUI's spinners don't spam) *and* drive
+  it: a row of key buttons (up/down/Enter/Esc/Tab/^C) sends raw keys so you can
+  navigate an interactive menu like `/resume` from your phone, plus a message
+  box for text. The LAN toggle is off by default since the page can drive an
+  agent.
 - **Scheduled agents** — Settings → *Manage schedules*: launch a saved crew
   preset automatically at a set time, once or daily. Each schedule shows its
   next run and can be paused or deleted.

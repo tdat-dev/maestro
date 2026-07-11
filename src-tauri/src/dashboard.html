@@ -64,7 +64,9 @@
     try {
       await fetch("/api/send", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paneId, ...payload }) });
-      setTimeout(tick, 250); // refresh soon so the effect shows quickly
+      // Refresh a few times so the key's effect shows fast (the app pushes
+      // fresh output ~150ms + ~450ms after delivery).
+      for (const d of [200, 500, 900]) setTimeout(tick, d);
     } catch (e) {}
   }
   function send(paneId, input) {
@@ -156,7 +158,7 @@
     }
   }
   tick();
-  setInterval(tick, 2000);
+  setInterval(tick, 1000);
 </script>
 </body>
 </html>

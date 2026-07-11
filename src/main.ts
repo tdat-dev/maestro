@@ -3212,9 +3212,10 @@ function fleetSnapshotJson(): string {
 }
 
 let dashboardOn = false;
-window.setInterval(() => {
+function pushDash(): void {
   if (dashboardOn) void dashboardPush(fleetSnapshotJson()).catch(() => {});
-}, 2000);
+}
+window.setInterval(pushDash, 1000);
 
 // A message OR a raw key from the dashboard page → deliver into the pane's PTY.
 // `keys` is a raw escape sequence sent as-is (arrows, Enter alone, Esc, ^C, Tab)
@@ -3231,6 +3232,10 @@ void onDashboardSend((body) => {
       const pane = ws.panes.get(o.paneId);
       if (pane && pane.running) {
         void sendInput(pane.id, data).catch(() => {});
+        // Push fresh output a beat later so the dashboard sees the key's effect
+        // quickly instead of waiting for the next 1s tick.
+        window.setTimeout(pushDash, 150);
+        window.setTimeout(pushDash, 450);
         return;
       }
     }

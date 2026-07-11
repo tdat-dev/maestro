@@ -21,7 +21,7 @@ use tauri::{AppHandle, Emitter, State};
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
 use crate::core::registry::Registry;
-use crate::error::CommandError;
+use crate::error::{run_blocking, CommandError};
 use crate::state::AppState;
 
 #[derive(Default)]
@@ -34,6 +34,7 @@ struct Inner {
     running: bool,
     port: u16,
     lan: bool,
+    urls: Vec<String>, // computed once at start (off the main thread), then cached
     snapshot: Arc<Mutex<String>>,
     stop: Option<Arc<AtomicBool>>,
 }
@@ -78,11 +79,8 @@ fn info(inner: &Inner) -> DashboardInfo {
         running: inner.running,
         port: inner.port,
         lan: inner.lan,
-        urls: if inner.running {
-            urls_for(inner.port, inner.lan)
-        } else {
-            vec![]
-        },
+        // Cached — never call local_ip() here (this runs on the UI thread).
+        urls: if inner.running { inner.urls.clone() } else { vec![] },
     }
 }
 
@@ -109,31 +107,41 @@ pub fn dashboard_stop(state: State<'_, AppState>) -> DashboardInfo {
 }
 
 #[tauri::command]
-pub fn dashboard_start(
+pub async fn dashboard_start(
     app: AppHandle,
     state: State<'_, AppState>,
     port: u16,
     lan: bool,
 ) -> Result<DashboardInfo, CommandError> {
-    let mut inner = state.dashboard.inner.lock().unwrap();
-    // Restart cleanly if already running (e.g. port/lan changed).
-    if let Some(stop) = inner.stop.take() {
+    // Grab what the server thread needs WITHOUT holding a lock across an await.
+    let snapshot = state.dashboard.inner.lock().unwrap().snapshot.clone();
+    let registry = state.registry.clone();
+    // Stop any previous server before rebinding.
+    if let Some(stop) = state.dashboard.inner.lock().unwrap().stop.take() {
         stop.store(true, Ordering::SeqCst);
     }
-    let bind = if lan { Ipv4Addr::UNSPECIFIED } else { Ipv4Addr::LOCALHOST };
-    let server = Server::http((bind, port))
-        .map_err(|e| CommandError::Failed(format!("dashboard: cannot bind port {port}: {e}")))?;
 
-    let snapshot = inner.snapshot.clone();
+    // Binding to 0.0.0.0 (LAN) and probing the local IP can block; do it OFF the
+    // main/UI thread so toggling LAN never freezes the app.
+    let bind = if lan { Ipv4Addr::UNSPECIFIED } else { Ipv4Addr::LOCALHOST };
+    let (server, urls) = run_blocking(move || {
+        let server = Server::http((bind, port)).map_err(|e| {
+            CommandError::Failed(format!("dashboard: cannot bind port {port}: {e}"))
+        })?;
+        Ok((server, urls_for(port, lan)))
+    })
+    .await?;
+
     let stop = Arc::new(AtomicBool::new(false));
     let stop_thread = stop.clone();
     let app_thread = app.clone();
-    let registry = state.registry.clone();
     std::thread::spawn(move || serve(server, snapshot, stop_thread, app_thread, registry));
 
+    let mut inner = state.dashboard.inner.lock().unwrap();
     inner.running = true;
     inner.port = port;
     inner.lan = lan;
+    inner.urls = urls;
     inner.stop = Some(stop);
     Ok(info(&inner))
 }

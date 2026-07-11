@@ -13,11 +13,13 @@ import { fsReadFile, fsWriteFile, fsStat, fsCreateDir, fsCreateFile } from "./ip
 const MAESTRO_DIR = ".maestro";
 const FLEET_REL = ".maestro\\fleet.json";
 const OUTBOX_REL = ".maestro\\outbox.jsonl";
+const SPAWN_REL = ".maestro\\spawn-requests.jsonl";
 
 export interface BridgeAgent {
   id: string;
   name: string;
   status: "needs" | "active" | "idle" | "stopped";
+  screen?: string; // recent on-screen text, for the MCP agent_output tool
 }
 export interface BridgeWorkspace {
   dir: string;
@@ -25,7 +27,7 @@ export interface BridgeWorkspace {
   agents: BridgeAgent[];
 }
 
-/** The roster JSON the MCP `fleet_status` tool reads. */
+/** The roster JSON the MCP `fleet_status` / `agent_output` tools read. */
 export function serializeFleet(ws: BridgeWorkspace): string {
   return JSON.stringify({
     agents: ws.agents.map((a) => ({
@@ -33,6 +35,7 @@ export function serializeFleet(ws: BridgeWorkspace): string {
       name: a.name,
       status: a.status,
       workspace: ws.name,
+      screen: a.screen ?? "",
     })),
   });
 }
@@ -58,16 +61,42 @@ export function parseOutboxLine(line: string): OutboxLine | null {
   return { to: typeof r.to === "string" && r.to.trim() ? r.to : null, message: r.message };
 }
 
+export interface SpawnLine {
+  cli: string;
+  task: string | null;
+  count: number;
+}
+
+/** Parse one spawn-request jsonl line, or null if unusable. */
+export function parseSpawnLine(line: string): SpawnLine | null {
+  const t = line.trim();
+  if (!t) return null;
+  let o: unknown;
+  try {
+    o = JSON.parse(t);
+  } catch {
+    return null;
+  }
+  if (!o || typeof o !== "object") return null;
+  const r = o as Record<string, unknown>;
+  if (typeof r.cli !== "string" || !r.cli.trim()) return null;
+  const count = typeof r.count === "number" ? Math.max(1, Math.min(r.count, 6)) : 1;
+  return { cli: r.cli, task: typeof r.task === "string" && r.task.trim() ? r.task : null, count };
+}
+
 export interface FleetBridgeHost {
   /** Every workspace that has a folder, with its current agents. */
   workspaces(): BridgeWorkspace[];
   /** Deliver a message into a workspace's agent(s): `to` name, or null = all. */
   deliver(dir: string, to: string | null, message: string): void;
+  /** Spawn worker agent(s) an agent requested (conductor grows its crew). */
+  spawn(dir: string, req: SpawnLine): void;
 }
 
 // Per-dir count of outbox lines already delivered. First sight of a workspace
 // records the current length so a restart doesn't replay the whole backlog.
 const consumed = new Map<string, number>();
+const spawnConsumed = new Map<string, number>();
 // Per-dir last fleet.json we wrote, to skip no-op writes (status unchanged).
 const lastFleet = new Map<string, string>();
 
@@ -86,6 +115,7 @@ export function initFleetBridge(host: FleetBridgeHost, intervalMs = 1500): () =>
       if (!ws.dir) continue;
       void publishRoster(ws);
       void drainOutbox(ws.dir, host);
+      void drainSpawns(ws.dir, host);
     }
   }, intervalMs);
   return () => window.clearInterval(timer);
@@ -127,4 +157,25 @@ async function drainOutbox(dir: string, host: FleetBridgeHost): Promise<void> {
     if (parsed) host.deliver(dir, parsed.to, parsed.message);
   }
   consumed.set(dir, lines.length);
+}
+
+async function drainSpawns(dir: string, host: FleetBridgeHost): Promise<void> {
+  let content: string;
+  try {
+    await fsStat(dir, SPAWN_REL);
+    content = (await fsReadFile(dir, SPAWN_REL)).content;
+  } catch {
+    return; // no spawn requests yet
+  }
+  const lines = content.split(/\r?\n/).filter((l) => l.trim());
+  const seen = spawnConsumed.get(dir);
+  if (seen === undefined) {
+    spawnConsumed.set(dir, lines.length); // skip backlog on first sight
+    return;
+  }
+  for (let i = seen; i < lines.length; i += 1) {
+    const parsed = parseSpawnLine(lines[i]);
+    if (parsed) host.spawn(dir, parsed);
+  }
+  spawnConsumed.set(dir, lines.length);
 }

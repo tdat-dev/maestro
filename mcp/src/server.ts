@@ -18,7 +18,7 @@ import {
   deleteList,
 } from "./ops.js";
 import { changedFiles } from "./git.js";
-import { readFleet, queueMessage } from "./fleet.js";
+import { readFleet, queueMessage, readAgentScreen, queueSpawn } from "./fleet.js";
 
 type ToolResult = {
   content: { type: "text"; text: string }[];
@@ -235,6 +235,45 @@ export function createServer(dir: string): McpServer {
       try {
         const m = queueMessage(dir, { from: agentName, to, message, now: Date.now() });
         return ok(m.to ? `sent to ${m.to}` : "broadcast to the fleet");
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "agent_output",
+    {
+      description:
+        "Read the recent on-screen text of another agent in this workspace (by name, from fleet_status). Use to check a worker's progress or whether it is stuck/waiting.",
+      inputSchema: { agent: z.string().describe("Agent name (from fleet_status)") },
+    },
+    async ({ agent }) => {
+      try {
+        const screen = readAgentScreen(dir, agent);
+        if (screen === null) return fail(`no agent "${agent}" — see fleet_status`);
+        return ok(screen || "(no output yet)");
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "agent_spawn",
+    {
+      description:
+        "Ask Maestro to spawn new worker agent(s) in this workspace — for a conductor that grows its own crew. `cli` is a CLI id (claude, codex, gemini, aider, …) or a raw command. Optional `task` is typed into each new agent; `count` (1–6) spawns several.",
+      inputSchema: {
+        cli: z.string().describe("CLI id (claude, codex, …) or a raw command"),
+        task: z.string().optional().describe("Prompt to type into each new agent"),
+        count: z.number().int().min(1).max(6).optional().describe("How many to spawn (default 1)"),
+      },
+    },
+    async ({ cli, task, count }) => {
+      try {
+        const r = queueSpawn(dir, { from: agentName, cli, task, count, now: Date.now() });
+        return ok(`queued ${r.count}× ${r.cli}${r.task ? " with a task" : ""}`);
       } catch (e) {
         return fail(e);
       }

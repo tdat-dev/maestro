@@ -42,6 +42,8 @@ claude mcp add --scope user maestro -- node <absolute path to mcp/dist/index.js>
 | `list_add` / `list_rename` / `list_delete` | Manage lists |
 | `fleet_status` | List the other agents Maestro runs in this workspace + their live status (needs / active / idle / stopped) |
 | `fleet_send` | Send a message into another agent's terminal (or broadcast to all) — for hand-offs and coordination |
+| `agent_output` | Read the recent on-screen text of another agent (by name) — check a worker's progress or whether it's stuck |
+| `agent_spawn` | Ask Maestro to spawn new worker agent(s) in this workspace — a conductor grows its own crew (with an optional task) |
 
 Cards and lists are addressed by id (from `board_get`) or by title; ambiguous
 titles are rejected with a hint to use the id. Labels:
@@ -63,6 +65,12 @@ roster to `<workspace>/.maestro/fleet.json`, and `fleet_send` appends to
 `<workspace>/.maestro/outbox.jsonl`, which Maestro watches and types into the
 target agent's terminal. This is the substrate a "conductor" agent uses to
 hand work to idle agents.
+
+A conductor goes further with `agent_output` (read a worker's screen to see its
+progress) and `agent_spawn` (grow its own crew): Maestro publishes each agent's
+recent screen into `fleet.json`, and `agent_spawn` appends to
+`.maestro/spawn-requests.jsonl`, which Maestro watches and boots the requested
+CLI(s) into the same workspace.
 
 ## How it stays in sync
 

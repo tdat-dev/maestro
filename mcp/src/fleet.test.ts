@@ -2,7 +2,15 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { readFleet, queueMessage, fleetPath, outboxPath } from "./fleet.js";
+import {
+  readFleet,
+  queueMessage,
+  fleetPath,
+  outboxPath,
+  readAgentScreen,
+  queueSpawn,
+  spawnPath,
+} from "./fleet.js";
 
 let dir: string;
 beforeEach(() => {
@@ -66,5 +74,37 @@ describe("queueMessage", () => {
 
   it("rejects an empty message", () => {
     expect(() => queueMessage(dir, { message: "   ", now: 1 })).toThrow();
+  });
+});
+
+describe("readAgentScreen", () => {
+  it("returns the named agent's screen (case-insensitive), null if absent", () => {
+    fs.mkdirSync(path.join(dir, ".maestro"));
+    fs.writeFileSync(
+      fleetPath(dir),
+      JSON.stringify({
+        agents: [
+          { id: "a", name: "Claude #1", status: "active", screen: "> hello world" },
+          { id: "b", name: "Codex #1", status: "idle", screen: "" },
+        ],
+      }),
+    );
+    expect(readAgentScreen(dir, "claude #1")).toBe("> hello world");
+    expect(readAgentScreen(dir, "Codex #1")).toBe("");
+    expect(readAgentScreen(dir, "nobody")).toBeNull();
+  });
+});
+
+describe("queueSpawn", () => {
+  it("appends a spawn request, clamps count 1..6, defaults", () => {
+    const r = queueSpawn(dir, { from: "Conductor", cli: "claude", task: " build X ", count: 9, now: 3 });
+    expect(r).toEqual({ ts: 3, from: "Conductor", cli: "claude", task: "build X", count: 6 });
+    const line = JSON.parse(fs.readFileSync(spawnPath(dir), "utf8").trim());
+    expect(line.cli).toBe("claude");
+  });
+  it("defaults from=agent, task=null, count=1; rejects empty cli", () => {
+    const r = queueSpawn(dir, { cli: "codex", now: 1 });
+    expect(r).toMatchObject({ from: "agent", task: null, count: 1 });
+    expect(() => queueSpawn(dir, { cli: "  ", now: 1 })).toThrow();
   });
 });

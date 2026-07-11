@@ -1526,6 +1526,51 @@ async function spawnCrew(
   await runLimited(boots, MAX_CONCURRENT_BOOT);
 }
 
+/** A conductor agent asked (via the maestro-mcp agent_spawn tool) to grow its
+ *  crew. Spawn the worker(s) into the SAME open workspace (so they share the
+ *  board + fleet), with names unique in that workspace, and — if a task was
+ *  given — type it into each once they've had a moment to reach their prompt. */
+async function spawnForConductor(
+  dir: string,
+  req: { cli: string; task: string | null; count: number },
+): Promise<void> {
+  const ws = [...workspaces.values()].find((w) => w.dir === dir);
+  if (!ws) return; // the requesting agent's workspace isn't open anymore
+  const preset = CLI_PRESETS.find((p) => p.id === req.cli);
+  const state: CrewState = preset
+    ? { counts: { [req.cli]: req.count }, custom: "", customCount: 0 }
+    : { counts: {}, custom: req.cli, customCount: req.count };
+  const fleet = expandCrew(state);
+  if (!fleet.length) return;
+  const newNames: string[] = [];
+  const boots = fleet.map((p) => {
+    const base = p.shell && dir ? basename(dir) : p.label;
+    const taken = new Set([...ws.panes.values()].map((x) => x.spec.name));
+    let name = base;
+    for (let n = 2; taken.has(name); n += 1) name = `${base} #${n}`;
+    newNames.push(name);
+    return createAgent(ws, {
+      program: p.program,
+      args: effectiveArgs(p, false),
+      cwd: dir,
+      name,
+      badge: p.badge,
+      ...cliLook(p.badge, p.label),
+    });
+  });
+  await runLimited(boots, MAX_CONCURRENT_BOOT);
+  const task = req.task;
+  if (task) {
+    // The CLI needs a few seconds to reach its prompt before it accepts input.
+    window.setTimeout(() => {
+      for (const name of newNames) {
+        const pane = [...ws.panes.values()].find((x) => x.spec.name === name);
+        if (pane && pane.running) void sendInput(pane.id, task + "\r").catch(() => {});
+      }
+    }, 3500);
+  }
+}
+
 async function spawnFromModal() {
   const dir = mDir.value.trim() || null;
   crew.custom = mCustom.value;
@@ -2903,6 +2948,9 @@ initFleetBridge({
             },
             now,
           ),
+          // Recent on-screen text so an agent (a conductor) can read a worker's
+          // progress via the MCP agent_output tool. Capped for the file.
+          screen: p.term.snapshot(40).slice(-2000),
         })),
       });
     }
@@ -2916,6 +2964,7 @@ initFleetBridge({
       : [...ws.panes.values()].filter((p) => p.running);
     for (const p of targets) void sendInput(p.id, message + "\r").catch(() => {});
   },
+  spawn: (dir, req) => void spawnForConductor(dir, req),
 });
 void onDragDrop((e) => {
   if (e.type === "leave") return setDropTarget(null);

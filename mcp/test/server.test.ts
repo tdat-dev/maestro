@@ -31,6 +31,8 @@ describe("maestro-mcp server", () => {
   it("lists all board + fleet tools", async () => {
     const tools = (await client.listTools()).tools.map((t) => t.name).sort();
     expect(tools).toEqual([
+      "agent_output",
+      "agent_spawn",
       "board_get",
       "card_add",
       "card_delete",

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Conductor tools for agents** — maestro-mcp gains `agent_output` (read another
+  agent's on-screen text to check its progress) and `agent_spawn` (ask Maestro to
+  boot new worker agents into the same workspace, with an optional task). Combined
+  with the board and fleet tools, one agent can now act as a conductor: read the
+  board, spawn a crew, hand out work, watch each worker's screen, and mark cards
+  done. Maestro publishes each agent's screen into `.maestro/fleet.json` and
+  watches `.maestro/spawn-requests.jsonl` for the spawn requests.
 - **Full web terminal in the remote dashboard** — tapping an agent now offers
   *Open full terminal*: a real xterm.js terminal streamed from the app over
   Server-Sent Events, with keystrokes (including arrows, Enter, Ctrl+C, and

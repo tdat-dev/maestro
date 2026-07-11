@@ -9,12 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Conductor toggle** — the spawn modal has an **Add a Conductor** switch: it
-  spawns one extra agent that directs the crew instead of coding (plans the
-  board, spawns & assigns workers with `agent_spawn`/`fleet_send`, watches them
-  with `agent_output`, marks cards done). It uses the **same CLI as your first
-  pick** — pick Codex and you get a Codex conductor, not a hardcoded Claude — and
-  is off by default. Give it a goal and the crew builds itself.
+- **Conductor mode** — the spawn modal has a **Conductor** toggle that turns the
+  first agent into a conductor (it does *not* add an extra agent): it directs the
+  crew instead of coding — plans the board, spawns & assigns workers with
+  `agent_spawn`/`fleet_send`, watches them with `agent_output`, marks cards done.
+  It uses the **same CLI as your first pick** (pick Codex → a Codex conductor,
+  not a hardcoded Claude). Pick 0 workers to run just the conductor and let it
+  build its own crew. Off by default.
 - **Conductor tools for agents** — maestro-mcp gains `agent_output` (read another
   agent's on-screen text to check its progress) and `agent_spawn` (ask Maestro to
   boot new worker agents into the same workspace, with an optional task). Combined

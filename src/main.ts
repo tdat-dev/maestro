@@ -1407,8 +1407,10 @@ function loadCrew(): SavedCrew {
 }
 
 function renderCrew() {
-  const withCond = mConductor?.checked ? 1 : 0;
-  const total = expandCrew(crew).length + withCond;
+  // Conductor converts the first agent (doesn't add) — with no workers it's a
+  // lone conductor, so total is at least 1 when the toggle is on.
+  const workers = expandCrew(crew).length;
+  const total = mConductor?.checked && workers === 0 ? 1 : workers;
   crewTotalEl.textContent = String(total);
   spawnLabel.textContent = total > 0 ? `Spawn ${total} agent${total > 1 ? "s" : ""}` : "Spawn";
   (document.getElementById("mSpawn") as HTMLButtonElement).disabled = total === 0;
@@ -1508,18 +1510,39 @@ async function spawnCrew(
   conductor = false,
 ): Promise<void> {
   const fleet = expandCrew(crewState);
-  if (fleet.length === 0 && !conductor) return;
-
-  // Name agents per CLI: "Claude Code #1", "Claude Code #2"; plain label when one.
-  const perId: Record<string, number> = {};
-  const totals: Record<string, number> = {};
-  for (const p of fleet) totals[p.id] = (totals[p.id] ?? 0) + 1;
+  // Conductor CONVERTS the first agent — it doesn't add one. With no workers
+  // picked, spawn a single Claude conductor.
+  if (fleet.length === 0 && conductor) fleet.push(CLI_PRESETS.find((x) => x.id === "claude")!);
+  if (fleet.length === 0) return;
 
   // Spawn into the active workspace, or a brand-new tab.
   const ws = mode === "current" && activeWs ? activeWs : createWorkspace(dir);
   if (mode === "current" && activeWs && !activeWs.dir && dir) activeWs.dir = dir;
 
-  const boots = fleet.map((p: CliPreset) => {
+  // The first agent becomes the conductor when the toggle is on (same CLI as
+  // your first pick). Name the rest per CLI: "Claude Code #1", "#2"; plain when
+  // there is only one worker of that CLI.
+  const conductorIdx = conductor ? 0 : -1;
+  const perId: Record<string, number> = {};
+  const totals: Record<string, number> = {};
+  fleet.forEach((p, i) => {
+    if (i !== conductorIdx) totals[p.id] = (totals[p.id] ?? 0) + 1;
+  });
+  let conductorIsClaude = false;
+
+  const boots = fleet.map((p: CliPreset, i) => {
+    if (i === conductorIdx) {
+      conductorIsClaude = p.badge === "claude";
+      return createAgent(ws, {
+        program: p.program,
+        args: effectiveArgs(p, skipPerms),
+        cwd: dir,
+        name: "Conductor",
+        badge: p.badge,
+        role: "conductor",
+        ...cliLook(p.badge, p.label),
+      });
+    }
     perId[p.id] = (perId[p.id] ?? 0) + 1;
     const base = p.shell && dir ? basename(dir) : p.label;
     const name = totals[p.id] > 1 ? `${base} #${perId[p.id]}` : base;
@@ -1534,30 +1557,6 @@ async function spawnCrew(
     });
   });
 
-  // Optional Conductor: one extra agent that orchestrates the crew. It uses the
-  // SAME CLI as the first worker you picked (claude if none), so switching to
-  // Codex/Gemini makes a Codex/Gemini conductor — not a hardcoded Claude.
-  let conductorName: string | null = null;
-  let conductorIsClaude = false;
-  if (conductor) {
-    const cp =
-      CLI_PRESETS.find((x) => (crewState.counts[x.id] ?? 0) > 0) ??
-      CLI_PRESETS.find((x) => x.id === "claude")!;
-    conductorName = "Conductor";
-    conductorIsClaude = cp.badge === "claude";
-    boots.push(
-      createAgent(ws, {
-        program: cp.program,
-        args: effectiveArgs(cp, skipPerms),
-        cwd: dir,
-        name: conductorName,
-        badge: cp.badge,
-        role: "conductor",
-        ...cliLook(cp.badge, cp.label),
-      }),
-    );
-  }
-
   // Boot through a concurrency-limited queue so many heavy CLIs don't all start
   // at once and spike the CPU (panes already appeared above as "queued…").
   await runLimited(boots, MAX_CONCURRENT_BOOT);
@@ -1565,10 +1564,9 @@ async function spawnCrew(
   // A Claude conductor gets CONDUCTOR_LAWS via --append-system-prompt at launch.
   // Other CLIs have no such flag, so prime the conductor by typing the same
   // instructions once it reaches its prompt.
-  if (conductorName && !conductorIsClaude) {
-    const name = conductorName;
+  if (conductor && !conductorIsClaude) {
     window.setTimeout(() => {
-      const pane = [...ws.panes.values()].find((x) => x.spec.name === name);
+      const pane = [...ws.panes.values()].find((x) => x.spec.name === "Conductor");
       if (pane && pane.running) void sendInput(pane.id, CONDUCTOR_LAWS + "\r").catch(() => {});
     }, 3500);
   }

@@ -184,6 +184,24 @@ export async function recordRead(path: string): Promise<string> {
   return invoke<string>("record_read", { path });
 }
 
+/* ---- token usage / cost (Claude transcripts) ---- */
+
+export interface ModelUsage {
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation: number;
+  cache_read: number;
+  messages: number;
+}
+
+/** Real Claude Code token usage for a workspace folder, summed per model from
+ *  its session transcripts (~/.claude/projects/<slug>/*.jsonl). Claude-only and
+ *  per-workspace; empty when there are no transcripts. */
+export async function claudeUsage(dir: string): Promise<ModelUsage[]> {
+  return invoke<ModelUsage[]>("claude_usage", { dir });
+}
+
 /* ---- detached (multi-window) support ---- */
 
 /** Open a new Maestro window that boots straight into a detached workspace.

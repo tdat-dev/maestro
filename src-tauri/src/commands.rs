@@ -210,6 +210,92 @@ pub async fn record_read(path: String) -> Result<String, CommandError> {
     .await
 }
 
+/// Token usage for one model, summed across a workspace's Claude transcripts.
+#[derive(Serialize, Default, Clone)]
+pub struct ModelUsage {
+    model: String,
+    input_tokens: u64,
+    output_tokens: u64,
+    cache_creation: u64,
+    cache_read: u64,
+    messages: u64,
+}
+
+/// Mangle a workspace path the way Claude Code names its transcript folder:
+/// every non-alphanumeric character becomes '-'. e.g. `D:\maestro` -> `D--maestro`.
+fn claude_project_slug(dir: &str) -> String {
+    dir.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect()
+}
+
+/// Sum Claude Code token usage for a workspace folder by reading the session
+/// transcripts Claude writes under `~/.claude/projects/<slug>/*.jsonl`. These
+/// are REAL usage numbers (not scraped from the terminal), but Claude-only and
+/// per-workspace (a transcript folder isn't split by Maestro agent). Returns an
+/// empty list when no transcripts exist for the folder.
+#[tauri::command]
+pub async fn claude_usage(dir: String) -> Result<Vec<ModelUsage>, CommandError> {
+    run_blocking(move || Ok(claude_usage_impl(&dir))).await
+}
+
+fn claude_usage_impl(dir: &str) -> Vec<ModelUsage> {
+    use std::collections::HashMap;
+    let home = match std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
+        Ok(h) => h,
+        Err(_) => return Vec::new(),
+    };
+    let proj = Path::new(&home)
+        .join(".claude")
+        .join("projects")
+        .join(claude_project_slug(dir));
+    let entries = match std::fs::read_dir(&proj) {
+        Ok(e) => e,
+        Err(_) => return Vec::new(), // no transcripts for this folder yet
+    };
+    let mut by_model: HashMap<String, ModelUsage> = HashMap::new();
+    for ent in entries.flatten() {
+        let path = ent.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        for line in content.lines() {
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            if v.get("type").and_then(|t| t.as_str()) != Some("assistant") {
+                continue;
+            }
+            let Some(usage) = v.get("message").and_then(|m| m.get("usage")) else {
+                continue;
+            };
+            let model = v
+                .get("message")
+                .and_then(|m| m.get("model"))
+                .and_then(|m| m.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            let get = |k: &str| usage.get(k).and_then(|x| x.as_u64()).unwrap_or(0);
+            let e = by_model
+                .entry(model.clone())
+                .or_insert_with(|| ModelUsage { model, ..Default::default() });
+            e.input_tokens += get("input_tokens");
+            e.output_tokens += get("output_tokens");
+            e.cache_creation += get("cache_creation_input_tokens");
+            e.cache_read += get("cache_read_input_tokens");
+            e.messages += 1;
+        }
+    }
+    let mut out: Vec<ModelUsage> = by_model.into_values().collect();
+    out.sort_by(|a, b| {
+        (b.input_tokens + b.output_tokens).cmp(&(a.input_tokens + a.output_tokens))
+    });
+    out
+}
+
 /// Show or hide the system-tray icon. Driven by the frontend "Hide to tray"
 /// setting so the icon only appears for users who opt in.
 #[tauri::command]
@@ -341,6 +427,13 @@ mod tests {
         assert!(out[0], "cmd.exe should resolve on PATH");
         assert!(out[1], "cmd should resolve via PATHEXT");
         assert!(!out[2], "a bogus name must not resolve");
+    }
+
+    #[test]
+    fn claude_slug_matches_observed_folder() {
+        // Verified against the real folder Claude Code created for D:\maestro.
+        assert_eq!(claude_project_slug("D:\\maestro"), "D--maestro");
+        assert_eq!(claude_project_slug("C:\\Users\\a\\proj"), "C--Users-a-proj");
     }
 
     #[test]

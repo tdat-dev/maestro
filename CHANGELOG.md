@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Token usage & cost** — Settings → **Token usage & cost** shows a per-model
+  breakdown of tokens (input / output / cache) and an estimated USD cost for the
+  current workspace. The numbers are *real* — read from Claude Code's own
+  session transcripts (`~/.claude/projects/<slug>/*.jsonl`), not scraped from the
+  terminal — so they're accurate, but Claude-only and per-workspace (a transcript
+  folder isn't split per Maestro agent). Prices are an approximate estimate for
+  the Opus/Sonnet/Haiku families; other models show tokens without a cost.
 - **Session replay** — every pane header has a **●** record button: hit it to
   record that agent's terminal to `<workspace>/.maestro/recordings/*.jsonl`
   (raw output frames with millisecond timestamps, starting from a snapshot of

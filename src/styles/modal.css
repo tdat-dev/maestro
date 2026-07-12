@@ -160,4 +160,19 @@
 .rpl-time{font-size:11.5px;color:var(--muted);font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
 .rpl-speed{flex:none;padding:5px 8px;font-size:11.5px;min-width:0;width:auto;cursor:pointer}
 
+/* ---- token usage & cost ---- */
+.modal.usage{width:560px}
+.usage-wrap{overflow-x:auto}
+.usage-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.usage-tbl th{text-align:right;font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;padding:0 0 8px;border-bottom:1px solid var(--line)}
+.usage-tbl th:first-child{text-align:left}
+.usage-tbl td{text-align:right;padding:9px 0;border-bottom:1px solid var(--line);
+  font-variant-numeric:tabular-nums;color:var(--text-2)}
+.usage-tbl td.um-model{text-align:left;font-family:var(--mono);font-size:11.5px;color:var(--text)}
+.usage-tbl td.um-cost{color:var(--accent);font-weight:600}
+.usage-tbl tfoot td{border-bottom:none;padding-top:11px;color:var(--text);font-weight:600;text-align:right}
+.usage-tbl tfoot td:first-child{text-align:right;color:var(--muted)}
+.usage-note{font-size:11px;color:var(--muted-2);line-height:1.5;margin-top:14px}
+
 /* (crew-templates modal styles removed — presets in the wizard replaced it) */

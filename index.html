@@ -423,6 +423,13 @@
         </span>
         <button class="btn-ghost" id="setOpenReplays">Open replays</button>
       </div>
+      <div class="set-update">
+        <span class="pt-text">
+          <b>Token usage &amp; cost</b>
+          <span>Real Claude token totals for this workspace, with an estimated cost.</span>
+        </span>
+        <button class="btn-ghost" id="setOpenUsage">View usage</button>
+      </div>
       <label class="perm-toggle" for="setDashOn">
         <input type="checkbox" id="setDashOn">
         <span class="pt-sw"></span>
@@ -474,6 +481,24 @@
     </div>
     <div class="modal-foot">
       <button class="btn-ghost" id="schedCloseBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="backdrop" id="usageModal">
+  <div class="modal usage" role="dialog" aria-modal="true" aria-label="Token usage">
+    <div class="modal-head">
+      <span class="t">Token usage &amp; cost</span>
+      <span class="replay-crumb" id="usageCrumb"></span>
+      <button class="x" id="usageClose" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div class="usage-wrap" id="usageWrap"></div>
+      <p class="replay-empty" id="usageEmpty" hidden>No Claude usage found for this workspace yet. Costs come from Claude Code's own session logs, so they appear once a Claude agent has run here.</p>
+      <p class="usage-note">Estimated from Claude Code's session transcripts. Claude agents only; other CLIs aren't counted. Prices are approximate — treat the total as a guide, not a bill.</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" id="usageCloseBtn">Close</button>
     </div>
   </div>
 </div>

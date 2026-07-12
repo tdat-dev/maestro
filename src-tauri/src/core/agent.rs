@@ -9,10 +9,13 @@
 //!   3. threads -> JoinHandles detach; both threads have already finished.
 
 use std::collections::VecDeque;
-use std::io::Read;
+use std::fs::File;
+use std::io::{Read, Write as IoWrite};
+use std::path::Path;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::Instant;
 
 use anyhow::{anyhow, Result};
 use portable_pty::PtySize;
@@ -28,6 +31,15 @@ pub type Sink = Box<dyn FnMut(&[u8]) + Send>;
 /// Recent output kept for replay when a new window attaches (tab detach).
 const SCROLLBACK_CAP: usize = 512 * 1024;
 
+/// An in-progress session recording: raw output frames appended to a JSONL file
+/// with a millisecond timestamp, so a player can replay the terminal with its
+/// original timing. Each frame is one line `{"t":<ms since start>,"d":"<b64>"}`;
+/// the first line is a header `{"v":1}`. Buffered; flushed on stop/drop.
+struct Rec {
+    w: std::io::BufWriter<File>,
+    start: Instant,
+}
+
 struct Output {
     buf: VecDeque<u8>,
     sink: Sink,
@@ -35,6 +47,33 @@ struct Output {
     // chunk; a closed channel is pruned. The single `sink` above is the owning
     // window; taps are additional read-only mirrors.
     taps: Vec<Sender<Vec<u8>>>,
+    // When Some, every output chunk is also appended to this recording.
+    rec: Option<Rec>,
+}
+
+/// Standard base64 (no line breaks). Small dependency-free encoder, matching the
+/// one in core::fs — kept local so this module has no cross-module coupling.
+fn b64(data: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(T[((n >> 18) & 63) as usize] as char);
+        out.push(T[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { T[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
+/// Append one recorded frame (called by the reader thread under the output lock).
+fn rec_frame(rec: &mut Rec, bytes: &[u8]) {
+    let t = rec.start.elapsed().as_millis();
+    // A failed write must not kill the reader thread; drop the frame silently.
+    let _ = writeln!(rec.w, "{{\"t\":{t},\"d\":\"{}\"}}", b64(bytes));
 }
 
 pub struct Agent {
@@ -77,6 +116,7 @@ impl Agent {
             buf: VecDeque::new(),
             sink: Box::new(on_bytes),
             taps: Vec::new(),
+            rec: None,
         }));
         let reader_thread = spawn_reader(reader, output.clone());
         let wait_thread = spawn_waiter(child, on_exit);
@@ -123,6 +163,42 @@ impl Agent {
         rx
     }
 
+    /// Start recording this agent's output to `path` (a JSONL "cast" file). The
+    /// current scrollback is written as the first frame (t=0) so the recording is
+    /// self-contained — a player sees the screen state at record start. Replaces
+    /// any recording already in progress.
+    pub fn record_start(&self, path: &str) -> Result<()> {
+        let file = File::create(Path::new(path))?;
+        let mut w = std::io::BufWriter::new(file);
+        writeln!(w, "{{\"v\":1}}")?;
+        let mut o = self.output.lock().unwrap_or_else(|p| p.into_inner());
+        let (a, b) = o.buf.as_slices();
+        if !a.is_empty() || !b.is_empty() {
+            let mut snap = Vec::with_capacity(a.len() + b.len());
+            snap.extend_from_slice(a);
+            snap.extend_from_slice(b);
+            writeln!(w, "{{\"t\":0,\"d\":\"{}\"}}", b64(&snap))?;
+        }
+        o.rec = Some(Rec { w, start: Instant::now() });
+        Ok(())
+    }
+
+    /// Stop recording and flush the file. No-op if not recording.
+    pub fn record_stop(&self) {
+        let mut o = self.output.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(mut rec) = o.rec.take() {
+            let _ = rec.w.flush();
+        }
+    }
+
+    pub fn is_recording(&self) -> bool {
+        self.output
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .rec
+            .is_some()
+    }
+
     pub fn write_input(&mut self, bytes: &[u8]) -> Result<()> {
         self.session.write_input(bytes)
     }
@@ -150,6 +226,10 @@ fn spawn_reader(mut reader: Box<dyn Read + Send>, output: Arc<Mutex<Output>>) ->
                     if !o.taps.is_empty() {
                         let chunk = buf[..n].to_vec();
                         o.taps.retain(|t| t.send(chunk.clone()).is_ok());
+                    }
+                    // Append to the session recording, if one is running.
+                    if let Some(rec) = o.rec.as_mut() {
+                        rec_frame(rec, &buf[..n]);
                     }
                 }
                 Err(_) => break,

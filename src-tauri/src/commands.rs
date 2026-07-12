@@ -157,6 +157,59 @@ pub async fn pty_kill_all(state: State<'_, AppState>) -> Result<(), CommandError
     .await
 }
 
+/// Start recording an agent's terminal output to `path` (a JSONL "cast" file).
+/// The frontend passes an absolute path under `<workspace>/.maestro/recordings`;
+/// the parent directory is created if needed.
+#[tauri::command]
+pub async fn record_start(
+    state: State<'_, AppState>,
+    agent_id: String,
+    path: String,
+) -> Result<(), CommandError> {
+    let registry = state.registry.clone();
+    run_blocking(move || {
+        if let Some(parent) = Path::new(&path).parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| CommandError::Failed(format!("cannot create recordings dir: {e}")))?;
+        }
+        let reg = registry
+            .lock()
+            .map_err(|_| CommandError::Failed("state poisoned".into()))?;
+        reg.record_start(&agent_id, &path)
+            .map_err(CommandError::from)
+    })
+    .await
+}
+
+/// Stop recording an agent's output and flush its file.
+#[tauri::command]
+pub async fn record_stop(state: State<'_, AppState>, agent_id: String) -> Result<(), CommandError> {
+    let registry = state.registry.clone();
+    run_blocking(move || {
+        let reg = registry
+            .lock()
+            .map_err(|_| CommandError::Failed("state poisoned".into()))?;
+        reg.record_stop(&agent_id);
+        Ok(())
+    })
+    .await
+}
+
+/// Read a recording file back for the replay player. Capped so a runaway
+/// recording can't blow up memory; the player tolerates a truncated tail.
+#[tauri::command]
+pub async fn record_read(path: String) -> Result<String, CommandError> {
+    const MAX_RECORDING_BYTES: u64 = 64 * 1024 * 1024; // 64 MiB
+    run_blocking(move || {
+        let meta = std::fs::metadata(&path).map_err(|e| CommandError::Failed(e.to_string()))?;
+        if meta.len() > MAX_RECORDING_BYTES {
+            return Err(CommandError::Failed("recording too large to open (>64 MB)".into()));
+        }
+        std::fs::read_to_string(&path).map_err(|e| CommandError::Failed(e.to_string()))
+    })
+    .await
+}
+
 /// Show or hide the system-tray icon. Driven by the frontend "Hide to tray"
 /// setting so the icon only appears for users who opt in.
 #[tauri::command]

@@ -165,6 +165,25 @@ export async function onDashboardSend(cb: (body: string) => void): Promise<Unlis
   return listen<string>("dashboard-send", (e) => cb(e.payload));
 }
 
+/* ---- session recording (replay) ---- */
+
+/** Start recording an agent's terminal output to `path` (an absolute JSONL
+ *  "cast" file under `<workspace>/.maestro/recordings`). Its parent dir is
+ *  created if missing. Replaces any recording already running for the agent. */
+export async function recordStart(agentId: string, path: string): Promise<void> {
+  await invoke("record_start", { agentId, path });
+}
+
+/** Stop recording an agent's output and flush the file. */
+export async function recordStop(agentId: string): Promise<void> {
+  await invoke("record_stop", { agentId });
+}
+
+/** Read a recording file back (JSONL text) for the replay player. */
+export async function recordRead(path: string): Promise<string> {
+  return invoke<string>("record_read", { path });
+}
+
 /* ---- detached (multi-window) support ---- */
 
 /** Open a new Maestro window that boots straight into a detached workspace.

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Session replay** — every pane header has a **●** record button: hit it to
+  record that agent's terminal to `<workspace>/.maestro/recordings/*.jsonl`
+  (raw output frames with millisecond timestamps, starting from a snapshot of
+  the current screen), hit it again to stop. Settings → **Session replays** (or
+  the "Recording saved" toast) opens a player that replays the session in a real
+  xterm.js terminal with the original timing — play/pause, a scrubbable
+  timeline, and 1×/2×/4×/8× speed. Seeking rewinds and re-renders from the start
+  so the screen is always exactly what the agent showed at that moment.
+  Recording auto-stops (and flushes) when the agent exits or is killed.
 - **Conductor mode** — the spawn modal has a **Conductor** toggle that turns the
   first agent into a conductor (it does *not* add an extra agent): it directs the
   crew instead of coding — plans the board, spawns & assigns workers with

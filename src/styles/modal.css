@@ -120,4 +120,44 @@
 .cf-input-row{display:flex}
 .cf-input-row .input{flex:1}
 
+/* ---- record button (pane header) ---- */
+/* The dot sits dim until armed; while recording it glows red and pulses so a
+   running recording is obvious across the grid. */
+.pctrl.rec-btn{color:var(--muted-2)}
+.pctrl.rec-btn:hover{color:var(--err)}
+.pctrl.rec-btn.rec{color:var(--err)}
+.pctrl.rec-btn.rec svg{animation:rec-pulse 1.5s ease-in-out infinite}
+@keyframes rec-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.pctrl.rec-btn.rec svg{animation:none}}
+
+/* ---- session replay player ---- */
+.modal.replay{width:860px}
+.replay-crumb{font-size:11.5px;color:var(--muted);font-family:var(--mono);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:2px;min-width:0}
+.replay-body{gap:0;padding:0}
+.replay-list{display:flex;flex-direction:column;overflow-y:auto;min-height:0;max-height:60vh}
+.replay-empty{color:var(--muted-2);font-size:12.5px;padding:26px 20px;text-align:center;line-height:1.5}
+.replay-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:14px;
+  padding:11px 16px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s}
+.replay-row:hover{background:var(--surface-2)}
+.replay-rl{display:flex;flex-direction:column;gap:2px;min-width:0}
+.replay-rl b{font-size:12.5px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.replay-rl span{font-size:11px;color:var(--muted-2);font-family:var(--mono)}
+.replay-rdur{font-size:12px;color:var(--accent);font-variant-numeric:tabular-nums;white-space:nowrap}
+.replay-rdel{width:24px;height:24px;border-radius:6px;color:var(--muted-2);font-size:13px;line-height:1;flex:none}
+.replay-rdel:hover{color:var(--err);background:rgba(248,113,113,.12)}
+.replay-player{display:flex;flex-direction:column;min-height:0}
+.replay-term{flex:1;min-height:340px;background:#0b0d10;padding:8px 6px 4px 8px;overflow:hidden}
+.replay-ctrls{display:flex;align-items:center;gap:12px;padding:11px 16px;border-top:1px solid var(--line);background:var(--surface-0)}
+.rpl-play{flex:none;width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--accent-ink);
+  display:grid;place-items:center;font-size:0;position:relative}
+.rpl-play::before{content:"";display:block;width:0;height:0;border-style:solid;
+  border-width:7px 0 7px 11px;border-color:transparent transparent transparent currentColor;margin-left:2px}
+.rpl-play.playing::before{border:none;width:9px;height:11px;
+  border-left:3px solid currentColor;border-right:3px solid currentColor;margin:0}
+.rpl-play:hover{background:#d3fc4d}
+.rpl-seek{flex:1;min-width:0;accent-color:var(--accent);cursor:pointer;height:4px}
+.rpl-time{font-size:11.5px;color:var(--muted);font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.rpl-speed{flex:none;padding:5px 8px;font-size:11.5px;min-width:0;width:auto;cursor:pointer}
+
 /* (crew-templates modal styles removed — presets in the wizard replaced it) */

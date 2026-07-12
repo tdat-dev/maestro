@@ -416,6 +416,13 @@
         </span>
         <button class="btn-ghost" id="setOpenSched">Manage schedules</button>
       </div>
+      <div class="set-update">
+        <span class="pt-text">
+          <b>Session replays</b>
+          <span>Watch back recorded agent sessions. Record from the ● button on any pane.</span>
+        </span>
+        <button class="btn-ghost" id="setOpenReplays">Open replays</button>
+      </div>
       <label class="perm-toggle" for="setDashOn">
         <input type="checkbox" id="setDashOn">
         <span class="pt-sw"></span>
@@ -467,6 +474,38 @@
     </div>
     <div class="modal-foot">
       <button class="btn-ghost" id="schedCloseBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="backdrop" id="replayModal">
+  <div class="modal replay" role="dialog" aria-modal="true" aria-label="Session replays">
+    <div class="modal-head">
+      <span class="t">Session replays</span>
+      <span class="replay-crumb" id="replayCrumb"></span>
+      <button class="x" id="replayClose" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="modal-body replay-body">
+      <div class="replay-list" id="replayList"></div>
+      <p class="replay-empty" id="replayEmpty" hidden>No recordings yet. Hit the ● button on any running pane to record a session, then it shows up here.</p>
+      <div class="replay-player" id="replayPlayer" hidden>
+        <div class="replay-term" id="replayTerm"></div>
+        <div class="replay-ctrls">
+          <button class="rpl-play" id="replayPlay" aria-label="Play / pause"></button>
+          <input class="rpl-seek" id="replaySeek" type="range" min="0" max="1000" value="0" aria-label="Timeline">
+          <span class="rpl-time" id="replayTime">0:00 / 0:00</span>
+          <select class="rpl-speed input" id="replaySpeed" aria-label="Speed">
+            <option value="1">1×</option>
+            <option value="2">2×</option>
+            <option value="4">4×</option>
+            <option value="8">8×</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" id="replayBack" hidden>← Back to list</button>
+      <button class="btn-ghost" id="replayCloseBtn">Close</button>
     </div>
   </div>
 </div>

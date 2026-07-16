@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-16
+
+### Fixed
+
+- **Copy inside Claude Code panes** — highlighting text in a Claude Code agent
+  pane now actually copies it. Claude Code's TUI captures the mouse and copies
+  through the OSC 52 escape sequence, which Maestro's terminal silently dropped;
+  Maestro now handles OSC 52 and writes the text to the OS clipboard. The
+  clipboard *query* form is deliberately ignored so a program in a pane can't
+  read your clipboard. Copy-on-select in plain shells is unchanged.
+
 ## [0.4.0] - 2026-07-13
 
 ### Added

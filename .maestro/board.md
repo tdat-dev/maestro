@@ -45,6 +45,11 @@ _(empty)_
   - [ ] Đăng ký commands trong lib.rs invoke_handler
   - [ ] Unit test: setup, verify đúng/sai, change, reject setup khi đã có
 
-## Done (0)
+## Done (1)
 
-_(empty)_
+- [x] Fix copy khi bôi đen trong pane Claude Code (OSC 52)
+  Claude Code tự xử lý selection + copy qua escape OSC 52; xterm.js của Maestro không có handler nên clipboard không được ghi. Fix: đăng ký OSC 52 handler trong terminal.ts.
+  - [ ] terminal.ts: registerOscHandler(52) — parse 'c;<base64>', decode UTF-8, navigator.clipboard.writeText
+  - [ ] Bỏ qua query '?' (không trả lời — tránh app đọc trộm clipboard)
+  - [ ] Unit test trong terminal.test.ts cho parse/decode OSC 52
+  - [ ] Verify thật: chạy app, bôi đen text trong Claude Code, paste ra ngoài

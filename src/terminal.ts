@@ -28,6 +28,27 @@ export interface TerminalHandle {
   snapshot(lines?: number): string;
 }
 
+/**
+ * Decode an OSC 52 payload (`<targets>;<base64 text>`) to the text a program
+ * wants placed on the clipboard. Returns null for anything that must NOT
+ * write: the query form (`?` asks the terminal to REPLY with clipboard
+ * contents — answering would let any program in the pane read the user's
+ * clipboard), a missing/empty payload, or malformed base64.
+ */
+export function decodeOsc52(data: string): string | null {
+  const semi = data.indexOf(";");
+  if (semi === -1) return null;
+  const payload = data.slice(semi + 1);
+  if (!payload || payload === "?") return null;
+  try {
+    const bytes = Uint8Array.from(atob(payload), (c) => c.charCodeAt(0));
+    const text = new TextDecoder().decode(bytes);
+    return text || null;
+  } catch {
+    return null; // malformed base64
+  }
+}
+
 // WebGL renderer is DISABLED (budget 0 → every pane uses the DOM renderer).
 //
 // On WebView2 (Windows) xterm's WebGL canvases interact badly with the
@@ -189,6 +210,18 @@ export function mountTerminal(
   term.onSelectionChange(() => {
     const sel = term.getSelection();
     if (sel) void navigator.clipboard.writeText(sel).catch(() => {});
+  });
+
+  // OSC 52: programs in the pane set the clipboard themselves. Claude Code's
+  // TUI enables mouse tracking, so drag-select never reaches xterm's own
+  // selection (copy-on-select above can't fire) — instead Claude Code renders
+  // the highlight itself and emits `ESC ] 52 ; c ; <base64> BEL` to copy.
+  // xterm has no built-in OSC 52 handler, so without this the sequence is
+  // silently dropped and copying inside Claude Code does nothing.
+  term.parser.registerOscHandler(52, (data) => {
+    const text = decodeOsc52(data);
+    if (text) void navigator.clipboard.writeText(text).catch(() => {});
+    return true; // consume even when not writing (e.g. the `?` query form)
   });
 
   // Right-click = copy the selection too. Copy-on-select can silently lose

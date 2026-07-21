@@ -6,6 +6,8 @@ import {
   runLimited,
   launchSpec,
   effectiveArgs,
+  PERSONA_NAMES,
+  nameForNewPane,
   type CrewState,
 } from "./crew";
 
@@ -127,5 +129,16 @@ describe("runLimited", () => {
 
   it("handles an empty task list", async () => {
     expect(await runLimited([], 3)).toEqual([]);
+  });
+});
+
+describe("nameForNewPane", () => {
+  it("hands out the first free persona name", () => {
+    expect(nameForNewPane("claude", [])).toBe(PERSONA_NAMES[0]);
+    expect(nameForNewPane("claude", [PERSONA_NAMES[0]])).toBe(PERSONA_NAMES[1]);
+  });
+  it("falls back to '<CLI> N' when the pool is exhausted", () => {
+    const taken = [...PERSONA_NAMES];
+    expect(nameForNewPane("codex", taken)).toBe(`codex ${PERSONA_NAMES.length + 1}`);
   });
 });

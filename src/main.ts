@@ -51,6 +51,7 @@ import { configureBroadcast, initBroadcast, updateBcast, focusBroadcast } from "
 import { configureRecents, getRecents, addRecent, renderRecents } from "./recents";
 import { configureUsage, initUsage } from "./usage";
 import { configureReplay, initReplay, openReplays, REC_DIR_REL } from "./replay";
+import { configureDashboard, initDashboard } from "./dashboard";
 import { workspaces, activeWs, setActiveWs, newId, nextWsId } from "./appstate";
 import { TILE_OPTIONS, gridDims, countLabel, gridLabel, distributeCounts, sanitizeCount } from "./wizard";
 import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm } from "./workspaces";
@@ -75,7 +76,6 @@ import {
   setPaneRevealer,
   type FleetPane,
 } from "./agentbridge";
-import { paneStatus } from "./fleet";
 import { initFleetBridge } from "./fleetbridge";
 import {
   parseTime,
@@ -84,13 +84,7 @@ import {
   nextRun,
   type Schedule,
 } from "./schedule";
-import {
-  dashboardStatus,
-  dashboardStart,
-  dashboardStop,
-  dashboardPush,
-  onDashboardSend,
-} from "./ipc";
+import { paneStatus } from "./fleet";
 
 /* Home launcher ⇄ Workspace grid.
  * Home is shown while there are 0 agents (the prominent "create" entry).
@@ -100,12 +94,6 @@ import {
 
 // No PTY output for this long while alive ⇒ the agent is idle (waiting at a prompt).
 const IDLE_MS = 1200;
-
-// The remote dashboard reads each agent's on-screen text straight from its
-// xterm buffer (see TerminalHandle.snapshot) — the emulator has already applied
-// every in-place repaint, so a TUI agent's spinner/status frames collapse to
-// the single current screen instead of a wall of duplicated bytes.
-const DASH_OUTPUT_ROWS = 40;
 
 // The board protocol every Maestro-spawned Claude agent is forced to follow
 // (injected via --append-system-prompt). One line, and free of cmd.exe
@@ -2102,6 +2090,8 @@ configureUsage({ getActiveWs: () => activeWs, closeSettings });
 initUsage();
 configureReplay({ paneToast, errMsg, closeSettings });
 initReplay();
+configureDashboard({ errMsg });
+initDashboard();
 tabAdd?.addEventListener("click", () => openWizard());
 
 document.getElementById("btnHome")?.addEventListener("click", goHome);
@@ -3011,112 +3001,7 @@ window.setInterval(() => {
 // Lives in usage.ts (openUsage + modal); wired up in the startup block.
 
 /* ---------------- local web dashboard (remote fleet view) ---------------- */
-function fmtUptimeShort(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  return h > 0 ? `${h}h${m % 60}m` : m > 0 ? `${m}m` : `${s}s`;
-}
-
-/** JSON snapshot the dashboard HTTP page renders: the roster plus a recent
- *  plain-text tail of each agent's output so it can be managed, not just seen. */
-function fleetSnapshotJson(): string {
-  const now = Date.now();
-  const agents = [];
-  const output: Record<string, string> = {};
-  for (const ws of workspaces.values())
-    for (const p of ws.panes.values()) {
-      agents.push({
-        id: p.id,
-        name: p.spec.name,
-        wsId: ws.id,
-        wsName: ws.name,
-        status: paneStatus(
-          {
-            id: p.id, name: p.spec.name, color: p.color, wsId: ws.id, wsName: ws.name,
-            running: p.running, attention: p.attention, spawnedAt: p.spawnedAt, lastOutputAt: p.lastOutputAt,
-          },
-          now,
-        ),
-        uptime: p.spawnedAt && p.running ? fmtUptimeShort(now - p.spawnedAt) : "",
-      });
-      const screen = p.term.snapshot(DASH_OUTPUT_ROWS);
-      if (screen.trim()) output[p.id] = screen;
-    }
-  return JSON.stringify({ agents, output });
-}
-
-let dashboardOn = false;
-function pushDash(): void {
-  if (dashboardOn) void dashboardPush(fleetSnapshotJson()).catch(() => {});
-}
-window.setInterval(pushDash, 1000);
-
-// A message OR a raw key from the dashboard page → deliver into the pane's PTY.
-// `keys` is a raw escape sequence sent as-is (arrows, Enter alone, Esc, ^C, Tab)
-// so an interactive menu like /resume can be driven; `message` is text + Enter.
-void onDashboardSend((body) => {
-  try {
-    const o = JSON.parse(body) as { paneId?: unknown; message?: unknown; keys?: unknown };
-    if (typeof o.paneId !== "string") return;
-    let data: string | null = null;
-    if (typeof o.keys === "string" && o.keys) data = o.keys;
-    else if (typeof o.message === "string" && o.message.trim()) data = o.message + "\r";
-    if (data === null) return;
-    for (const ws of workspaces.values()) {
-      const pane = ws.panes.get(o.paneId);
-      if (pane && pane.running) {
-        void sendInput(pane.id, data).catch(() => {});
-        // Push fresh output a beat later so the dashboard sees the key's effect
-        // quickly instead of waiting for the next 1s tick.
-        window.setTimeout(pushDash, 150);
-        window.setTimeout(pushDash, 450);
-        return;
-      }
-    }
-  } catch {
-    /* malformed body — ignore */
-  }
-});
-
-const dashToggle = document.getElementById("setDashOn") as HTMLInputElement | null;
-const dashLan = document.getElementById("setDashLan") as HTMLInputElement | null;
-const dashUrl = document.getElementById("setDashUrl");
-const DASH_PORT = 8477;
-
-function paintDash(info: { running: boolean; lan: boolean; urls: string[] }): void {
-  dashboardOn = info.running;
-  if (dashToggle) dashToggle.checked = info.running;
-  if (dashLan) dashLan.checked = info.lan;
-  if (dashUrl)
-    dashUrl.textContent = info.running
-      ? "Open on any device on your network: " + (info.urls.join("  ·  ") || `http://127.0.0.1:${DASH_PORT}`)
-      : "Off — turn on to view the fleet from your phone.";
-}
-
-async function refreshDash(): Promise<void> {
-  try {
-    paintDash(await dashboardStatus());
-  } catch {
-    /* backend not ready */
-  }
-}
-async function applyDash(): Promise<void> {
-  const lan = dashLan?.checked ?? false;
-  try {
-    if (dashToggle?.checked) paintDash(await dashboardStart(DASH_PORT, lan));
-    else paintDash(await dashboardStop());
-  } catch (e) {
-    if (dashUrl) dashUrl.textContent = `Couldn't start on port ${DASH_PORT}: ${errMsg(e)}`;
-    if (dashToggle) dashToggle.checked = false;
-    dashboardOn = false;
-  }
-}
-dashToggle?.addEventListener("change", () => void applyDash());
-dashLan?.addEventListener("change", () => {
-  if (dashToggle?.checked) void applyDash(); // re-bind on the new interface
-});
-void refreshDash();
+// Lives in dashboard.ts; started from the startup block.
 
 /* ---------------- close / quit / hide-to-tray ---------------- */
 let closing = false;

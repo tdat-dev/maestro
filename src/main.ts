@@ -48,7 +48,8 @@ import {
   setTermFontSize,
   type MascotMode,
 } from "./settings";
-import { CLI_PRESETS, expandCrew, runLimited, launchSpec, effectiveArgs, type CrewState, type CliPreset } from "./crew";
+import { CLI_PRESETS, expandCrew, runLimited, launchSpec, effectiveArgs, nameForNewPane, type CrewState, type CliPreset } from "./crew";
+import { tileToFit, nextSlot, serializeLayout, parseLayout, type Tile } from "./canvas";
 import { TILE_OPTIONS, gridDims, countLabel, gridLabel, distributeCounts, sanitizeCount } from "./wizard";
 import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm } from "./workspaces";
 import { checkForUpdates } from "./updater";
@@ -168,6 +169,7 @@ interface Workspace {
   tabEl: HTMLElement;
   panes: Map<string, Pane>;
   bcastSelected: Set<string>;
+  layout: Map<string, Tile>; // canvas position + size per pane id
 }
 const workspaces = new Map<string, Workspace>();
 let activeWs: Workspace | null = null;
@@ -275,7 +277,7 @@ function createWorkspace(dir: string | null, name?: string): Workspace {
   const wsName = name ?? nextWorkspaceName(dir, [...workspaces.values()].map((w) => w.name));
 
   const gridEl = document.createElement("div");
-  gridEl.className = "grid";
+  gridEl.className = "grid canvas";
   const tile = document.createElement("button");
   tile.className = "tile-spawn";
   tile.innerHTML = SPAWN_TILE_SVG;
@@ -292,7 +294,7 @@ function createWorkspace(dir: string | null, name?: string): Workspace {
   tabEl.dataset.ws = id;
   railList.appendChild(tabEl);
 
-  const ws: Workspace = { id, name: wsName, dir, repoRoot: null, isolated: false, gridEl, tabEl, panes: new Map(), bcastSelected: new Set() };
+  const ws: Workspace = { id, name: wsName, dir, repoRoot: null, isolated: false, gridEl, tabEl, panes: new Map(), bcastSelected: new Set(), layout: new Map(Object.entries(parseLayout(localStorage.getItem(`maestro.canvas.${dir ?? id}`)))) };
   tabEl.addEventListener("click", (e) => {
     if ((e.target as HTMLElement).closest(".tclose")) return;
     activateWorkspace(ws);
@@ -329,55 +331,114 @@ function activateWorkspace(ws: Workspace) {
   fileTree?.setRoot(ws.dir);
 }
 
-/** Tile a workspace's panes to fill the whole area (1→full, 2→split, 4→2×2, …).
- *  The spawn tile only appears when the workspace is empty. */
-function layoutGrid(ws: Workspace) {
-  const n = ws.panes.size;
-  // If the maximized pane is gone (killed / detached while maxed), drop the
-  // has-max state. Otherwise `.grid.has-max .pane{display:none}` keeps hiding
-  // every remaining pane with no `.maxed` pane to show — the workspace renders
-  // blank (the "maximize a pane → X it → all panes vanish" bug).
-  if (ws.gridEl.classList.contains("has-max") && !ws.gridEl.querySelector(".pane.maxed")) {
-    ws.gridEl.classList.remove("has-max");
-  }
-  const tile = ws.gridEl.querySelector<HTMLElement>(".tile-spawn");
-  if (tile) tile.style.display = n > 0 ? "none" : "";
-  const cols = n <= 1 ? 1 : Math.ceil(Math.sqrt(n));
-  const rows = Math.max(1, Math.ceil(Math.max(n, 1) / cols));
-  ws.gridEl.style.setProperty("--cols", String(cols));
-  ws.gridEl.style.setProperty("--rows", String(rows));
-  // Stretch the last pane across any trailing empty cells so the grid fully fills.
-  const panes = [...ws.panes.values()];
-  panes.forEach((p) => (p.el.style.gridColumn = ""));
-  if (n > 0 && n % cols !== 0) {
-    panes[panes.length - 1].el.style.gridColumn = `span ${cols - (n % cols) + 1}`;
-  }
+function layoutKey(ws: Workspace): string {
+  return `maestro.canvas.${ws.dir ?? ws.id}`;
+}
+function saveLayout(ws: Workspace) {
+  localStorage.setItem(layoutKey(ws), serializeLayout(Object.fromEntries(ws.layout)));
 }
 
-/* ---------------- pane focus / maximize ---------------- */
-// Blow one pane up to fill the whole workspace (others hidden); toggle off to
-// restore the grid. Only one pane is maximized at a time. Triggered by the ⤢
-// button or a double-click on the pane header.
-function toggleMax(ws: Workspace, pane: Pane) {
-  const willMax = !pane.el.classList.contains("maxed");
-  for (const p of ws.panes.values()) {
-    const on = p === pane && willMax;
-    p.el.classList.toggle("maxed", on);
-    const b = p.el.querySelector<HTMLElement>("[data-max]");
-    if (b) {
-      b.innerHTML = on ? MIN_SVG : MAX_SVG;
-      b.setAttribute("aria-label", on ? "Restore pane" : "Maximize pane");
-    }
+/** Position/size every pane from the workspace's canvas layout map (a pane with
+ *  no entry yet gets a fresh non-overlapping slot), toggle the spawn tile, and
+ *  clear a stale focus state (the focused pane was killed/detached). */
+function layoutGrid(ws: Workspace) {
+  if (ws.gridEl.classList.contains("has-focus") && !ws.gridEl.querySelector(".pane.focused")) {
+    ws.gridEl.classList.remove("has-focus");
+    ws.gridEl.querySelector(".cloud-rail")?.remove();
   }
-  ws.gridEl.classList.toggle("has-max", willMax);
-  // The visible cell(s) resized → re-fit every terminal and correct PTY sizes.
+  const tile = ws.gridEl.querySelector<HTMLElement>(".tile-spawn");
+  if (tile) tile.style.display = ws.panes.size > 0 ? "none" : "";
+  applyLayout(ws);
+}
+
+function applyLayout(ws: Workspace) {
+  const area = { width: ws.gridEl.clientWidth || 1280, height: ws.gridEl.clientHeight || 800 };
+  for (const [id, p] of ws.panes) {
+    let t = ws.layout.get(id);
+    if (!t) {
+      const slot = nextSlot([...ws.layout.values()], { w: 540, h: 384, gap: 12 }, area);
+      t = { x: slot.x, y: slot.y, w: 540, h: 384 };
+      ws.layout.set(id, t);
+    }
+    p.el.style.left = `${t.x}px`;
+    p.el.style.top = `${t.y}px`;
+    p.el.style.width = `${t.w}px`;
+    p.el.style.height = `${t.h}px`;
+  }
+  for (const id of [...ws.layout.keys()]) if (!ws.panes.has(id)) ws.layout.delete(id);
+  saveLayout(ws);
+}
+
+/** Tidy: tile every pane to fill the screen (2→big side by side, 4→2×2, …). */
+function tidyLayout(ws: Workspace) {
+  const area = { width: ws.gridEl.clientWidth, height: ws.gridEl.clientHeight };
+  const ids = [...ws.panes.keys()];
+  const tiles = tileToFit(ids.length, area);
+  ids.forEach((id, i) => ws.layout.set(id, tiles[i]));
+  applyLayout(ws);
   requestAnimationFrame(() => {
     for (const p of ws.panes.values()) {
       const s = p.term.fit();
       if (p.running) void resizePty(p.id, s.cols, s.rows).catch(() => {});
     }
-    if (willMax) pane.term.focus();
   });
+}
+
+/* ---------------- pane focus (stage + avatar rail) ---------------- */
+// Focus one pane: it fills the stage; the others collapse into a right-edge
+// avatar rail (replaces the old maximize that hid every other pane). Triggered
+// by the ⤢ button or a double-click on the pane title bar.
+function focusPane(ws: Workspace, pane: Pane) {
+  for (const p of ws.panes.values()) p.el.classList.toggle("focused", p === pane);
+  ws.gridEl.classList.add("has-focus");
+  renderRail(ws, pane);
+  requestAnimationFrame(() => {
+    const s = pane.term.fit();
+    if (pane.running) void resizePty(pane.id, s.cols, s.rows).catch(() => {});
+    pane.term.focus();
+  });
+}
+function exitFocus(ws: Workspace) {
+  if (!ws.gridEl.classList.contains("has-focus")) return;
+  ws.gridEl.classList.remove("has-focus");
+  for (const p of ws.panes.values()) p.el.classList.remove("focused");
+  ws.gridEl.querySelector(".cloud-rail")?.remove();
+  requestAnimationFrame(() => {
+    for (const p of ws.panes.values()) {
+      const s = p.term.fit();
+      if (p.running) void resizePty(p.id, s.cols, s.rows).catch(() => {});
+    }
+  });
+}
+function toggleMax(ws: Workspace, pane: Pane) {
+  if (pane.el.classList.contains("focused")) exitFocus(ws);
+  else focusPane(ws, pane);
+}
+// The other panes as a tiny avatar column down the right edge of the stage.
+function renderRail(ws: Workspace, focused: Pane) {
+  let rail = ws.gridEl.querySelector<HTMLElement>(".cloud-rail");
+  if (!rail) {
+    rail = document.createElement("aside");
+    rail.className = "cloud-rail";
+    ws.gridEl.appendChild(rail);
+  }
+  const others = [...ws.panes.values()].filter((p) => p !== focused);
+  rail.innerHTML = others
+    .map((p) => {
+      const s = p.attention ? "attention" : p.running ? "running" : "idle";
+      const nm = p.spec.name;
+      const letter = (nm.trim()[0] ?? "?").toUpperCase();
+      return `<button class="rc" data-id="${p.id}" title="${nm}">
+        <span class="av" style="background:${p.color}">${letter}<span class="s ${s}"></span></span>
+        <span class="n">${nm}</span></button>`;
+    })
+    .join("");
+  rail.querySelectorAll<HTMLElement>(".rc").forEach((rc) =>
+    rc.addEventListener("click", () => {
+      const p = rc.dataset.id ? ws.panes.get(rc.dataset.id) : undefined;
+      if (p) focusPane(ws, p);
+    }),
+  );
 }
 
 /* ---------------- pane search (find in output) ---------------- */
@@ -424,57 +485,68 @@ function wirePaneSearch(pane: Pane) {
 /* ---------------- pane drag-reorder ---------------- */
 // Header is the drag handle; dropping over another pane live-reorders the DOM,
 // and the new order is committed back into ws.panes (+ persisted) on dragend.
-let dragSrc: { ws: Workspace; id: string } | null = null;
+// Free-position a pane by dragging its title bar (Pointer Events — WebView2
+// breaks HTML5 DnD). Updates the workspace canvas layout live and persists on
+// release. A near-zero drag is treated as a click (leaves focus handling alone).
 function wirePaneDrag(ws: Workspace, pane: Pane) {
-  const el = pane.el;
-  const head = el.querySelector<HTMLElement>("[data-drag]");
-  if (!head) return;
-  head.setAttribute("draggable", "true");
-  head.addEventListener("dragstart", (e) => {
-    if ((e.target as HTMLElement).closest(".pctrl")) {
-      e.preventDefault(); // buttons aren't drag handles
-      return;
+  const handle = pane.el.querySelector<HTMLElement>(".pane-bar");
+  if (!handle) return;
+  let sx = 0, sy = 0, ox = 0, oy = 0, moved = false, pid = -1;
+  handle.addEventListener("pointerdown", (e) => {
+    const dt = e.target as HTMLElement;
+    if (dt.closest(".pctrl") || dt.closest(".pb-name") || dt.isContentEditable) return;
+    if (ws.gridEl.classList.contains("has-focus")) return; // no free-drag while focused
+    const t = ws.layout.get(pane.id) ?? { x: 0, y: 0, w: pane.el.offsetWidth, h: pane.el.offsetHeight };
+    moved = false; pid = e.pointerId; handle.setPointerCapture(pid);
+    sx = e.clientX; sy = e.clientY; ox = t.x; oy = t.y;
+  });
+  handle.addEventListener("pointermove", (e) => {
+    if (pid < 0) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    if (!moved && Math.abs(dx) + Math.abs(dy) > 4) { moved = true; pane.el.classList.add("dragging"); }
+    if (moved) {
+      const t = ws.layout.get(pane.id);
+      if (!t) return;
+      t.x = Math.max(0, ox + dx); t.y = Math.max(0, oy + dy);
+      pane.el.style.left = `${t.x}px`; pane.el.style.top = `${t.y}px`;
     }
-    dragSrc = { ws, id: pane.id };
-    el.classList.add("dragging");
-    ws.gridEl.classList.add("reordering");
-    if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", pane.id);
-    }
   });
-  head.addEventListener("dragend", () => {
-    el.classList.remove("dragging");
-    ws.gridEl.classList.remove("reordering");
-    dragSrc = null;
-    commitPaneOrder(ws);
+  handle.addEventListener("pointerup", () => {
+    if (pid < 0) return;
+    try { handle.releasePointerCapture(pid); } catch { /* already released */ }
+    pid = -1;
+    if (moved) { pane.el.classList.remove("dragging"); saveLayout(ws); }
   });
-  el.addEventListener("dragover", (e) => {
-    if (!dragSrc || dragSrc.ws !== ws || dragSrc.id === pane.id) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-    const src = ws.panes.get(dragSrc.id);
-    if (!src) return;
-    const r = el.getBoundingClientRect();
-    // anti-diagonal split → upper-left half drops before this pane, else after
-    const before = (e.clientY - r.top) / r.height + (e.clientX - r.left) / r.width < 1;
-    ws.gridEl.insertBefore(src.el, before ? el : el.nextSibling);
-  });
-  el.addEventListener("drop", (e) => e.preventDefault());
 }
 
-// Rebuild ws.panes to match the current DOM order, then re-tile + persist.
-function commitPaneOrder(ws: Workspace) {
-  const next = new Map<string, Pane>();
-  ws.gridEl.querySelectorAll<HTMLElement>(".pane").forEach((p) => {
-    const id = p.dataset.id;
-    const existing = id ? ws.panes.get(id) : undefined;
-    if (id && existing) next.set(id, existing);
+// Click the pane's name to rename it (persona → role). Commits on Enter/blur,
+// reverts on Escape. The name is the single identity across the pane, the focus
+// rail, and MAESTRO_AGENT (applied to future spawns of this pane).
+function wirePaneRename(ws: Workspace, pane: Pane) {
+  const nameEl = pane.el.querySelector<HTMLElement>(".pb-name");
+  if (!nameEl) return;
+  nameEl.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (nameEl.isContentEditable) return;
+    nameEl.contentEditable = "true";
+    nameEl.focus();
+    window.getSelection()?.selectAllChildren(nameEl);
   });
-  for (const [k, v] of ws.panes) if (!next.has(k)) next.set(k, v); // safety net
-  ws.panes = next;
-  layoutGrid(ws);
-  saveSession();
+  const commit = () => {
+    if (!nameEl.isContentEditable) return;
+    nameEl.contentEditable = "false";
+    const v = nameEl.textContent?.trim();
+    pane.spec.name = v && v.length ? v : pane.spec.name;
+    nameEl.textContent = pane.spec.name;
+    if (pane.el.classList.contains("focused")) renderRail(ws, pane);
+    updateBcast();
+    saveSession();
+  };
+  nameEl.addEventListener("blur", commit);
+  nameEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); nameEl.blur(); }
+    else if (e.key === "Escape") { nameEl.textContent = pane.spec.name; nameEl.blur(); }
+  });
 }
 
 /* ---------------- tab drag (reorder / detach) + rename ---------------- */
@@ -927,8 +999,6 @@ const SEARCH_SVG =
   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>';
 const MAX_SVG =
   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
-const MIN_SVG =
-  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h3a2 2 0 0 0 2-2V4M15 4v3a2 2 0 0 0 2 2h3M20 15h-3a2 2 0 0 0-2 2v3M9 20v-3a2 2 0 0 0-2-2H4"/></svg>';
 // A filled dot — the record button; the ".rec" class pulses it red while active.
 const REC_SVG =
   '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>';
@@ -959,31 +1029,27 @@ function buildPaneEl(
   id: string,
   name: string,
   _sub: string,
-  _badge: string,
+  badge: string,
   _color: string,
 ): HTMLElement {
   const el = document.createElement("section");
   el.className = "pane";
   el.dataset.id = id;
+  // Slim draggable title bar: status dot · editable name · CLI badge · controls.
+  // Controls keep their data-* attributes so the existing wiring in createAgent
+  // still binds. `[data-drag]` on the bar is the canvas move handle.
   el.innerHTML = `
-    <div class="ai-core-container" data-drag>
-      <div class="ai-core">
-        <div class="waveform-wrapper">
-          <div class="bar"></div>
-          <div class="bar"></div>
-          <div class="bar"></div>
-          <div class="bar"></div>
-        </div>
-        <div class="core-content ctrls">
-          <span class="pane-name">${name}</span>
-          <div class="action-group">
-            <button class="pctrl" data-search aria-label="Search output">${SEARCH_SVG}</button>
-            <button class="pctrl rec-btn" data-record aria-label="Record session">${REC_SVG}</button>
-            <button class="pctrl" data-max aria-label="Maximize pane">${MAX_SVG}</button>
-            <button class="pctrl" data-restart aria-label="Restart agent">${RESTART_SVG}</button>
-            <button class="pctrl danger" data-kill aria-label="Kill agent (tree)">${KILL_SVG}</button>
-          </div>
-        </div>
+    <div class="pane-bar" data-drag>
+      <span class="pb-dot"></span>
+      <span class="pb-name pane-name">${name}</span>
+      <span class="pb-cli">${badge}</span>
+      <span class="pb-sp"></span>
+      <div class="pb-ctrls ctrls">
+        <button class="pctrl" data-search aria-label="Search output">${SEARCH_SVG}</button>
+        <button class="pctrl rec-btn" data-record aria-label="Record session">${REC_SVG}</button>
+        <button class="pctrl" data-max aria-label="Focus pane">${MAX_SVG}</button>
+        <button class="pctrl" data-restart aria-label="Restart agent">${RESTART_SVG}</button>
+        <button class="pctrl danger" data-kill aria-label="Kill agent (tree)">${KILL_SVG}</button>
       </div>
     </div>
     <div class="pane-find" data-find hidden>
@@ -1086,9 +1152,10 @@ function createAgent(
     { openLink: (url) => void openExternal(url).catch(() => {}), fontSize: getTermFontSize() },
   );
 
+  // The persona name owns the title bar now; surface the terminal's own title
+  // as a hover tooltip instead of overwriting the name.
   term.onTitleChange((title) => {
-    const nameEl = el.querySelector<HTMLElement>(".pane-name");
-    if (nameEl && title.trim()) nameEl.textContent = title;
+    if (title.trim()) el.title = title;
   });
 
   const pane: Pane = { id, el, term, running: false, spawnedAt: null, lastOutputAt: 0, lastInputAt: 0, attention: false, attentionClearedAt: 0, attentionNotified: false, color: spec.color, spec };
@@ -1113,11 +1180,13 @@ function createAgent(
   });
   el.querySelector("[data-max]")?.addEventListener("click", () => toggleMax(ws, pane));
   el.querySelector<HTMLElement>("[data-drag]")?.addEventListener("dblclick", (e) => {
-    if ((e.target as HTMLElement).closest(".pctrl")) return; // ignore dbl-clicks on buttons
+    const tgt = e.target as HTMLElement;
+    if (tgt.closest(".pctrl") || tgt.closest(".pb-name")) return; // buttons + rename aren't focus triggers
     toggleMax(ws, pane);
   });
   wirePaneSearch(pane);
   wirePaneDrag(ws, pane);
+  wirePaneRename(ws, pane);
   // Clicking / focusing into a flagged pane means the user is now looking at it.
   el.addEventListener("pointerdown", () => clearAttention(pane));
   el.addEventListener("focusin", () => clearAttention(pane));
@@ -1619,16 +1688,15 @@ async function spawnCrew(
   // your first pick). Name the rest per CLI: "Claude Code #1", "#2"; plain when
   // there is only one worker of that CLI.
   const conductorIdx = conductor ? 0 : -1;
-  const perId: Record<string, number> = {};
-  const totals: Record<string, number> = {};
-  fleet.forEach((p, i) => {
-    if (i !== conductorIdx) totals[p.id] = (totals[p.id] ?? 0) + 1;
-  });
+  // Each pane gets a short persona name (Ana, Bob, …), unique in this workspace;
+  // the conductor keeps the "Conductor" label. Renameable from the title bar.
+  const taken: string[] = [...ws.panes.values()].map((x) => x.spec.name);
   let conductorIsClaude = false;
 
   const boots = fleet.map((p: CliPreset, i) => {
     if (i === conductorIdx) {
       conductorIsClaude = p.badge === "claude";
+      taken.push("Conductor");
       return createAgent(ws, {
         program: p.program,
         args: effectiveArgs(p, skipPerms),
@@ -1639,9 +1707,8 @@ async function spawnCrew(
         ...cliLook(p.badge, p.label),
       });
     }
-    perId[p.id] = (perId[p.id] ?? 0) + 1;
-    const base = p.shell && dir ? basename(dir) : p.label;
-    const name = totals[p.id] > 1 ? `${base} #${perId[p.id]}` : base;
+    const name = nameForNewPane(p.badge, taken);
+    taken.push(name);
     return createAgent(ws, {
       program: p.program,
       args: effectiveArgs(p, skipPerms),
@@ -2283,6 +2350,7 @@ document.addEventListener("keydown", (e) => {
 
 document.getElementById("btnNewWorkspace")?.addEventListener("click", () => openWizard());
 document.getElementById("btnNewAgent")?.addEventListener("click", () => openModal("current"));
+document.getElementById("btnTidy")?.addEventListener("click", () => { if (activeWs) tidyLayout(activeWs); });
 tabAdd?.addEventListener("click", () => openWizard());
 
 document.getElementById("btnHome")?.addEventListener("click", goHome);

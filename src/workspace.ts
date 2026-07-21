@@ -7,13 +7,12 @@
 
 import {
   destroyWindow,
-  openDetachWindow,
   onAppEvent,
   emitAppEvent,
   focusThisWindow,
 } from "./ipc";
 import { parseLayout } from "./canvas";
-import { type Pane, type Workspace, type AgentSpec } from "./panetypes";
+import { type Workspace, type AgentSpec } from "./panetypes";
 import { layoutGrid } from "./panelayout";
 import { updateBcast } from "./broadcast";
 import { saveSession } from "./session";
@@ -21,6 +20,16 @@ import { workspaces, activeWs, setActiveWs, nextWsId } from "./appstate";
 import { nextWorkspaceName, pickNextActive } from "./workspaces";
 import { dockSetContext } from "./dock";
 import { openModal } from "./spawnmodal";
+import { confirmModal } from "./confirmmodal";
+import {
+  buildDetachPayload,
+  detachWorkspace,
+  mergeWorkspaceToMain,
+  MERGE_EVT,
+  MERGE_ACK_EVT,
+  type DetachPayload,
+  type MergeMsg,
+} from "./windetach";
 
 let onCreateAgent: (
   ws: Workspace,
@@ -139,47 +148,6 @@ export function activateWorkspace(ws: Workspace) {
   onSetFileTreeRoot(ws.dir);
 }
 
-
-/* ---------------- pane search (find in output) ---------------- */
-export function wirePaneSearch(pane: Pane) {
-  const el = pane.el;
-  const bar = el.querySelector<HTMLElement>("[data-find]");
-  const input = el.querySelector<HTMLInputElement>("[data-find-in]");
-  const count = el.querySelector<HTMLElement>("[data-find-count]");
-  if (!bar || !input) return;
-  const open = () => {
-    bar.hidden = false;
-    input.focus();
-    input.select();
-    if (input.value) pane.term.findNext(input.value);
-  };
-  const close = () => {
-    bar.hidden = true;
-    pane.term.clearSearch();
-    if (count) count.textContent = "";
-    pane.term.focus();
-  };
-  pane.term.onSearchResults((cur, total) => {
-    if (count) count.textContent = total ? `${cur}/${total}` : input.value ? "0/0" : "";
-  });
-  const toggle = () => (bar.hidden ? open() : close());
-  pane.toggleFind = toggle; // lets the Ctrl+Shift+F shortcut drive it externally
-  el.querySelector("[data-search]")?.addEventListener("click", toggle);
-  el.querySelector("[data-find-close]")?.addEventListener("click", close);
-  el.querySelector("[data-find-next]")?.addEventListener("click", () => pane.term.findNext(input.value));
-  el.querySelector("[data-find-prev]")?.addEventListener("click", () => pane.term.findPrev(input.value));
-  input.addEventListener("input", () => pane.term.findNext(input.value));
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (e.shiftKey) pane.term.findPrev(input.value);
-      else pane.term.findNext(input.value);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      close();
-    }
-  });
-}
 
 /* ---------------- pane drag-reorder ---------------- */
 // Header is the drag handle; dropping over another pane live-reorders the DOM,
@@ -362,79 +330,12 @@ function startTabRename(ws: Workspace) {
   input.addEventListener("dblclick", (e) => e.stopPropagation());
 }
 
-/* ---------------- tab detach → new Maestro window ---------------- */
-
-// Hand-off payload written to localStorage (shared across this app's windows)
-// and consumed once by the new window's boot path.
-interface DetachAgent {
-  spec: AgentSpec;
-  id: string;
-  running: boolean;
-  spawnedAt: number | null;
-}
-interface DetachPayload {
-  name: string;
-  dir: string | null;
-  repoRoot: string | null;
-  isolated: boolean;
-  agents: DetachAgent[];
-}
-
-/** Snapshot a workspace into a hand-off payload (running agents are referenced
- *  by id so the receiver can re-attach via `pty_attach`; stopped ones stay
- *  parked). Shared by detach (→ new window) and merge-back (→ main window). */
-function buildDetachPayload(ws: Workspace): DetachPayload {
-  return {
-    name: ws.name,
-    dir: ws.dir,
-    repoRoot: ws.repoRoot,
-    isolated: ws.isolated,
-    agents: [...ws.panes.values()].map((p) => ({
-      spec: p.spec,
-      id: p.id,
-      running: p.running,
-      spawnedAt: p.spawnedAt,
-    })),
-  };
-}
-
-/** Hand-off done: drop `ws`'s tab locally WITHOUT killing its PTYs. Their output
- *  keeps flowing into the backend scrollback buffer until the receiving window
- *  attaches. Shared by detach and merge-back. */
-function releaseWorkspace(ws: Workspace) {
-  for (const p of ws.panes.values()) {
-    p.term.dispose();
-    p.el.remove();
-  }
-  ws.panes.clear();
-  dropWorkspace(ws);
-}
-
-/** Move `ws` into a brand-new Maestro window. Running agents are NOT killed:
- *  the new window re-attaches to their PTYs (`pty_attach`) and the backend
- *  replays the recent scrollback. This window just drops its tab. */
-async function detachWorkspace(ws: Workspace) {
-  const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const payload = buildDetachPayload(ws);
-  try {
-    localStorage.setItem(`maestro.detach.${key}`, JSON.stringify(payload));
-  } catch {
-    return; // storage unavailable — keep the tab here rather than lose it
-  }
-  try {
-    await openDetachWindow(key, `Maestro — ${ws.name}`);
-  } catch (e) {
-    localStorage.removeItem(`maestro.detach.${key}`);
-    console.warn("detach window failed:", e);
-    return;
-  }
-  // Hand-off succeeded: drop the tab locally WITHOUT killing its PTYs.
-  releaseWorkspace(ws);
-}
+/* ---------------- drop a workspace tab locally ---------------- */
 
 /** Remove a (already emptied) workspace's DOM + map entry and refocus. Shared
- *  by close (panes killed first) and detach (panes handed off first). */
-function dropWorkspace(ws: Workspace) {
+ *  by close (panes killed first) and detach/merge (panes handed off first, in
+ *  windetach.ts, which imports this). Exported for that cross-window handoff. */
+export function dropWorkspace(ws: Workspace) {
   const nextId = pickNextActive([...workspaces.keys()], ws.id);
   ws.gridEl.remove();
   ws.tabEl.remove();
@@ -451,111 +352,10 @@ function dropWorkspace(ws: Workspace) {
   saveSession();
 }
 
-/* ---------------- merge back into the main window ---------------- */
-// The mirror of detach: a workspace in a DETACHED window can be folded BACK into
-// the main window. We use Tauri's app-global event bus (emit/listen) with an ack
-// handshake — the detached window only releases the tab once the main window
-// confirms it adopted it, so the workspace is never dropped if the main window
-// is gone (then we fall back to leaving the tab / detaching into a new window).
-const MERGE_EVT = "maestro://merge";
-const MERGE_ACK_EVT = "maestro://merge-ack";
-interface MergeMsg {
-  key: string;
-  ws: DetachPayload;
-}
-
+// Cross-window drag counter: how many workspace drags are currently hovering
+// this window's body (drives the .drag-over-ws drop hint). Shared by the tab
+// drop handler and the body-level listeners in initWorkspace.
 let dragWsCount = 0;
-
-/** Detached-window side: hand `ws` back to the main window and (on success)
- *  release the tab here. Returns false if the main window never acked within the
- *  timeout (closed / not listening) — caller then leaves the tab untouched. */
-async function mergeWorkspaceToMain(ws: Workspace): Promise<boolean> {
-  const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const payload = buildDetachPayload(ws);
-
-  // The ack handler closes over this call's `resolve`/`timer`. We settle on the
-  // first of: a matching ack (success) or a ~2s timeout (main window gone).
-  let resolveAcked!: (ok: boolean) => void;
-  const ackedP = new Promise<boolean>((resolve) => (resolveAcked = resolve));
-  const timer = window.setTimeout(() => resolveAcked(false), 2000);
-
-  // Subscribe to the ack (filtered by our key) BEFORE emitting, so a fast main
-  // window can't ack into the void. Unlisten on every exit path.
-  const unlisten = await onAppEvent<{ key: string }>(MERGE_ACK_EVT, (a) => {
-    if (a?.key === key) {
-      window.clearTimeout(timer);
-      resolveAcked(true);
-    }
-  });
-  try {
-    void emitAppEvent(MERGE_EVT, { key, ws: payload } satisfies MergeMsg);
-    const acked = await ackedP;
-    if (!acked) return false; // main window gone — leave the tab where it is
-    releaseWorkspace(ws);
-    if (workspaces.size === 0) void destroyWindow(); // this window is now empty
-    return true;
-  } finally {
-    window.clearTimeout(timer);
-    unlisten();
-  }
-}
-
-/** In-app confirm modal (unlike the native dialog, it can carry a "Don't ask
- *  again" checkbox). Resolves { ok, dontAsk }. */
-export function confirmModal(opts: {
-  title: string;
-  message: string;
-  okLabel?: string;
-  dontAsk?: boolean;
-  input?: { placeholder?: string; value?: string };
-}): Promise<{ ok: boolean; dontAsk: boolean; value: string }> {
-  const m = document.getElementById("confirmModal") as HTMLElement;
-  const okBtn = document.getElementById("cfOk") as HTMLButtonElement;
-  const cancelBtn = document.getElementById("cfCancel") as HTMLButtonElement;
-  const dontChk = document.getElementById("cfDontask") as HTMLInputElement;
-  const inputRow = document.getElementById("cfInputRow") as HTMLElement;
-  const inputEl = document.getElementById("cfInput") as HTMLInputElement;
-  document.getElementById("cfTitle")!.textContent = opts.title;
-  document.getElementById("cfMsg")!.textContent = opts.message;
-  okBtn.textContent = opts.okLabel ?? "Confirm";
-  (document.getElementById("cfDontaskRow") as HTMLElement).hidden = !opts.dontAsk;
-  dontChk.checked = false;
-  inputRow.hidden = !opts.input;
-  if (opts.input) {
-    inputEl.placeholder = opts.input.placeholder ?? "";
-    inputEl.value = opts.input.value ?? "";
-  }
-  m.classList.add("open");
-  if (opts.input) {
-    inputEl.focus();
-    inputEl.select();
-  } else {
-    okBtn.focus();
-  }
-  return new Promise((resolve) => {
-    const done = (ok: boolean) => {
-      m.classList.remove("open");
-      okBtn.removeEventListener("click", onOk);
-      cancelBtn.removeEventListener("click", onCancel);
-      m.removeEventListener("mousedown", onBackdrop);
-      document.removeEventListener("keydown", onKey);
-      resolve({ ok, dontAsk: dontChk.checked, value: inputEl.value });
-    };
-    const onOk = () => done(true);
-    const onCancel = () => done(false);
-    const onBackdrop = (e: MouseEvent) => {
-      if (e.target === m) done(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") done(false);
-      else if (e.key === "Enter") done(true);
-    };
-    okBtn.addEventListener("click", onOk);
-    cancelBtn.addEventListener("click", onCancel);
-    m.addEventListener("mousedown", onBackdrop);
-    document.addEventListener("keydown", onKey);
-  });
-}
 
 const SKIP_WS_CLOSE = "maestro.skipWsCloseConfirm";
 export async function removeWorkspace(ws: Workspace) {

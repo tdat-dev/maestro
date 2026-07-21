@@ -66,3 +66,13 @@
 @keyframes sentRipple{from{opacity:.9}to{opacity:0}}
 .pane.recv{animation:recvFlash .5s ease}
 @keyframes recvFlash{0%{box-shadow:0 0 0 0 var(--accent-glow)}40%{box-shadow:0 0 0 3px var(--accent-glow)}100%{box-shadow:0 0 0 0 transparent}}
+
+/* @mention autocomplete — floats above the input while typing "@name" */
+.bcast-ac{position:absolute;left:44px;bottom:calc(100% + 8px);min-width:200px;max-height:240px;overflow-y:auto;
+  background:var(--surface-1);border:1px solid var(--line-strong);border-radius:12px;padding:6px;
+  box-shadow:0 24px 50px -18px rgba(0,0,0,.85);z-index:210}
+.bcast-ac.hidden{display:none}
+.bcast-ac-item{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:8px 10px;border-radius:8px;
+  font-size:13px;color:var(--text);background:none;border:0;cursor:pointer}
+.bcast-ac-item:hover,.bcast-ac-item.sel{background:var(--surface-2)}
+.bcast-ac-item .dot{width:8px;height:8px;border-radius:50%;flex:none}

@@ -50,6 +50,7 @@ import {
 } from "./settings";
 import { CLI_PRESETS, expandCrew, runLimited, launchSpec, effectiveArgs, nameForNewPane, type CrewState, type CliPreset } from "./crew";
 import { tileToFit, nextSlot, serializeLayout, parseLayout, type Tile } from "./canvas";
+import { activeMention, matchNames, splitMentions } from "./mention";
 import { TILE_OPTIONS, gridDims, countLabel, gridLabel, distributeCounts, sanitizeCount } from "./wizard";
 import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm } from "./workspaces";
 import { checkForUpdates } from "./updater";
@@ -2678,38 +2679,25 @@ const bcastHistory: string[] = [];
 let bcastHistIdx = 0; // points one past the newest entry
 
 function broadcast() {
-  let text = bcastInput.value;
+  const originalText = bcastInput.value;
   const allRunning = activeRunning();
-  let targets = allRunning.filter(p => activeWs?.bcastSelected.has(p.id));
-  
-  const sorted = [...allRunning].sort((a, b) => b.spec.name.length - a.spec.name.length);
-  for (const p of sorted) {
-    const escapedName = p.spec.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`^@?${escapedName}(?:[-\\s]?([1-9][0-9]*))?[:,]?(?:\\s+|$)`, 'i');
-    const match = text.match(regex);
-    if (match) {
-      const exactMatches = allRunning.filter(agent => agent.spec.name.toLowerCase() === p.spec.name.toLowerCase());
-      if (match[1]) {
-        const idx = parseInt(match[1], 10) - 1;
-        if (idx >= 0 && idx < exactMatches.length) {
-          targets = [exactMatches[idx]];
-        } else {
-          targets = [];
-        }
-      } else {
-        targets = exactMatches;
-      }
-      text = text.substring(match[0].length);
-      break;
+  const names = allRunning.map((p) => p.spec.name);
+  // A line can name several agents: "@Ana run tests @Bob deploy". Text before
+  // any mention (or a line with no mention) goes to the selected/whole fleet.
+  const segs = splitMentions(originalText, names);
+  let sentAny = false;
+  for (const seg of segs) {
+    if (!seg.body) continue;
+    const targets = seg.name
+      ? allRunning.filter((p) => p.spec.name.toLowerCase() === seg.name!.toLowerCase())
+      : allRunning.filter((p) => activeWs?.bcastSelected.has(p.id));
+    for (const p of targets) {
+      void sendInput(p.id, seg.body + "\r").catch(() => {});
+      flashPane(p);
+      sentAny = true;
     }
   }
-
-  if (!text || targets.length === 0) return;
-  const originalText = bcastInput.value;
-  for (const p of targets) {
-    void sendInput(p.id, text + "\r").catch(() => {});
-    flashPane(p);
-  }
+  if (!sentAny) return;
   if (bcastHistory[bcastHistory.length - 1] !== originalText) bcastHistory.push(originalText);
   bcastHistIdx = bcastHistory.length;
   bcastInput.value = "";
@@ -2720,11 +2708,65 @@ function broadcast() {
   bcast.classList.add("sent");
   setTimeout(() => bcast.classList.remove("sent"), 560);
 }
+// --- @mention autocomplete: a name picker while typing "@" ---
+const bcastAc = document.getElementById("bcastAc") as HTMLElement;
+let acItems: string[] = [];
+let acSel = 0;
+function closeAc() {
+  bcastAc.classList.add("hidden");
+  acItems = [];
+}
+function nameColor(name: string): string {
+  return activeRunning().find((p) => p.spec.name === name)?.color ?? "var(--muted)";
+}
+function updateAc() {
+  const q = activeMention(bcastInput.value, bcastInput.selectionStart ?? bcastInput.value.length);
+  if (q === null) return closeAc();
+  const names = [...new Set(activeRunning().map((p) => p.spec.name))];
+  acItems = matchNames(q, names);
+  if (!acItems.length) return closeAc();
+  acSel = 0;
+  bcastAc.replaceChildren();
+  acItems.forEach((n, i) => {
+    const row = document.createElement("button");
+    row.className = "bcast-ac-item" + (i === acSel ? " sel" : "");
+    row.innerHTML = `<span class="dot" style="background:${nameColor(n)}"></span>${n}`;
+    row.addEventListener("mousedown", (ev) => {
+      ev.preventDefault();
+      pickAc(n);
+    });
+    bcastAc.appendChild(row);
+  });
+  bcastAc.classList.remove("hidden");
+}
+function moveAc(delta: number) {
+  if (!acItems.length) return;
+  acSel = (acSel + delta + acItems.length) % acItems.length;
+  [...bcastAc.children].forEach((c, i) => c.classList.toggle("sel", i === acSel));
+}
+function pickAc(name: string) {
+  const caret = bcastInput.selectionStart ?? bcastInput.value.length;
+  const before = bcastInput.value.slice(0, caret).replace(/@\w*$/, "@" + name + " ");
+  const after = bcastInput.value.slice(caret);
+  bcastInput.value = before + after;
+  bcastInput.setSelectionRange(before.length, before.length);
+  closeAc();
+  bcastInput.focus();
+  updateBcast();
+}
+
 bcastInput.addEventListener("input", () => {
   bcastHistIdx = bcastHistory.length; // typing leaves history navigation
   updateBcast();
+  updateAc();
 });
 bcastInput.addEventListener("keydown", (e) => {
+  if (!bcastAc.classList.contains("hidden")) {
+    if (e.key === "ArrowDown") { e.preventDefault(); return moveAc(1); }
+    if (e.key === "ArrowUp") { e.preventDefault(); return moveAc(-1); }
+    if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); return pickAc(acItems[acSel]); }
+    if (e.key === "Escape") { e.preventDefault(); return closeAc(); }
+  }
   if (e.key === "Enter") {
     e.preventDefault();
     broadcast();
@@ -2741,6 +2783,7 @@ bcastInput.addEventListener("keydown", (e) => {
   }
 });
 bcastSend.addEventListener("click", broadcast);
+bcastInput.addEventListener("blur", () => window.setTimeout(closeAc, 120));
 
 bcastTargetBtn?.addEventListener("click", (e) => {
   e.stopPropagation();

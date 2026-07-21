@@ -49,8 +49,9 @@ import {
   type MascotMode,
 } from "./settings";
 import { CLI_PRESETS, expandCrew, runLimited, launchSpec, effectiveArgs, nameForNewPane, type CrewState, type CliPreset } from "./crew";
-import { tileToFit, nextSlot, serializeLayout, parseLayout, type Tile } from "./canvas";
+import { tileToFit, nextSlot, serializeLayout, parseLayout } from "./canvas";
 import { activeMention, matchNames, splitMentions } from "./mention";
+import { type Pane, type Workspace, type AgentSpec } from "./panetypes";
 import { TILE_OPTIONS, gridDims, countLabel, gridLabel, distributeCounts, sanitizeCount } from "./wizard";
 import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm } from "./workspaces";
 import { checkForUpdates } from "./updater";
@@ -96,22 +97,6 @@ import {
  * Spawning agents switches to the Workspace; closing them all returns Home.
  * Each agent = its own real ConPTY process; closing a pane tree-kills it. */
 
-interface Pane {
-  id: string;
-  el: HTMLElement;
-  term: TerminalHandle;
-  running: boolean;
-  spawnedAt: number | null;
-  lastOutputAt: number; // ms of the last PTY output — drives the active/idle status
-  lastInputAt: number;  // ms of the last user keystroke into this pane (attention reset)
-  attention: boolean;   // agent went silent after output → probably waiting on the user
-  attentionClearedAt: number; // ms attention was last cleared (so a quiet prompt can't re-flag)
-  attentionNotified: boolean; // OS notification already fired for the current flag
-  color: string;
-  spec: AgentSpec; // the launch recipe — kept so the session can be serialized + re-booted
-  toggleFind?: () => void; // open/close this pane's find bar (set by wirePaneSearch)
-  recording?: string; // absolute path of the active recording file, when recording
-}
 
 // No PTY output for this long while alive ⇒ the agent is idle (waiting at a prompt).
 const IDLE_MS = 1200;
@@ -159,19 +144,6 @@ function fmtUptime(ms: number): string {
   return h > 0 ? `${h}:${p(m % 60)}:${p(s % 60)}` : `${m}:${p(s % 60)}`;
 }
 
-// Each tab is a Workspace: its own grid of panes. Only the active one is shown.
-interface Workspace {
-  id: string;
-  name: string;
-  dir: string | null;
-  repoRoot: string | null;   // git repo root when isolated; else null
-  isolated: boolean;         // create a worktree per agent
-  gridEl: HTMLElement;
-  tabEl: HTMLElement;
-  panes: Map<string, Pane>;
-  bcastSelected: Set<string>;
-  layout: Map<string, Tile>; // canvas position + size per pane id
-}
 const workspaces = new Map<string, Workspace>();
 let activeWs: Workspace | null = null;
 let wsCounter = 0;
@@ -1099,18 +1071,6 @@ function updateCount() {
   }
 }
 
-interface AgentSpec {
-  program: string;
-  args: string[];
-  cwd: string | null;
-  name: string;
-  badge: string;
-  color: string;
-  mono: string;
-  role?: "conductor"; // a conductor gets the orchestration system prompt
-  worktree?: string;  // worktree path once created (isolated agents)
-  branch?: string;    // the agent's git branch (isolated agents)
-}
 
 // Mount a pane immediately (status "queued…"); return a thunk that boots the
 // real process. Splitting mount from boot lets the caller throttle booting so a

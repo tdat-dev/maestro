@@ -53,6 +53,7 @@ import { configurePaneLayout, layoutGrid, tidyLayout, toggleMax, wirePaneDrag, w
 import { configureBroadcast, initBroadcast, updateBcast, focusBroadcast } from "./broadcast";
 import { configureRecents, getRecents, addRecent, renderRecents } from "./recents";
 import { configureUsage, initUsage } from "./usage";
+import { workspaces, activeWs, setActiveWs, newId, nextWsId } from "./appstate";
 import { TILE_OPTIONS, gridDims, countLabel, gridLabel, distributeCounts, sanitizeCount } from "./wizard";
 import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm } from "./workspaces";
 import { checkForUpdates } from "./updater";
@@ -145,10 +146,6 @@ function fmtUptime(ms: number): string {
   return h > 0 ? `${h}:${p(m % 60)}:${p(s % 60)}` : `${m}:${p(s % 60)}`;
 }
 
-const workspaces = new Map<string, Workspace>();
-let activeWs: Workspace | null = null;
-let wsCounter = 0;
-let counter = 0;
 const enc = new TextEncoder();
 
 // A detached window (a tab dragged out of another Maestro window) boots with
@@ -245,8 +242,7 @@ const SPAWN_TILE_SVG =
   '<span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span><span class="t">Spawn agent</span><span class="sub">real ConPTY · type · tree-kill</span>';
 
 function createWorkspace(dir: string | null, name?: string): Workspace {
-  wsCounter += 1;
-  const id = `ws-${wsCounter}`;
+  const id = nextWsId();
   // A restored tab passes its original name; otherwise auto-name it.
   const wsName = name ?? nextWorkspaceName(dir, [...workspaces.values()].map((w) => w.name));
 
@@ -291,7 +287,7 @@ function createWorkspace(dir: string | null, name?: string): Workspace {
 }
 
 function activateWorkspace(ws: Workspace) {
-  activeWs = ws;
+  setActiveWs(ws);
   for (const w of workspaces.values()) {
     w.gridEl.hidden = w !== ws;
     w.tabEl.classList.toggle("active", w === ws);
@@ -614,7 +610,7 @@ function dropWorkspace(ws: Workspace) {
     const next = nextId ? workspaces.get(nextId) ?? null : null;
     if (next) activateWorkspace(next);
     else {
-      activeWs = null;
+      setActiveWs(null);
       showView();
     }
   }
@@ -806,13 +802,6 @@ const MAX_SVG =
 // A filled dot — the record button; the ".rec" class pulses it red while active.
 const REC_SVG =
   '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>';
-
-function newId(): string {
-  counter += 1;
-  // Unique across page reloads too, so it never collides with a still-running
-  // backend agent from a previous (HMR-reloaded) frontend session.
-  return `agent-${counter}-${Math.random().toString(36).slice(2, 8)}`;
-}
 
 function errMsg(e: unknown): string {
   if (typeof e === "string") return e;

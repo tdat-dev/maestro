@@ -22,6 +22,7 @@ import {
 import { initFleetBridge } from "./fleetbridge";
 import { spawnForConductor } from "./spawnmodal";
 import { paneStatus } from "./fleet";
+import { showDelegation } from "./delegation";
 
 const wsHost = document.getElementById("workspaces") as HTMLElement;
 
@@ -223,13 +224,14 @@ export function initBridges(): void {
       }
       return out;
     },
-    deliver: (dir, to, message) => {
+    deliver: (dir, from, to, message) => {
       const ws = [...workspaces.values()].find((w) => w.dir === dir);
       if (!ws) return;
       const targets = to
         ? [...ws.panes.values()].filter((p) => p.running && p.spec.name === to)
         : [...ws.panes.values()].filter((p) => p.running);
       for (const p of targets) void sendInput(p.id, message + "\r").catch(() => {});
+      showDelegation(ws, from, targets);
     },
     spawn: (dir, req) => void spawnForConductor(dir, req),
   });

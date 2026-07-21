@@ -24,15 +24,21 @@ describe("serializeFleet", () => {
 });
 
 describe("parseOutboxLine", () => {
-  it("parses a targeted message", () => {
-    expect(parseOutboxLine('{"to":"Codex #1","message":"do X"}')).toEqual({
+  it("parses a targeted message with its sender", () => {
+    expect(parseOutboxLine('{"from":"Claude #1","to":"Codex #1","message":"do X"}')).toEqual({
+      from: "Claude #1",
       to: "Codex #1",
       message: "do X",
     });
   });
   it("treats missing/blank to as a broadcast (null)", () => {
-    expect(parseOutboxLine('{"message":"hello"}')).toEqual({ to: null, message: "hello" });
-    expect(parseOutboxLine('{"to":"  ","message":"hi"}')).toEqual({ to: null, message: "hi" });
+    expect(parseOutboxLine('{"message":"hello"}')).toEqual({ from: null, to: null, message: "hello" });
+    expect(parseOutboxLine('{"to":"  ","message":"hi"}')).toEqual({ from: null, to: null, message: "hi" });
+  });
+  it("treats missing/blank/null from as unknown (null)", () => {
+    expect(parseOutboxLine('{"message":"hi"}')?.from).toBeNull();
+    expect(parseOutboxLine('{"from":"  ","message":"hi"}')?.from).toBeNull();
+    expect(parseOutboxLine('{"from":null,"message":"hi"}')?.from).toBeNull();
   });
   it("returns null for blank, non-json, or message-less lines", () => {
     expect(parseOutboxLine("")).toBeNull();

@@ -59,10 +59,15 @@ describe("queueMessage", () => {
     expect(JSON.parse(lines[0]).message).toBe("ping");
   });
 
-  it("defaults from to 'agent' and to to null (broadcast)", () => {
+  it("defaults from and to to null (unknown sender, broadcast)", () => {
     const m = queueMessage(dir, { message: "hi all", now: 1 });
-    expect(m.from).toBe("agent");
+    expect(m.from).toBeNull();
     expect(m.to).toBeNull();
+  });
+
+  it("writes a blank from as null too", () => {
+    const m = queueMessage(dir, { from: "  ", message: "hi", now: 1 });
+    expect(m.from).toBeNull();
   });
 
   it("appends, not overwrites", () => {

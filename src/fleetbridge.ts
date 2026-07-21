@@ -41,11 +41,14 @@ export function serializeFleet(ws: BridgeWorkspace): string {
 }
 
 export interface OutboxLine {
+  from: string | null;
   to: string | null;
   message: string;
 }
 
-/** Parse one outbox jsonl line to a deliverable message, or null if unusable. */
+/** Parse one outbox jsonl line to a deliverable message, or null if unusable.
+ *  `from` (the sender's MAESTRO_AGENT name) is optional on the wire — older
+ *  lines and broadcasts from an unidentified sender parse to null. */
 export function parseOutboxLine(line: string): OutboxLine | null {
   const t = line.trim();
   if (!t) return null;
@@ -58,7 +61,11 @@ export function parseOutboxLine(line: string): OutboxLine | null {
   if (!o || typeof o !== "object") return null;
   const r = o as Record<string, unknown>;
   if (typeof r.message !== "string" || !r.message.trim()) return null;
-  return { to: typeof r.to === "string" && r.to.trim() ? r.to : null, message: r.message };
+  return {
+    from: typeof r.from === "string" && r.from.trim() ? r.from : null,
+    to: typeof r.to === "string" && r.to.trim() ? r.to : null,
+    message: r.message,
+  };
 }
 
 export interface SpawnLine {
@@ -87,8 +94,9 @@ export function parseSpawnLine(line: string): SpawnLine | null {
 export interface FleetBridgeHost {
   /** Every workspace that has a folder, with its current agents. */
   workspaces(): BridgeWorkspace[];
-  /** Deliver a message into a workspace's agent(s): `to` name, or null = all. */
-  deliver(dir: string, to: string | null, message: string): void;
+  /** Deliver a message into a workspace's agent(s): `from` name (or null when
+   *  unknown), `to` name, or null = all. */
+  deliver(dir: string, from: string | null, to: string | null, message: string): void;
   /** Spawn worker agent(s) an agent requested (conductor grows its crew). */
   spawn(dir: string, req: SpawnLine): void;
 }
@@ -154,7 +162,7 @@ async function drainOutbox(dir: string, host: FleetBridgeHost): Promise<void> {
   }
   for (let i = seen; i < lines.length; i += 1) {
     const parsed = parseOutboxLine(lines[i]);
-    if (parsed) host.deliver(dir, parsed.to, parsed.message);
+    if (parsed) host.deliver(dir, parsed.from, parsed.to, parsed.message);
   }
   consumed.set(dir, lines.length);
 }

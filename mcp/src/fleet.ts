@@ -17,7 +17,7 @@ export interface FleetAgent {
 
 export interface OutboxMessage {
   ts: number;
-  from: string; // MAESTRO_AGENT of the sender, or "agent"
+  from: string | null; // MAESTRO_AGENT of the sender, or null when unknown
   to: string | null; // target agent name, or null for the whole fleet
   message: string;
 }
@@ -109,16 +109,18 @@ export function readAgentScreen(dir: string, name: string): string | null {
 }
 
 /** Append one message to the outbox for the app to deliver. Creates .maestro/
- *  and the file on first use. Returns the message that was queued. */
+ *  and the file on first use. Returns the message that was queued. `from` is
+ *  the sender's MAESTRO_AGENT name — omitted/blank is written as null (the
+ *  app draws no delegation link when it can't identify the sender). */
 export function queueMessage(
   dir: string,
-  msg: { from?: string; to?: string | null; message: string; now: number },
+  msg: { from?: string | null; to?: string | null; message: string; now: number },
 ): OutboxMessage {
   const text = msg.message.trim();
   if (!text) throw new Error("message must not be empty");
   const entry: OutboxMessage = {
     ts: msg.now,
-    from: msg.from?.trim() || "agent",
+    from: msg.from?.trim() || null,
     to: msg.to?.trim() || null,
     message: text,
   };

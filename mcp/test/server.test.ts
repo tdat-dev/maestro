@@ -108,4 +108,51 @@ describe("maestro-mcp server", () => {
     expect(res.isError).toBe(true);
     expect(fs.readFileSync(path.join(dir, ".maestro", "board.json"), "utf8")).toBe("{broken");
   });
+
+  it("fleet_send writes from: null to the outbox when MAESTRO_AGENT is unset", async () => {
+    // agentName is captured once at createServer() time, so the pre-existing
+    // `client`/`server` from beforeEach already has whatever MAESTRO_AGENT was
+    // set when this test process started — spin up a fresh server with the
+    // env var cleared first.
+    const prevAgent = process.env.MAESTRO_AGENT;
+    delete process.env.MAESTRO_AGENT;
+    try {
+      const [clientTransport2, serverTransport2] = InMemoryTransport.createLinkedPair();
+      const server2 = createServer(dir);
+      await server2.connect(serverTransport2);
+      const client2 = new Client({ name: "test2", version: "0.0.0" });
+      await client2.connect(clientTransport2);
+      await client2.callTool({ name: "fleet_send", arguments: { message: "hi", to: "Codex #1" } });
+      await client2.close();
+    } finally {
+      if (prevAgent !== undefined) process.env.MAESTRO_AGENT = prevAgent;
+    }
+    const line = JSON.parse(
+      fs.readFileSync(path.join(dir, ".maestro", "outbox.jsonl"), "utf8").trim().split("\n")[0],
+    );
+    expect(line.from).toBeNull();
+    expect(line.to).toBe("Codex #1");
+  });
+
+  it("fleet_send threads MAESTRO_AGENT into the outbox as `from`", async () => {
+    const prevAgent = process.env.MAESTRO_AGENT;
+    process.env.MAESTRO_AGENT = "Claude #1";
+    try {
+      const [clientTransport2, serverTransport2] = InMemoryTransport.createLinkedPair();
+      const server2 = createServer(dir); // agentName is read at createServer() time
+      await server2.connect(serverTransport2);
+      const client2 = new Client({ name: "test2", version: "0.0.0" });
+      await client2.connect(clientTransport2);
+      await client2.callTool({ name: "fleet_send", arguments: { message: "go build it" } });
+      await client2.close();
+    } finally {
+      if (prevAgent === undefined) delete process.env.MAESTRO_AGENT;
+      else process.env.MAESTRO_AGENT = prevAgent;
+    }
+    const line = JSON.parse(
+      fs.readFileSync(path.join(dir, ".maestro", "outbox.jsonl"), "utf8").trim().split("\n")[0],
+    );
+    expect(line.from).toBe("Claude #1");
+    expect(line.to).toBeNull();
+  });
 });

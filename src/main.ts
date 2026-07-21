@@ -19,6 +19,7 @@ import { configureWorkspace, initWorkspace, createWorkspace, activateWorkspace, 
 import { confirmModal } from "./confirmmodal";
 import { wirePaneSearch } from "./panesearch";
 import { initMascotView } from "./mascotview";
+import { initVoice } from "./voice";
 import { configureBridges, initBridges } from "./bridges";
 import { initQuitLife } from "./quitlife";
 import { workspaces, activeWs } from "./appstate";
@@ -211,6 +212,7 @@ document.getElementById("btnTidy")?.addEventListener("click", () => { if (active
 configurePaneLayout({ updateBcast, saveSession });
 configureBroadcast({ getActiveWs: () => activeWs });
 initBroadcast();
+initVoice();
 configureRecents({ openWizard });
 configureUsage({ getActiveWs: () => activeWs, closeSettings });
 initUsage();

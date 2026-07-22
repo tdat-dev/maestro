@@ -48,6 +48,13 @@
 .tb-btn svg{color:var(--accent)}
 /* count chip on the "Resume all" button */
 .ra-count:not(:empty){display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 5px;margin-left:1px;border-radius:8px;background:var(--accent-glow,rgba(198,241,53,.18));color:var(--accent);font-size:11px;font-weight:700;line-height:1}
+/* "Resume all" is the one contextual action — it only appears when agents are
+   parked (e.g. after reopening the app). Give it a soft accent treatment so it
+   reads as the recommended thing to do, distinct from the neutral chrome. */
+#btnResumeAll{border-color:color-mix(in oklab,var(--accent) 32%,var(--line-strong));background:var(--accent-glow);color:var(--accent)}
+#btnResumeAll:hover{border-color:var(--accent);background:color-mix(in oklab,var(--accent) 15%,transparent);color:var(--accent)}
+#btnResumeAll svg{color:var(--accent)}
+#btnResumeAll .ra-count:not(:empty){background:color-mix(in oklab,var(--accent) 26%,transparent)}
 
 /* live stats + clock (numbers in mono) */
 .tb-btn-icon{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--text-2);background:var(--surface-1);border:1px solid var(--line-strong);transition:border-color .15s,color .15s,background .15s;flex:none}

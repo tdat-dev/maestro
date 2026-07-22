@@ -9,6 +9,21 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 
 use crate::core::command_spec::CommandSpec;
 
+/// Session-identity markers Claude Code exports into the processes it launches.
+/// `CommandBuilder` inherits our whole environment, so if Maestro itself was
+/// started from inside a Claude Code session (e.g. `npm run tauri:dev` run by an
+/// agent) these leak into every agent we spawn — each one then believes it is a
+/// *child* session and silently turns off transcript saving. Scrubbing them
+/// restores the "launched from a plain terminal" baseline; when Maestro is
+/// started normally none of them are set and removing them is a no-op. These are
+/// identity, not user config, so unsetting them never discards a real setting.
+const INHERITED_SESSION_MARKERS: [&str; 4] = [
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_EXECPATH",
+];
+
 pub struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
@@ -31,6 +46,11 @@ impl PtySession {
         }
         if let Some(cwd) = &spec.cwd {
             cmd.cwd(cwd);
+        }
+        // Drop the launching session's identity before applying our own vars, so
+        // an explicit spec.env entry could still set one deliberately.
+        for k in INHERITED_SESSION_MARKERS {
+            cmd.env_remove(k);
         }
         for (k, v) in &spec.env {
             cmd.env(k, v);

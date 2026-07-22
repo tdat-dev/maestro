@@ -39,24 +39,26 @@ function applyTermFontSize(n: number) {
     for (const pane of w.panes.values()) pane.term.setFontSize(clamped);
 }
 
-/** Show one settings section (Appearance/Fleet/Sessions/System) and mark its
- *  nav item active. The nav + panes are paired by data-setnav / data-setpane. */
-function showSettingsPane(key: string): void {
+/** Highlight a settings section's nav item and scroll it into view. Sections
+ *  (`.sec[data-sec]`) all live in one scroll column; the nav (`.sn[data-sec]`)
+ *  jumps between them — matching the mockup. `scroll` is false on open (the
+ *  content is already at the top, no animation needed). */
+function navToSection(sec: string, scroll = true): void {
   if (!settingsModal) return;
-  settingsModal.querySelectorAll<HTMLElement>("[data-setnav]").forEach((btn) => {
-    const on = btn.dataset.setnav === key;
-    btn.classList.toggle("on", on);
-    btn.setAttribute("aria-selected", on ? "true" : "false");
+  settingsModal.querySelectorAll<HTMLElement>(".sn[data-sec]").forEach((btn) => {
+    btn.classList.toggle("on", btn.dataset.sec === sec);
   });
-  settingsModal.querySelectorAll<HTMLElement>("[data-setpane]").forEach((pane) => {
-    pane.hidden = pane.dataset.setpane !== key;
-  });
+  if (!scroll) return;
+  settingsModal
+    .querySelector<HTMLElement>(`.sec[data-sec="${sec}"]`)
+    ?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 export function openSettings() {
   if (setHideTray) setHideTray.checked = getHideToTray();
   syncFontLabel();
-  showSettingsPane("appearance"); // always land on the first section
+  document.getElementById("setContent")?.scrollTo(0, 0);
+  navToSection("appearance", false); // land on the first section
   settingsModal?.classList.add("open");
 }
 export function closeSettings() {
@@ -98,8 +100,8 @@ export function initSettingsModal(): void {
     void setTrayVisible(on).catch((e) => console.warn("set tray visibility failed:", e));
   });
 
-  settingsModal?.querySelectorAll<HTMLElement>("[data-setnav]").forEach((btn) => {
-    btn.addEventListener("click", () => showSettingsPane(btn.dataset.setnav ?? "appearance"));
+  settingsModal?.querySelectorAll<HTMLElement>(".sn[data-sec]").forEach((btn) => {
+    btn.addEventListener("click", () => navToSection(btn.dataset.sec ?? "appearance"));
   });
 
   document.getElementById("btnSettings")?.addEventListener("click", openSettings);

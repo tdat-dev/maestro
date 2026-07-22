@@ -43,6 +43,7 @@ let onShowWorkspace: () => void = () => {};
 let onShowView: () => void = () => {};
 let onSyncResumeAll: () => void = () => {};
 let onSetFileTreeRoot: (dir: string | null) => void = () => {};
+let onApplyBackground: (ws: Workspace) => void = () => {};
 export function configureWorkspace(deps: {
   createAgent: (
     ws: Workspace,
@@ -56,6 +57,7 @@ export function configureWorkspace(deps: {
   showView: () => void;
   syncResumeAll: () => void;
   setFileTreeRoot: (dir: string | null) => void;
+  applyBackground: (ws: Workspace) => void;
 }): void {
   onCreateAgent = deps.createAgent;
   onRemoveAgent = deps.removeAgent;
@@ -64,6 +66,7 @@ export function configureWorkspace(deps: {
   onShowView = deps.showView;
   onSyncResumeAll = deps.syncResumeAll;
   onSetFileTreeRoot = deps.setFileTreeRoot;
+  onApplyBackground = deps.applyBackground;
 }
 
 // A detached window (a tab dragged out of another Maestro window) boots with
@@ -146,6 +149,8 @@ export function activateWorkspace(ws: Workspace) {
   dockSetContext({ key: ws.dir || ws.id, dir: ws.dir });
   // Re-root the code panel's file tree to this workspace's folder.
   onSetFileTreeRoot(ws.dir);
+  // Paint this workspace's saved canvas background.
+  onApplyBackground(ws);
 }
 
 

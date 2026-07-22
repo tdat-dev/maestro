@@ -175,22 +175,55 @@
 .usage-tbl tfoot td:first-child{text-align:right;color:var(--muted)}
 .usage-note{font-size:11px;color:var(--muted-2);line-height:1.5;margin-top:14px}
 
-/* ---- full-screen settings (sidebar + panes) ---- */
-.modal.settings-full{width:min(1000px,calc(100vw - 40px));height:min(680px,calc(100vh - 40px));max-height:none}
-.settings-shell{flex:1;display:flex;min-height:0}
-.settings-nav{flex:none;width:196px;padding:12px 10px;display:flex;flex-direction:column;gap:2px;
-  border-right:1px solid var(--line);background:var(--surface-0)}
-.settings-nav button{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:var(--r2);
-  background:transparent;border:none;color:var(--muted);font-size:13px;font-weight:500;text-align:left;
-  cursor:pointer;transition:background .12s,color .12s}
-.settings-nav button svg{width:17px;height:17px;flex:none;opacity:.85}
-.settings-nav button:hover{background:var(--surface-2);color:var(--text-2)}
-.settings-nav button.on{background:var(--accent-glow);color:var(--accent)}
-.settings-nav button.on svg{opacity:1}
-.settings-content{flex:1;min-width:0;overflow-y:auto;padding:20px 24px 24px}
-.settings-pane[hidden]{display:none}
-.set-section-head{margin-bottom:6px}
-.set-section-head h3{margin:0;font-family:var(--display);font-style:italic;font-weight:800;font-size:17px;color:var(--text)}
-.set-section-head p{margin:3px 0 0;font-size:11.5px;color:var(--muted-2);line-height:1.4}
+/* ---- full-screen settings (ported faithfully from the approved mockup) ---- */
+#settingsModal{padding:5vh 4vw}
+.set-shell{width:min(1000px,100%);height:min(82vh,740px);display:flex;flex-direction:column;overflow:hidden;
+  background:#0e1217;border:1px solid rgba(255,255,255,.12);border-radius:18px;box-shadow:0 50px 120px -30px rgba(0,0,0,.9)}
+.set-head{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid rgba(255,255,255,.07)}
+.set-title{font-size:16px;font-weight:700}
+.set-x{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:var(--muted);background:none;border:0}
+.set-x:hover{color:var(--text);background:rgba(255,255,255,.06)}
+.set-body{flex:1;min-height:0;display:grid;grid-template-columns:196px 1fr}
+.set-nav{display:flex;flex-direction:column;gap:2px;padding:14px;border-right:1px solid rgba(255,255,255,.07)}
+.sn{text-align:left;padding:9px 12px;border-radius:9px;font-size:13px;font-weight:500;color:var(--muted);background:none;border:0}
+.sn:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.sn.on{color:var(--text);background:rgba(255,255,255,.07)}
+.set-content{overflow-y:auto;padding:20px 26px}
+.sec{margin-bottom:28px;scroll-margin-top:8px}
+.sec>h3{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:12px;font-weight:700}
+.srow{display:flex;align-items:center;gap:18px;padding:13px 0;border-bottom:1px solid rgba(255,255,255,.07)}
+.srow.col{flex-direction:column;align-items:stretch;gap:12px}
+.sr-txt{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
+.sr-txt b{font-size:13.5px;font-weight:600;color:var(--text)}
+.sr-txt span{font-size:12px;color:var(--muted);line-height:1.45}
+.set-shell .stepper{display:flex;align-items:center;gap:2px;background:#11161d;border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:3px;flex:none}
+.set-shell .stepper button{width:26px;height:26px;border-radius:6px;display:grid;place-items:center;color:var(--muted);font-size:16px;background:none;border:0}
+.set-shell .stepper button:hover{background:rgba(255,255,255,.08);color:var(--text)}
+.set-shell .stepper .n{min-width:26px;text-align:center;font-family:var(--mono);font-size:13px;color:var(--text)}
+.seg{display:flex;background:#11161d;border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:3px;flex:none}
+.seg button{padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;color:var(--muted);background:none;border:0}
+.seg button.on{color:var(--text);background:rgba(255,255,255,.08)}
+.sbtn{padding:8px 15px;border-radius:9px;font-size:12.5px;font-weight:600;color:var(--text);background:#11161d;border:1px solid rgba(255,255,255,.12);flex:none}
+.sbtn:hover{border-color:rgba(255,255,255,.24)}
+.toggle{display:flex;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid rgba(255,255,255,.07);cursor:pointer}
+.toggle input{display:none}
+.tg{width:38px;height:22px;border-radius:11px;background:#11161d;border:1px solid rgba(255,255,255,.12);position:relative;flex:none;transition:background .18s}
+.tg::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--muted);transition:transform .18s,background .18s}
+.toggle input:checked+.tg{background:color-mix(in oklab,#27b9a3 55%,transparent);border-color:transparent}
+.toggle input:checked+.tg::after{transform:translateX(16px);background:#0a0d07}
+.bg-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;max-width:540px}
+.bg-opt{height:46px;border-radius:9px;border:1px solid rgba(255,255,255,.12);cursor:pointer;position:relative;overflow:hidden;padding:0}
+.bg-opt:hover{border-color:rgba(255,255,255,.28)}
+.bg-opt.on{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in oklab,#27b9a3 40%,transparent)}
+.bg-cust{display:grid;place-items:center;color:#fff;font-size:20px;font-weight:400;
+  background:conic-gradient(from 210deg,#f0a35e,#35d0a8,#5ec8e8,#a98bf0,#f07a9e,#f0a35e)}
+.bg-cust span{position:relative;z-index:1;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+.bg-cust input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.bg-img{display:grid;place-items:center;color:var(--muted);background:#0e1217}
+.bg-img:hover{color:var(--text)}
+.bg-img svg{width:19px;height:19px}
+.bg-img input{position:absolute;inset:0;opacity:0;cursor:pointer}
+@media (max-width:660px){.set-body{grid-template-columns:1fr}
+  .set-nav{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}}
 
 /* (crew-templates modal styles removed — presets in the wizard replaced it) */

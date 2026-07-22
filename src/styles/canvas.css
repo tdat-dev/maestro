@@ -8,6 +8,21 @@
   gap: 0;
   background: transparent;
 }
+/* Optional 34px grid overlay, toggled by the "glow"/"grid" background presets
+   (background.ts). Masked to fade at the edges; sits behind the panes. */
+.grid.canvas.sg-grid::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 34px 34px;
+  -webkit-mask: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent);
+  mask: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent);
+}
 .grid.canvas .pane {
   position: absolute;
   border-radius: 12px;

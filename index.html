@@ -376,120 +376,59 @@
 
 <!-- ===================== SETTINGS ===================== -->
 <div class="backdrop" id="settingsModal">
-  <div class="modal settings-full" role="dialog" aria-modal="true" aria-label="Settings">
-    <div class="modal-head">
-      <span class="t">Settings</span>
-      <button class="x" id="setClose" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-    </div>
-    <div class="settings-shell">
-      <nav class="settings-nav" role="tablist" aria-label="Settings sections">
-        <button type="button" class="on" data-setnav="appearance" role="tab" aria-selected="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2a10 10 0 0 0 0 20 2.5 2.5 0 0 0 2-4 2.5 2.5 0 0 1 2-4h2a4 4 0 0 0 4-4 10 10 0 0 0-10-8Z"/></svg>
-          <span>Appearance</span>
-        </button>
-        <button type="button" data-setnav="fleet" role="tab" aria-selected="false">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          <span>Fleet</span>
-        </button>
-        <button type="button" data-setnav="sessions" role="tab" aria-selected="false">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l3 2"/></svg>
-          <span>Sessions</span>
-        </button>
-        <button type="button" data-setnav="system" role="tab" aria-selected="false">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
-          <span>System</span>
-        </button>
+  <div class="set-shell" role="dialog" aria-modal="true" aria-label="Settings">
+    <header class="set-head">
+      <span class="set-title">Settings</span>
+      <button class="set-x" id="setClose" type="button" aria-label="Close" title="Close · Esc"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </header>
+    <div class="set-body">
+      <nav class="set-nav" aria-label="Settings sections">
+        <button class="sn on" type="button" data-sec="appearance">Appearance</button>
+        <button class="sn" type="button" data-sec="fleet">Fleet &amp; Remote</button>
+        <button class="sn" type="button" data-sec="sessions">Schedule &amp; Sessions</button>
+        <button class="sn" type="button" data-sec="system">System</button>
       </nav>
-      <div class="settings-content">
-        <section class="settings-pane" data-setpane="appearance" role="tabpanel">
-          <div class="set-section-head"><h3>Appearance</h3><p>Home character and terminal text.</p></div>
-          <div class="set-row">
-            <span class="pt-text">
-              <b>Mascot</b>
-              <span>How the Home character behaves. Drag the character to place it anywhere.</span>
-            </span>
-            <div class="set-seg" id="setMascotMode" role="group" aria-label="Mascot mode">
-              <button type="button" data-mode="move">Walk around</button>
-              <button type="button" data-mode="still">Stand still</button>
+      <div class="set-content" id="setContent">
+        <section class="sec" data-sec="appearance">
+          <h3>Appearance</h3>
+          <div class="srow col">
+            <div class="sr-txt"><b>Canvas background</b><span>Pick a backdrop for this workspace — a preset, a colour, or an image from disk.</span></div>
+            <div class="bg-grid" id="bgGrid">
+              <button class="bg-opt" type="button" data-bg="glow" title="Default" style="background:radial-gradient(120% 90% at 82% 0,rgba(198,241,53,.55),transparent 60%),radial-gradient(120% 90% at 0 100%,rgba(56,189,248,.45),transparent 60%),#0b0f14"></button>
+              <button class="bg-opt" type="button" data-bg="dark" title="Solid dark" style="background:#090a0c"></button>
+              <button class="bg-opt" type="button" data-bg="grid" title="Grid" style="background:linear-gradient(#2a2f38 1px,transparent 1px),linear-gradient(90deg,#2a2f38 1px,transparent 1px),#0b0f14;background-size:8px 8px"></button>
+              <button class="bg-opt" type="button" data-bg="violet" title="Violet" style="background:radial-gradient(130% 90% at 82% 0,rgba(139,92,246,.6),transparent 60%),#0a0910"></button>
+              <button class="bg-opt" type="button" data-bg="ocean" title="Ocean" style="background:radial-gradient(130% 90% at 82% 0,rgba(56,189,248,.6),transparent 60%),#070d12"></button>
+              <label class="bg-opt bg-cust" title="Custom colour"><input type="color" id="bgColor" value="#0b0f14"><span>+</span></label>
+              <label class="bg-opt bg-img" title="Image from disk"><input type="file" id="bgImg" accept="image/*"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 18 5-4 4 3 3-2 4 3"/></svg></label>
             </div>
           </div>
-          <div class="set-row">
-            <span class="pt-text">
-              <b>Terminal font size</b>
-              <span>Text size in every terminal pane. Applies live to running agents.</span>
-            </span>
-            <div class="stepper" id="setFontStepper">
-              <button type="button" data-dec aria-label="Smaller">−</button>
-              <span class="n" id="setFontN">15</span>
-              <button type="button" data-inc aria-label="Larger">+</button>
-            </div>
+          <div class="srow">
+            <div class="sr-txt"><b>Terminal font size</b><span>Applies live to every running pane.</span></div>
+            <div class="stepper" id="setFontStepper"><button type="button" data-dec aria-label="Smaller">−</button><span class="n" id="setFontN">15</span><button type="button" data-inc aria-label="Larger">+</button></div>
+          </div>
+          <div class="srow">
+            <div class="sr-txt"><b>Mascot</b><span>The Home character — pacing or standing still.</span></div>
+            <div class="seg" id="setMascotMode" role="group" aria-label="Mascot mode"><button type="button" data-mode="move">Walk</button><button type="button" data-mode="still">Stand still</button></div>
           </div>
         </section>
-        <section class="settings-pane" data-setpane="fleet" role="tabpanel" hidden>
-          <div class="set-section-head"><h3>Fleet</h3><p>See and drive your agents from another device.</p></div>
-          <label class="perm-toggle" for="setDashOn">
-            <input type="checkbox" id="setDashOn">
-            <span class="pt-sw"></span>
-            <span class="pt-text">
-              <b>Remote fleet dashboard</b>
-              <span id="setDashUrl">Off — turn on to view the fleet from your phone.</span>
-            </span>
-          </label>
-          <label class="perm-toggle sub" for="setDashLan">
-            <input type="checkbox" id="setDashLan">
-            <span class="pt-sw"></span>
-            <span class="pt-text">
-              <b>Allow other devices (LAN)</b>
-              <span>Off = this computer only. On = reachable from phones/tablets on the same Wi-Fi. The page can type into an agent, so only enable on a network you trust.</span>
-            </span>
-          </label>
+        <section class="sec" data-sec="fleet">
+          <h3>Fleet &amp; Remote</h3>
+          <label class="toggle"><input type="checkbox" id="setDashOn"><span class="tg"></span><span class="sr-txt"><b>Remote fleet dashboard</b><span id="setDashUrl">View &amp; drive the fleet from your phone's browser.</span></span></label>
+          <label class="toggle"><input type="checkbox" id="setDashLan"><span class="tg"></span><span class="sr-txt"><b>Allow other devices (LAN)</b><span>Reachable from devices on the same Wi-Fi. Only enable on a network you trust.</span></span></label>
         </section>
-        <section class="settings-pane" data-setpane="sessions" role="tabpanel" hidden>
-          <div class="set-section-head"><h3>Sessions</h3><p>Schedules, replays, and token usage.</p></div>
-          <div class="set-update">
-            <span class="pt-text">
-              <b>Scheduled agents</b>
-              <span>Launch a saved crew preset automatically at a set time.</span>
-            </span>
-            <button class="btn-ghost" id="setOpenSched">Manage schedules</button>
-          </div>
-          <div class="set-update">
-            <span class="pt-text">
-              <b>Session replays</b>
-              <span>Watch back recorded agent sessions. Record from the ● button on any pane.</span>
-            </span>
-            <button class="btn-ghost" id="setOpenReplays">Open replays</button>
-          </div>
-          <div class="set-update">
-            <span class="pt-text">
-              <b>Token usage &amp; cost</b>
-              <span>Real Claude token totals for this workspace, with an estimated cost.</span>
-            </span>
-            <button class="btn-ghost" id="setOpenUsage">View usage</button>
-          </div>
+        <section class="sec" data-sec="sessions">
+          <h3>Schedule &amp; Sessions</h3>
+          <div class="srow"><div class="sr-txt"><b>Scheduled agents</b><span>Auto-launch a saved crew preset at a set time.</span></div><button class="sbtn" type="button" id="setOpenSched">Manage</button></div>
+          <div class="srow"><div class="sr-txt"><b>Session replays</b><span>Watch back recorded agent sessions (● on any pane).</span></div><button class="sbtn" type="button" id="setOpenReplays">Open</button></div>
+          <div class="srow"><div class="sr-txt"><b>Token usage &amp; cost</b><span>Total Claude tokens for this workspace, with an estimated cost.</span></div><button class="sbtn" type="button" id="setOpenUsage">View</button></div>
         </section>
-        <section class="settings-pane" data-setpane="system" role="tabpanel" hidden>
-          <div class="set-section-head"><h3>System</h3><p>Window behavior and updates.</p></div>
-          <label class="perm-toggle" for="setHideTray">
-            <input type="checkbox" id="setHideTray">
-            <span class="pt-sw"></span>
-            <span class="pt-text">
-              <b>Hide to tray</b>
-              <span>Minimizing tucks Maestro into the system tray (agents keep running) instead of dropping to the taskbar. The close button still quits.</span>
-            </span>
-          </label>
-          <div class="set-update">
-            <span class="pt-text">
-              <b>Updates</b>
-              <span id="setVersion">Maestro</span>
-            </span>
-            <button class="btn-ghost" id="setCheckUpdate">Check for updates</button>
-          </div>
+        <section class="sec" data-sec="system">
+          <h3>System</h3>
+          <label class="toggle"><input type="checkbox" id="setHideTray"><span class="tg"></span><span class="sr-txt"><b>Hide to tray</b><span>Minimizing tucks Maestro into the system tray; agents keep running.</span></span></label>
+          <div class="srow"><div class="sr-txt"><b>Updates</b><span id="setVersion">Maestro</span></div><button class="sbtn" type="button" id="setCheckUpdate">Check for updates</button></div>
         </section>
       </div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn-ghost" id="setCloseBtn">Close</button>
     </div>
   </div>
 </div>

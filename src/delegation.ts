@@ -34,7 +34,7 @@ function ensureStyle(): void {
 @keyframes deleg-flow{to{stroke-dashoffset:-14}}
 @keyframes deleg-fade{0%{opacity:0}12%{opacity:1}75%{opacity:1}100%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.deleg-path{animation:none}.deleg-dot{display:none}}
-.deleg-toast{position:fixed;right:18px;bottom:72px;z-index:250;display:flex;align-items:center;gap:10px;
+.deleg-toast{position:fixed;right:16px;bottom:70px;z-index:250;display:flex;align-items:center;gap:10px;
   max-width:360px;padding:10px 14px;border-radius:var(--r3);background:var(--surface-1);
   border:1px solid var(--line-2);box-shadow:0 24px 50px -18px rgba(0,0,0,.85);
   font-size:12.5px;color:var(--text);opacity:0;transform:translateY(8px);pointer-events:none;

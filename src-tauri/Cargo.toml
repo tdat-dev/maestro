@@ -12,6 +12,16 @@ rust-version = "1.77.2"
 name = "maestro_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# Cargo always emits `maestro-dev.exe`, so a `tauri dev` build can never share an
+# image name with an installed production Maestro (`maestro.exe`) — anything that
+# matches processes by name while developing then cannot kill the real app.
+# `tauri build` renames it back via `mainBinaryName` in tauri.conf.json, so the
+# shipped binary is still `maestro.exe`. (`mainBinaryName` only applies to
+# `tauri build`, never to `tauri dev` — hence doing the split at the Cargo level.)
+[[bin]]
+name = "maestro-dev"
+path = "src/main.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

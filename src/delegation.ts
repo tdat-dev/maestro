@@ -1,15 +1,21 @@
 // Delegation visualization: when one agent hands work to another via the
 // maestro-mcp `fleet_send` tool, draw a transient animated link on the canvas
-// from the sender's pane to the target pane(s). Purely cosmetic — geometry is
-// recomputed at draw time (panes move/resize/focus), every drawn element
-// removes itself on a timer, and an unknown/absent sender is a silent no-op
-// so delivery never depends on this module. One SVG overlay layer is created
-// lazily per workspace grid and reused across calls.
+// from the sender's pane to the target pane(s), AND pop a small bottom-right
+// toast ("Ana → Bob: message") so the hand-off reads even when the panes
+// involved are off-screen, scrolled away, or in a different workspace tab.
+// Both are purely cosmetic — geometry/lookups are recomputed at draw time,
+// every drawn element removes itself on a timer, and an unknown/absent
+// sender is a silent no-op so delivery never depends on this module. One SVG
+// overlay layer is created lazily per workspace grid and reused across
+// calls; the toast is a single element lazily created on `document.body`.
 
 import { type Pane, type Workspace } from "./panetypes";
+import { workspaces } from "./appstate";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const LIFETIME_MS = 1500;
+const TOAST_LIFETIME_MS = 2600;
+const TOAST_MESSAGE_MAX = 90;
 
 const overlays = new WeakMap<Workspace, SVGSVGElement>();
 let gradCounter = 0;
@@ -29,6 +35,17 @@ function ensureStyle(): void {
 @keyframes deleg-flow{to{stroke-dashoffset:-28}}
 @keyframes deleg-fade{0%{opacity:0}12%{opacity:1}75%{opacity:1}100%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.deleg-path{animation:none}.deleg-dot{display:none}}
+.deleg-toast{position:fixed;right:18px;bottom:18px;z-index:9999;display:flex;align-items:center;gap:10px;
+  max-width:360px;padding:10px 14px;border-radius:var(--r3);background:var(--surface-1);
+  border:1px solid var(--line-strong);box-shadow:0 8px 24px rgba(0,0,0,.45);
+  font-size:12.5px;color:var(--text-2);opacity:0;transform:translateY(8px);pointer-events:none;
+  transition:opacity .28s,transform .28s}
+.deleg-toast.on{opacity:1;transform:translateY(0)}
+.deleg-toast-av{width:22px;height:22px;border-radius:var(--r1);flex:none;display:grid;place-items:center;
+  font-size:11px;font-weight:800;color:var(--accent-ink);background:var(--muted-2)}
+.deleg-toast-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.deleg-toast-arw{font-family:var(--mono);color:var(--accent)}
+@media (prefers-reduced-motion:reduce){.deleg-toast{transition:none}}
 `;
   document.head.appendChild(style);
 }
@@ -140,4 +157,77 @@ export function showDelegation(ws: Workspace, fromName: string | null, toPanes: 
     if (target === sender) continue;
     drawLink(svg, from, center(target));
   }
+}
+
+/* ---------------- delegation toast ---------------- */
+
+let toastEl: HTMLElement | null = null;
+let toastAvEl: HTMLElement | null = null;
+let toastTextEl: HTMLElement | null = null;
+let toastHideTimer: number | undefined;
+
+/** The singleton toast element, created (or re-created, if a prior one was
+ *  somehow removed from the DOM) on first use. Not scoped to a workspace —
+ *  the toast is a viewport-level notification, unlike the canvas arc. */
+function ensureToast(): { root: HTMLElement; av: HTMLElement; text: HTMLElement } {
+  if (toastEl && toastAvEl && toastTextEl && document.body.contains(toastEl)) {
+    return { root: toastEl, av: toastAvEl, text: toastTextEl };
+  }
+  ensureStyle();
+  const root = document.createElement("div");
+  root.className = "deleg-toast";
+  const av = document.createElement("span");
+  av.className = "deleg-toast-av";
+  const text = document.createElement("span");
+  text.className = "deleg-toast-text";
+  root.append(av, text);
+  document.body.appendChild(root);
+  toastEl = root;
+  toastAvEl = av;
+  toastTextEl = text;
+  return { root, av, text };
+}
+
+/** Find a pane's colour by agent name across every open workspace — the
+ *  toast isn't scoped to one workspace's canvas, so it searches them all.
+ *  Same case-insensitive/trimmed matching rule as `findPane`. */
+function findPaneColor(name: string): string | undefined {
+  const want = name.trim().toLowerCase();
+  for (const ws of workspaces.values()) {
+    for (const p of ws.panes.values()) {
+      if (p.spec.name.trim().toLowerCase() === want) return p.color;
+    }
+  }
+  return undefined;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Trim a message to a toast-friendly length, on a word-ish boundary. */
+function truncate(s: string, max: number): string {
+  const t = s.trim();
+  return t.length > max ? t.slice(0, max - 1).trimEnd() + "…" : t;
+}
+
+/** Pop (or restart) the bottom-right delegation toast: "<sender> → <targets>:
+ *  <message>". Reuses one element across calls, self-injecting into
+ *  `document.body`. No-op (never throws) when `fromName` is null/blank or
+ *  there are no targets — same rule as `showDelegation`; the caller's
+ *  delivery must never depend on this succeeding. */
+export function showDelegationToast(fromName: string | null, toNames: string[], message: string): void {
+  if (!fromName || !fromName.trim() || toNames.length === 0) return;
+  const { root, av, text } = ensureToast();
+  const from = fromName.trim();
+  const color = findPaneColor(from);
+  av.textContent = from.slice(0, 1).toUpperCase() || "?";
+  av.style.background = color ?? "var(--muted-2)";
+  const toLabel = toNames.length <= 2 ? toNames.join(" & ") : `${toNames[0]} +${toNames.length - 1}`;
+  text.innerHTML =
+    `${escapeHtml(from)} <span class="deleg-toast-arw">&rarr;</span> ${escapeHtml(toLabel)}: ` +
+    escapeHtml(truncate(message, TOAST_MESSAGE_MAX));
+  root.classList.add("on");
+  window.clearTimeout(toastHideTimer);
+  toastHideTimer = window.setTimeout(() => root.classList.remove("on"), TOAST_LIFETIME_MS);
 }

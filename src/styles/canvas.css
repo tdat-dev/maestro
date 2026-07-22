@@ -131,24 +131,23 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* rename pencil beside the name — reveals on bar hover, drives the same inline
-   rename as clicking the name (a clearer affordance than click-the-text). */
-.grid.canvas .pb-edit {
-  opacity: 0;
-  flex: none;
-  width: 20px;
-  height: 20px;
-  margin-left: -2px;
-  border-radius: 5px;
-  display: grid;
-  place-items: center;
-  color: var(--muted-2);
-  background: none;
-  border: 0;
-  transition: opacity 0.12s, color 0.12s, background 0.12s;
+/* "⋯ more" overflow — holds the extra controls (search/record/restart) so the
+   header shows the mockup's exact three (rename · focus · kill) by default. */
+.grid.canvas .pb-more { position: relative; display: flex; }
+.grid.canvas .pb-more-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  display: flex;
+  gap: 1px;
+  padding: 3px;
+  background: var(--surface-1);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  box-shadow: 0 12px 30px -12px rgba(0, 0, 0, 0.7);
+  z-index: 10;
 }
-.grid.canvas .pane-bar:hover .pb-edit { opacity: 1; }
-.grid.canvas .pb-edit:hover { color: var(--text); background: rgba(255, 255, 255, 0.09); }
+.grid.canvas .pb-more-menu[hidden] { display: none; }
 /* the focus button shows a back-arrow while its pane is the focused stage */
 .grid.canvas .pctrl[data-max] .ic-max { display: grid; place-items: center; }
 .grid.canvas .pctrl[data-max] .ic-back { display: none; }

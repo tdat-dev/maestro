@@ -72,7 +72,11 @@ const REC_SVG =
 const BACK_SVG =
   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l-6 6 6 6M3 12h13"/></svg>';
 const EDIT_SVG =
-  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+// "⋯ more" — collapses the app's extra controls (search/record/restart) so the
+// header shows the mockup's exact three (rename · focus · kill) by default.
+const MORE_SVG =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
 
 function buildPaneEl(
   id: string,
@@ -91,15 +95,20 @@ function buildPaneEl(
     <div class="pane-bar" data-drag>
       <span class="pb-dot"></span>
       <span class="pb-name pane-name">${name}</span>
-      <button class="pb-edit" data-edit aria-label="Rename agent" title="Rename">${EDIT_SVG}</button>
       <span class="pb-cli">${badge}</span>
       <span class="pb-sp"></span>
       <div class="pb-ctrls ctrls">
-        <button class="pctrl" data-search aria-label="Search output">${SEARCH_SVG}</button>
-        <button class="pctrl rec-btn" data-record aria-label="Record session">${REC_SVG}</button>
+        <div class="pb-more">
+          <button class="pctrl" data-more aria-label="More actions" title="More">${MORE_SVG}</button>
+          <div class="pb-more-menu" hidden>
+            <button class="pctrl" data-search aria-label="Search output" title="Search output">${SEARCH_SVG}</button>
+            <button class="pctrl rec-btn" data-record aria-label="Record session" title="Record">${REC_SVG}</button>
+            <button class="pctrl" data-restart aria-label="Restart agent" title="Restart">${RESTART_SVG}</button>
+          </div>
+        </div>
+        <button class="pctrl" data-edit aria-label="Rename agent" title="Rename">${EDIT_SVG}</button>
         <button class="pctrl" data-max aria-label="Focus pane" title="Focus / back to canvas"><span class="ic-max">${MAX_SVG}</span><span class="ic-back">${BACK_SVG}</span></button>
-        <button class="pctrl" data-restart aria-label="Restart agent">${RESTART_SVG}</button>
-        <button class="pctrl danger" data-kill aria-label="Kill agent (tree)">${KILL_SVG}</button>
+        <button class="pctrl danger" data-kill aria-label="Kill agent (tree)" title="Kill (tree)">${KILL_SVG}</button>
       </div>
     </div>
     <div class="pane-find" data-find hidden>
@@ -191,6 +200,18 @@ export function createAgent(
     await createAgent(ws, spec)();
   });
   el.querySelector("[data-max]")?.addEventListener("click", () => toggleMax(ws, pane));
+  // "⋯ more" reveals the extra controls (search / record / restart) so the
+  // header shows the mockup's exact three by default. Toggle on click; close
+  // after a pick or when the pointer leaves the pane.
+  const moreMenu = el.querySelector<HTMLElement>(".pb-more-menu");
+  if (moreMenu) {
+    el.querySelector("[data-more]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      moreMenu.hidden = !moreMenu.hidden;
+    });
+    moreMenu.addEventListener("click", () => { moreMenu.hidden = true; });
+    el.addEventListener("mouseleave", () => { moreMenu.hidden = true; });
+  }
   el.querySelector<HTMLElement>("[data-drag]")?.addEventListener("dblclick", (e) => {
     const tgt = e.target as HTMLElement;
     if (tgt.closest(".pctrl") || tgt.closest(".pb-name") || tgt.closest("[data-edit]")) return; // buttons + rename aren't focus triggers

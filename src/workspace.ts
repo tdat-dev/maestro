@@ -114,7 +114,7 @@ export function createWorkspace(dir: string | null, name?: string): Workspace {
   tabEl.dataset.ws = id;
   railList.appendChild(tabEl);
 
-  const ws: Workspace = { id, name: wsName, dir, repoRoot: null, isolated: false, gridEl, tabEl, panes: new Map(), bcastSelected: new Set(), layout: new Map(Object.entries(parseLayout(localStorage.getItem(`maestro.canvas.${dir ?? id}`)))) };
+  const ws: Workspace = { id, name: wsName, dir, repoRoot: null, isolated: false, gridEl, tabEl, panes: new Map(), layout: new Map(Object.entries(parseLayout(localStorage.getItem(`maestro.canvas.${dir ?? id}`)))) };
   tabEl.addEventListener("click", (e) => {
     if ((e.target as HTMLElement).closest(".tclose")) return;
     activateWorkspace(ws);

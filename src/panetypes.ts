@@ -46,6 +46,5 @@ export interface Workspace {
   gridEl: HTMLElement;
   tabEl: HTMLElement;
   panes: Map<string, Pane>;
-  bcastSelected: Set<string>;
   layout: Map<string, Tile>; // canvas position + size per pane id
 }

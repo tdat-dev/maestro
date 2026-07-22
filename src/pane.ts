@@ -183,7 +183,6 @@ export function createAgent(
 
   const pane: Pane = { id, el, term, running: false, spawnedAt: null, lastOutputAt: 0, lastInputAt: 0, attention: false, attentionClearedAt: 0, attentionNotified: false, color: spec.color, spec };
   ws.panes.set(id, pane);
-  ws.bcastSelected.add(id);
   layoutGrid(ws);
   onUpdateCount();
 

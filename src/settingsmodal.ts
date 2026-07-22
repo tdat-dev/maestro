@@ -39,9 +39,24 @@ function applyTermFontSize(n: number) {
     for (const pane of w.panes.values()) pane.term.setFontSize(clamped);
 }
 
+/** Show one settings section (Appearance/Fleet/Sessions/System) and mark its
+ *  nav item active. The nav + panes are paired by data-setnav / data-setpane. */
+function showSettingsPane(key: string): void {
+  if (!settingsModal) return;
+  settingsModal.querySelectorAll<HTMLElement>("[data-setnav]").forEach((btn) => {
+    const on = btn.dataset.setnav === key;
+    btn.classList.toggle("on", on);
+    btn.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  settingsModal.querySelectorAll<HTMLElement>("[data-setpane]").forEach((pane) => {
+    pane.hidden = pane.dataset.setpane !== key;
+  });
+}
+
 export function openSettings() {
   if (setHideTray) setHideTray.checked = getHideToTray();
   syncFontLabel();
+  showSettingsPane("appearance"); // always land on the first section
   settingsModal?.classList.add("open");
 }
 export function closeSettings() {
@@ -81,6 +96,10 @@ export function initSettingsModal(): void {
     const on = setHideTray.checked;
     setHideToTray(on);
     void setTrayVisible(on).catch((e) => console.warn("set tray visibility failed:", e));
+  });
+
+  settingsModal?.querySelectorAll<HTMLElement>("[data-setnav]").forEach((btn) => {
+    btn.addEventListener("click", () => showSettingsPane(btn.dataset.setnav ?? "appearance"));
   });
 
   document.getElementById("btnSettings")?.addEventListener("click", openSettings);

@@ -147,7 +147,7 @@ export function initVoice(): void {
   micBtn.type = "button";
   micBtn.setAttribute("aria-label", "Voice input");
   micBtn.innerHTML = MIC_ICON;
-  bcast.insertBefore(micBtn, sendBtn);
+  sendBtn.before(micBtn); // sits just before Send, inside the command field
 
   micBtn.addEventListener("click", toggleListening);
   document.addEventListener("keydown", (e) => {

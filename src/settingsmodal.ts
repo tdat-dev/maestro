@@ -106,6 +106,8 @@ export function initSettingsModal(): void {
 
   document.getElementById("btnSettings")?.addEventListener("click", openSettings);
   document.getElementById("btnSettingsHome")?.addEventListener("click", openSettings);
+  document.getElementById("cbSettings")?.addEventListener("click", openSettings); // command-bar gear
+
   document.getElementById("setClose")?.addEventListener("click", closeSettings);
   document.getElementById("setCloseBtn")?.addEventListener("click", closeSettings);
   settingsModal?.addEventListener("mousedown", (e) => {

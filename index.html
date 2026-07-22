@@ -115,7 +115,6 @@
     </div>
     
     <div class="tb-right">
-      <button class="tb-btn-icon" id="btnNewAgent" title="Spawn Agent"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
       <button class="tb-btn-icon" id="btnTidy" title="Tidy — tile panes to fit (Ctrl+Shift+G)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
       <button class="tb-btn" id="btnResumeAll" hidden title="Resume every stopped agent in this project"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg> Resume all<span class="ra-count" id="btnResumeAllCount"></span></button>
 
@@ -164,25 +163,29 @@
     </button>
   </nav>
 
-  <div class="bcast" id="bcast">
-    <span class="bcast-emitter" id="bcastEmitter" title="Broadcast"><span class="be-core"></span></span>
-    <span class="bcast-caret">&#10095;</span>
-    <input class="bcast-input" id="bcastInput" placeholder="broadcast a command to the whole fleet…  @name to target one" spellcheck="false" autocapitalize="off" autocomplete="off">
-    <div class="bcast-ac hidden" id="bcastAc" role="listbox" aria-label="Mention agent"></div>
-    <div class="bcast-target-wrapper">
-      <button class="bcast-target-btn" id="bcastTargetBtn">
-        <span class="bcast-count" id="bcastCount">0 agents</span>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-      </button>
-      <div class="bcast-menu hidden" id="bcastMenu">
-        <div class="bcast-menu-header">
-          <button id="bcastSelectAll">Select All</button>
-          <button id="bcastDeselectAll">Clear</button>
+  <div class="cmdbar" id="bcast">
+    <button class="cb-ico" id="cbSettings" type="button" title="Settings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+    <div class="cb-field">
+      <span class="cb-gt">&#8250;</span>
+      <span class="bcast-emitter" id="bcastEmitter" title="Broadcast" hidden><span class="be-core"></span></span>
+      <input class="binput" id="bcastInput" placeholder="Message the fleet…  @name to target one" spellcheck="false" autocapitalize="off" autocomplete="off">
+      <div class="bcast-target-wrapper">
+        <button class="bcast-target-btn" id="bcastTargetBtn">
+          <span class="bcast-count" id="bcastCount">0 agents</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="bcast-menu hidden" id="bcastMenu">
+          <div class="bcast-menu-header">
+            <button id="bcastSelectAll">Select All</button>
+            <button id="bcastDeselectAll">Clear</button>
+          </div>
+          <div class="bcast-menu-list" id="bcastTargets"></div>
         </div>
-        <div class="bcast-menu-list" id="bcastTargets"></div>
       </div>
+      <button class="bsend" id="bcastSend" type="button" disabled title="Send · Enter"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg></button>
+      <div class="bcast-ac hidden" id="bcastAc" role="listbox" aria-label="Mention agent"></div>
     </div>
-    <button class="bcast-send" id="bcastSend" disabled><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg> Broadcast <kbd>&#9166;</kbd></button>
+    <button class="cb-add" id="cbAddAgent" type="button" title="Spawn agent"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Agent</button>
   </div>
 </div>
 

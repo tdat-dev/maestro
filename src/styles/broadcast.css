@@ -1,33 +1,53 @@
-/* Broadcast console — type once, signal every agent in the active tab. */
-.bcast{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);z-index:200;width:min(800px,calc(100% - 48px));display:flex;align-items:center;gap:12px;padding:8px 12px 8px 14px;
-  background:rgba(10,12,16,0.65);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.06);border-radius:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.03), 0 16px 40px rgba(0,0,0,0.5);transition:background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease}
-.bcast::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;
-  background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:0;transition:opacity .28s ease}
-.bcast:focus-within::before{opacity:.5}
-.bcast:focus-within{background:rgba(20,24,32,0.8);border-color:rgba(198,241,53,0.3);box-shadow:inset 0 1px 0 rgba(255,255,255,0.06), 0 16px 40px rgba(0,0,0,0.6), 0 0 24px rgba(198,241,53,0.1)}
-/* pulsing emitter */
-.bcast-emitter{position:relative;width:24px;height:24px;flex:none;display:grid;place-items:center}
+/* Single-line command bar — ⚙ settings · field (› input · mic · send) · +Agent.
+   Floats bottom-center over the canvas; layout ported from the approved mockup,
+   the target dropdown + @mention popover kept for real fleet targeting. */
+#bcast.cmdbar{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:200;
+  display:flex;align-items:center;gap:8px}
+
+/* left settings icon + right +Agent share the field's glass look */
+.cb-ico{width:40px;height:40px;flex:none;display:grid;place-items:center;border-radius:11px;
+  border:1px solid var(--line-strong);background:rgba(16,20,26,.9);backdrop-filter:blur(10px);
+  color:var(--muted);transition:color .18s,border-color .18s}
+.cb-ico:hover{color:var(--text);border-color:rgba(255,255,255,.2)}
+.cb-add{flex:none;display:flex;align-items:center;gap:6px;height:40px;padding:0 14px;border-radius:11px;
+  border:1px solid var(--line-strong);background:rgba(16,20,26,.9);backdrop-filter:blur(10px);
+  color:var(--text);font-size:12.5px;font-weight:600;transition:border-color .18s}
+.cb-add svg{color:var(--accent)}
+.cb-add:hover{border-color:rgba(255,255,255,.2)}
+
+/* the input field itself */
+.cb-field{position:relative;display:flex;align-items:center;gap:8px;height:40px;width:min(560px,46vw);
+  padding:0 6px 0 13px;border-radius:12px;border:1px solid var(--line-strong);
+  background:rgba(16,20,26,.9);backdrop-filter:blur(10px);transition:border-color .2s,box-shadow .2s}
+.cb-field:focus-within{border-color:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-glow)}
+.cb-gt{font-family:var(--mono);color:var(--accent);font-size:14px;line-height:1;flex:none;text-shadow:0 0 8px var(--accent-glow)}
+.binput{flex:1;min-width:0;background:transparent;border:0;color:var(--text);font-family:var(--mono);
+  font-size:12.5px;outline:none;caret-color:var(--accent);letter-spacing:.01em}
+.binput::placeholder{color:var(--muted-2)}
+.binput:focus,.binput:focus-visible{outline:none;box-shadow:none}
+
+/* icon send button (brand green) */
+.bsend{width:30px;height:30px;flex:none;display:grid;place-items:center;border-radius:8px;
+  color:var(--accent-ink);background:var(--accent);border:0;transition:filter .18s,opacity .18s}
+.bsend:disabled{opacity:.4;filter:grayscale(.35);cursor:default}
+.bsend:not(:disabled):hover{filter:brightness(1.06)}
+
+/* pulsing emitter — kept (hidden by default) so the broadcast-live pulse code
+   in broadcast.ts still has its element; the mockup's field uses › instead. */
+.bcast-emitter{position:relative;width:18px;height:18px;flex:none;display:grid;place-items:center}
 .be-core{width:8px;height:8px;border-radius:50%;background:var(--idle);transition:background .25s}
 .bcast-emitter.live .be-core{background:var(--accent);box-shadow:0 0 8px var(--accent)}
-.bcast-emitter.live::before,.bcast-emitter.live::after{content:"";position:absolute;inset:0;margin:auto;
-  width:8px;height:8px;border-radius:50%;border:1.5px solid var(--accent);animation:emit 2.4s ease-out infinite}
-.bcast-emitter.live::after{animation-delay:1.2s}
-@keyframes emit{0%{width:8px;height:8px;opacity:.6}100%{width:26px;height:26px;opacity:0}}
-.bcast-caret{color:var(--accent);font-weight:700;font-size:14px;flex:none;margin:0 -4px 0 -2px;text-shadow:0 0 8px var(--accent-glow)}
-.bcast-input{flex:1;background:transparent;border:none;outline:none;color:var(--text);
-  font-family:var(--mono);font-size:13.5px;min-width:0;caret-color:var(--accent);letter-spacing:.01em}
-.bcast-input::placeholder{color:var(--muted-2)}
-.bcast-input:focus,.bcast-input:focus-visible{outline:none;box-shadow:none}
-/* Target Button & Menu */
+
+/* target button + popover menu (choose which agents a broadcast reaches) */
 .bcast-target-wrapper{position:relative;display:flex;align-items:center;flex:none}
-.bcast-target-btn{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:6px;
-  background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:all .2s ease}
+.bcast-target-btn{display:flex;align-items:center;gap:5px;padding:5px 8px;border-radius:7px;
+  background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:var(--text);
+  font-size:11px;font-weight:600;cursor:pointer;transition:all .2s ease}
 .bcast-target-btn:hover{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.15)}
 .bcast-target-btn svg{color:var(--muted);transition:transform .2s ease}
 .bcast-target-wrapper.open .bcast-target-btn svg{transform:rotate(180deg)}
 .bcast-count{font-size:11px;color:var(--text);flex:none;white-space:nowrap}
 
-/* Popover Menu */
 .bcast-menu{position:absolute;bottom:calc(100% + 12px);right:0;width:220px;
   background:rgba(15,17,21,0.85);backdrop-filter:blur(24px);border:1px solid var(--line);border-radius:12px;
   box-shadow:0 12px 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05);
@@ -41,7 +61,7 @@
 .bcast-menu-list::-webkit-scrollbar{width:4px}
 .bcast-menu-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:4px}
 
-/* Agent Row in Menu */
+/* Agent row in the target menu */
 .bcast-row{display:flex;align-items:center;gap:10px;padding:8px;border-radius:6px;cursor:pointer;transition:background .15s ease}
 .bcast-row:hover{background:rgba(255,255,255,0.05)}
 .bcast-row .t{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--c);background:var(--c);flex:none;transition:background .15s}
@@ -53,22 +73,16 @@
 .bcast-row:not(.off) .bcast-row-check{background:var(--accent);border-color:var(--accent)}
 .bcast-row-check svg{width:10px;height:10px;color:var(--accent-ink);opacity:0;transition:opacity .15s}
 .bcast-row:not(.off) .bcast-row-check svg{opacity:1}
-.bcast-send{flex:none;display:inline-flex;align-items:center;gap:8px;padding:8px 11px 8px 13px;border-radius:8px;
-  border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.05);color:var(--text);font-weight:600;font-size:12px;
-  transition:all .2s ease}
-.bcast-send:hover:not(:disabled){background:var(--accent);color:var(--accent-ink);border-color:var(--accent);box-shadow:0 0 12px var(--accent-glow)}
-.bcast-send:disabled{opacity:.3;cursor:default;filter:grayscale(.5)}
-.bcast-send kbd{font-family:var(--mono);font-size:10px;line-height:1;background:rgba(16,22,10,.22);
-  border:1px solid rgba(16,22,10,.28);border-radius:4px;padding:2px 5px;font-weight:700}
+
 /* ripple when a broadcast fires */
-.bcast.sent::after{content:"";position:absolute;inset:0;pointer-events:none;
-  background:radial-gradient(160px 80px at 18% 50%,var(--accent-glow),transparent 70%);animation:sentRipple .55s ease-out}
+#bcast.sent::after{content:"";position:absolute;inset:0;pointer-events:none;border-radius:12px;
+  background:radial-gradient(160px 80px at 50% 50%,var(--accent-glow),transparent 70%);animation:sentRipple .55s ease-out}
 @keyframes sentRipple{from{opacity:.9}to{opacity:0}}
 .pane.recv{animation:recvFlash .5s ease}
 @keyframes recvFlash{0%{box-shadow:0 0 0 0 var(--accent-glow)}40%{box-shadow:0 0 0 3px var(--accent-glow)}100%{box-shadow:0 0 0 0 transparent}}
 
-/* @mention autocomplete — floats above the input while typing "@name" */
-.bcast-ac{position:absolute;left:44px;bottom:calc(100% + 8px);min-width:200px;max-height:240px;overflow-y:auto;
+/* @mention autocomplete — floats above the field while typing "@name" */
+.bcast-ac{position:absolute;left:0;bottom:calc(100% + 8px);min-width:200px;max-height:240px;overflow-y:auto;
   background:var(--surface-1);border:1px solid var(--line-strong);border-radius:12px;padding:6px;
   box-shadow:0 24px 50px -18px rgba(0,0,0,.85);z-index:210}
 .bcast-ac.hidden{display:none}

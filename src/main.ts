@@ -209,6 +209,7 @@ function updateCount() {
 
 document.getElementById("btnNewWorkspace")?.addEventListener("click", () => openWizard());
 document.getElementById("btnNewAgent")?.addEventListener("click", () => openModal("current"));
+document.getElementById("cbAddAgent")?.addEventListener("click", () => openModal("current"));
 document.getElementById("btnTidy")?.addEventListener("click", () => { if (activeWs) tidyLayout(activeWs); });
 configurePaneLayout({ updateBcast, saveSession });
 configureBroadcast({ getActiveWs: () => activeWs });

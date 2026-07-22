@@ -104,7 +104,6 @@ export function initSettingsModal(): void {
     btn.addEventListener("click", () => navToSection(btn.dataset.sec ?? "appearance"));
   });
 
-  document.getElementById("btnSettings")?.addEventListener("click", openSettings);
   document.getElementById("btnSettingsHome")?.addEventListener("click", openSettings);
   document.getElementById("cbSettings")?.addEventListener("click", openSettings); // command-bar gear
 

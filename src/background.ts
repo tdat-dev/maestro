@@ -171,7 +171,6 @@ export function initBackground(): void {
   });
 
   // Reflect the active workspace's choice whenever Settings opens.
-  document.getElementById("btnSettings")?.addEventListener("click", () => markActive(getActiveWs()));
   document.getElementById("btnSettingsHome")?.addEventListener("click", () => markActive(getActiveWs()));
   document.getElementById("cbSettings")?.addEventListener("click", () => markActive(getActiveWs()));
 }

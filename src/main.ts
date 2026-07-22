@@ -23,6 +23,7 @@ import { initMascotView } from "./mascotview";
 import { initVoice } from "./voice";
 import { configureBackground, initBackground, applyBackground } from "./background";
 import { initTopbarChrome } from "./topbarchrome";
+import { initHint, topNote } from "./hint";
 import { configureBridges, initBridges } from "./bridges";
 import { initQuitLife } from "./quitlife";
 import { workspaces, activeWs } from "./appstate";
@@ -211,7 +212,12 @@ function updateCount() {
 
 document.getElementById("btnNewWorkspace")?.addEventListener("click", () => openWizard());
 document.getElementById("btnNewAgent")?.addEventListener("click", () => openModal("current"));
-document.getElementById("btnTidy")?.addEventListener("click", () => { if (activeWs) tidyLayout(activeWs); });
+document.getElementById("btnTidy")?.addEventListener("click", () => {
+  if (!activeWs) return;
+  tidyLayout(activeWs);
+  const n = activeWs.panes.size;
+  topNote(`Tidied ${n} pane${n === 1 ? "" : "s"} into a grid`);
+});
 configurePaneLayout({ updateBcast, saveSession });
 configureBroadcast({ getActiveWs: () => activeWs });
 initBroadcast();
@@ -240,6 +246,7 @@ initWorkspace();
 initBackground();
 initSpawnMenu();
 initTopbarChrome();
+initHint();
 initMascotView();
 initBridges();
 initQuitLife();

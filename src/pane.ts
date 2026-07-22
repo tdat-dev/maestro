@@ -67,6 +67,12 @@ const MAX_SVG =
 // A filled dot — the record button; the ".rec" class pulses it red while active.
 const REC_SVG =
   '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>';
+// Back-to-canvas arrow — swaps in for MAX_SVG while a pane is focused (the
+// mockup's .stage-back). And a pencil for the on-hover rename affordance.
+const BACK_SVG =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l-6 6 6 6M3 12h13"/></svg>';
+const EDIT_SVG =
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 
 function buildPaneEl(
   id: string,
@@ -85,12 +91,13 @@ function buildPaneEl(
     <div class="pane-bar" data-drag>
       <span class="pb-dot"></span>
       <span class="pb-name pane-name">${name}</span>
+      <button class="pb-edit" data-edit aria-label="Rename agent" title="Rename">${EDIT_SVG}</button>
       <span class="pb-cli">${badge}</span>
       <span class="pb-sp"></span>
       <div class="pb-ctrls ctrls">
         <button class="pctrl" data-search aria-label="Search output">${SEARCH_SVG}</button>
         <button class="pctrl rec-btn" data-record aria-label="Record session">${REC_SVG}</button>
-        <button class="pctrl" data-max aria-label="Focus pane">${MAX_SVG}</button>
+        <button class="pctrl" data-max aria-label="Focus pane" title="Focus / back to canvas"><span class="ic-max">${MAX_SVG}</span><span class="ic-back">${BACK_SVG}</span></button>
         <button class="pctrl" data-restart aria-label="Restart agent">${RESTART_SVG}</button>
         <button class="pctrl danger" data-kill aria-label="Kill agent (tree)">${KILL_SVG}</button>
       </div>
@@ -186,7 +193,7 @@ export function createAgent(
   el.querySelector("[data-max]")?.addEventListener("click", () => toggleMax(ws, pane));
   el.querySelector<HTMLElement>("[data-drag]")?.addEventListener("dblclick", (e) => {
     const tgt = e.target as HTMLElement;
-    if (tgt.closest(".pctrl") || tgt.closest(".pb-name")) return; // buttons + rename aren't focus triggers
+    if (tgt.closest(".pctrl") || tgt.closest(".pb-name") || tgt.closest("[data-edit]")) return; // buttons + rename aren't focus triggers
     toggleMax(ws, pane);
   });
   onWirePaneSearch(pane);

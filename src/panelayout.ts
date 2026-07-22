@@ -74,6 +74,7 @@ export function tidyLayout(ws: Workspace): void {
 export function focusPane(ws: Workspace, pane: Pane): void {
   for (const p of ws.panes.values()) p.el.classList.toggle("focused", p === pane);
   pane.el.style.setProperty("--stg", pane.color); // tints the stage's hue ring
+  pane.el.querySelector("[data-max]")?.setAttribute("aria-label", "Back to canvas");
   ws.gridEl.classList.add("has-focus");
   renderRail(ws, pane);
   requestAnimationFrame(() => {
@@ -85,7 +86,10 @@ export function focusPane(ws: Workspace, pane: Pane): void {
 export function exitFocus(ws: Workspace): void {
   if (!ws.gridEl.classList.contains("has-focus")) return;
   ws.gridEl.classList.remove("has-focus");
-  for (const p of ws.panes.values()) p.el.classList.remove("focused");
+  for (const p of ws.panes.values()) {
+    p.el.classList.remove("focused");
+    p.el.querySelector("[data-max]")?.setAttribute("aria-label", "Focus pane");
+  }
   ws.gridEl.querySelector(".cloud-rail")?.remove();
   requestAnimationFrame(() => {
     for (const p of ws.panes.values()) {
@@ -137,7 +141,7 @@ export function wirePaneDrag(ws: Workspace, pane: Pane): void {
   let sx = 0, sy = 0, ox = 0, oy = 0, moved = false, pid = -1;
   handle.addEventListener("pointerdown", (e) => {
     const dt = e.target as HTMLElement;
-    if (dt.closest(".pctrl") || dt.closest(".pb-name") || dt.isContentEditable) return;
+    if (dt.closest(".pctrl") || dt.closest(".pb-name") || dt.closest("[data-edit]") || dt.isContentEditable) return;
     if (ws.gridEl.classList.contains("has-focus")) return; // no free-drag while focused
     const t = ws.layout.get(pane.id) ?? { x: 0, y: 0, w: pane.el.offsetWidth, h: pane.el.offsetHeight };
     moved = false; pid = e.pointerId; handle.setPointerCapture(pid);
@@ -168,13 +172,16 @@ export function wirePaneDrag(ws: Workspace, pane: Pane): void {
 export function wirePaneRename(ws: Workspace, pane: Pane): void {
   const nameEl = pane.el.querySelector<HTMLElement>(".pb-name");
   if (!nameEl) return;
-  nameEl.addEventListener("click", (e) => {
+  const startEdit = (e: Event) => {
     e.stopPropagation();
     if (nameEl.isContentEditable) return;
     nameEl.contentEditable = "true";
     nameEl.focus();
     window.getSelection()?.selectAllChildren(nameEl);
-  });
+  };
+  nameEl.addEventListener("click", startEdit);
+  // The pencil affordance next to the name triggers the same inline rename.
+  pane.el.querySelector<HTMLElement>("[data-edit]")?.addEventListener("click", startEdit);
   const commit = () => {
     if (!nameEl.isContentEditable) return;
     nameEl.contentEditable = "false";

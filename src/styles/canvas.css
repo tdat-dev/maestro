@@ -131,6 +131,29 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* rename pencil beside the name — reveals on bar hover, drives the same inline
+   rename as clicking the name (a clearer affordance than click-the-text). */
+.grid.canvas .pb-edit {
+  opacity: 0;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-left: -2px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  color: var(--muted-2);
+  background: none;
+  border: 0;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+}
+.grid.canvas .pane-bar:hover .pb-edit { opacity: 1; }
+.grid.canvas .pb-edit:hover { color: var(--text); background: rgba(255, 255, 255, 0.09); }
+/* the focus button shows a back-arrow while its pane is the focused stage */
+.grid.canvas .pctrl[data-max] .ic-max { display: grid; place-items: center; }
+.grid.canvas .pctrl[data-max] .ic-back { display: none; }
+.grid.canvas.has-focus .pane.focused .pctrl[data-max] .ic-max { display: none; }
+.grid.canvas.has-focus .pane.focused .pctrl[data-max] .ic-back { display: grid; place-items: center; }
 .grid.canvas .pb-sp {
   flex: 1;
 }

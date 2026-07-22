@@ -171,12 +171,26 @@
 .grid.canvas.has-focus .pane {
   display: none;
 }
+/* dimmed + blurred canvas behind the floating focus stage (the mockup's .focus
+   scrim). Sits above the tiled panes but below the focused pane (z-index:2) and
+   the rail (z-index:8). */
+.grid.canvas.has-focus::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: rgba(6, 8, 11, 0.55);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
 .grid.canvas.has-focus .pane.focused {
   display: flex;
-  left: 0 !important;
-  top: 0 !important;
-  width: calc(100% - var(--rail-w, 74px)) !important;
-  height: 100% !important;
+  /* inset from the edges so the dimmed canvas shows around the stage */
+  left: 12px !important;
+  top: 12px !important;
+  width: calc(100% - var(--rail-w, 74px) - 16px) !important;
+  height: calc(100% - 24px) !important;
   /* lifted stage: bigger radius, a ring in the focused agent's hue, deep shadow,
      and a zoom-in on entry — the mockup's focus-stage feel. */
   border-radius: 16px;
@@ -184,6 +198,9 @@
     0 0 0 1px color-mix(in oklab, var(--stg, #27b9a3) 22%, transparent);
   animation: zoomIn 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+/* keep the controls (esp. the back button) visible while focused — beats the
+   two opacity:0 rules the pane bar inherits (.ctrls + .grid.canvas .pb-ctrls). */
+.grid.canvas.has-focus .pane.focused .pb-ctrls { opacity: 1 !important; }
 @keyframes zoomIn {
   from { opacity: 0; transform: scale(0.96); }
   to { opacity: 1; transform: scale(1); }
@@ -269,6 +286,7 @@
 }
 .cloud-rail .rc .av .s.attention {
   background: #ffb84c;
+  box-shadow: 0 0 7px #ffb84c;
 }
 .cloud-rail .rc .n {
   font-size: 9.5px;

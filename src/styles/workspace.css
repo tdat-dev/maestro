@@ -59,6 +59,15 @@
 /* live stats + clock (numbers in mono) */
 .tb-btn-icon{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--text-2);background:var(--surface-1);border:1px solid var(--line-strong);transition:border-color .15s,color .15s,background .15s;flex:none}
 .tb-btn-icon:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--surface-2)}
+/* Tidy floats over the canvas top-right (the mockup's .tbtn.tidy pill) rather
+   than sitting in the topbar. .main is the positioning context. */
+.main{position:relative}
+.tidy-fab{position:absolute;right:16px;top:14px;z-index:5;display:inline-flex;align-items:center;gap:6px;
+  padding:6px 11px;border-radius:9px;font-size:12px;font-weight:600;
+  background:rgba(16,20,26,.85);backdrop-filter:blur(10px);border:1px solid var(--line-2);color:var(--muted);
+  transition:color .15s,border-color .15s}
+.tidy-fab:hover{color:var(--text);border-color:rgba(255,255,255,.2)}
+.tidy-fab svg{width:14px;height:14px}
 
 /* hide stats + clock as requested */
 .stats, .clock { display: none !important; }

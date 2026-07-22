@@ -1,8 +1,11 @@
 /* Single-line command bar — ⚙ settings · field (› input · mic · send) · +Agent.
    Floats bottom-center over the canvas; layout ported from the approved mockup,
    the target dropdown + @mention popover kept for real fleet targeting. */
-#bcast.cmdbar{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:200;
-  display:flex;align-items:center;gap:8px}
+/* Centred on the CANVAS column, not the whole app: the code panel (var(--code-w))
+   + the 48px dock rail sit to the right, so left:50% would drift off-centre when
+   the code panel is open. --code-w cascades from .app (0 when .code-hidden). */
+#bcast.cmdbar{position:absolute;bottom:16px;left:calc((100vw - var(--code-w,380px) - 48px) / 2);
+  transform:translateX(-50%);z-index:200;display:flex;align-items:center;gap:8px}
 
 /* left settings icon + right +Agent share the field's glass look */
 .cb-ico{width:40px;height:40px;flex:none;display:grid;place-items:center;border-radius:11px;

@@ -10,7 +10,7 @@
 .app.code-hidden{--code-w:0px}
 
 /* ---------- unified top bar ---------- */
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 196px 0 10px;background:rgba(14,18,23,.72);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);z-index:100}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 150px 0 10px;background:rgba(14,18,23,.72);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);z-index:100}
 .tb-left, .tb-right{display:flex;align-items:center;gap:10px;flex:1}
 .tb-right{justify-content:flex-end}
 .tb-center{display:flex;align-items:center;justify-content:center;gap:3px;flex:2;min-width:0}

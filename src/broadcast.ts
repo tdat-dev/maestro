@@ -23,20 +23,28 @@ function activeRunning(): Pane[] {
   const ws = getWs();
   return ws ? [...ws.panes.values()].filter((p) => p.running) : [];
 }
+// Every agent in the active workspace, running or idle. The @mention picker and
+// name-resolution use this (so a parked/finished agent still autocompletes and
+// resolves), while a no-mention broadcast still only reaches the running ones.
+function activeAgents(): Pane[] {
+  const ws = getWs();
+  return ws ? [...ws.panes.values()] : [];
+}
 
 export function updateBcast(): void {
-  const allRunning = activeRunning();
-  // Default: the whole running fleet. An "@name …" line narrows it to that one.
-  let targets = allRunning;
+  const allAgents = activeAgents();
+  // Default: the whole running fleet. An "@name …" line narrows it to that one
+  // (matched against every agent, so an idle name is recognised, not spammed).
+  let targets = activeRunning();
 
   const text = bcastInput?.value || "";
-  const sorted = [...allRunning].sort((a, b) => b.spec.name.length - a.spec.name.length);
+  const sorted = [...allAgents].sort((a, b) => b.spec.name.length - a.spec.name.length);
   for (const p of sorted) {
     const escapedName = p.spec.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const regex = new RegExp(`^@?${escapedName}(?:[-\\s]?([1-9][0-9]*))?[:,]?(?:\\s+|$)`, "i");
     const match = text.match(regex);
     if (match) {
-      const exactMatches = allRunning.filter((agent) => agent.spec.name.toLowerCase() === p.spec.name.toLowerCase());
+      const exactMatches = allAgents.filter((agent) => agent.spec.name.toLowerCase() === p.spec.name.toLowerCase());
       if (match[1]) {
         const idx = parseInt(match[1], 10) - 1;
         targets = idx >= 0 && idx < exactMatches.length ? [exactMatches[idx]] : []; // out-of-bounds index
@@ -65,7 +73,9 @@ let bcastHistIdx = 0; // points one past the newest entry
 function broadcast(): void {
   const originalText = bcastInput.value;
   const allRunning = activeRunning();
-  const names = allRunning.map((p) => p.spec.name);
+  // Recognise every agent's name (even idle ones) so "@idle …" is parsed as a
+  // mention that reaches nobody, rather than being sent verbatim to the fleet.
+  const names = activeAgents().map((p) => p.spec.name);
   // A line can name several agents: "@Ana run tests @Bob deploy". Text before
   // any mention (or a line with no mention) goes to the whole running fleet.
   const segs = splitMentions(originalText, names);
@@ -101,17 +111,17 @@ function closeAc(): void {
   acItems = [];
 }
 function nameColor(name: string): string {
-  return activeRunning().find((p) => p.spec.name === name)?.color ?? "var(--muted)";
+  return activeAgents().find((p) => p.spec.name === name)?.color ?? "var(--muted)";
 }
 function nameMeta(name: string): string {
-  const p = activeRunning().find((p) => p.spec.name === name);
+  const p = activeAgents().find((p) => p.spec.name === name);
   if (!p) return "";
   return `${p.spec.badge} · ${p.running ? "running" : "idle"}`;
 }
 function updateAc(): void {
   const q = activeMention(bcastInput.value, bcastInput.selectionStart ?? bcastInput.value.length);
   if (q === null) return closeAc();
-  const names = [...new Set(activeRunning().map((p) => p.spec.name))];
+  const names = [...new Set(activeAgents().map((p) => p.spec.name))];
   acItems = matchNames(q, names);
   if (!acItems.length) return closeAc();
   acSel = 0;

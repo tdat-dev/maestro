@@ -102,6 +102,27 @@
     animation: none;
   }
 }
+/* per-agent avatar — hidden while tiled; becomes the mockup's stage-head avatar
+   (and the status dot hides) when the pane is the focused stage. */
+.grid.canvas .pb-av {
+  display: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  flex: none;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: #0a0d07;
+}
+.grid.canvas.has-focus .pane.focused .pb-av {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+.grid.canvas.has-focus .pane.focused .pb-dot { display: none; }
 .grid.canvas .pb-name {
   font-size: 12.5px;
   font-weight: 600;
@@ -196,6 +217,7 @@
   border-radius: 16px;
   box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.9),
     0 0 0 1px color-mix(in oklab, var(--stg, #27b9a3) 22%, transparent);
+  transform-origin: var(--ox, 50%) var(--oy, 50%);
   animation: zoomIn 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 /* keep the controls (esp. the back button) visible while focused — beats the

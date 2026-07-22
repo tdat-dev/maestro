@@ -6,6 +6,7 @@
 
 import { tileToFit, nextSlot, serializeLayout } from "./canvas";
 import { resizePty } from "./ipc";
+import { getTermFontSize } from "./settings";
 import { type Pane, type Workspace } from "./panetypes";
 
 let onBcastChange: () => void = () => {};
@@ -71,13 +72,23 @@ export function tidyLayout(ws: Workspace): void {
 /* ---------------- pane focus (stage + avatar rail) ---------------- */
 // Focus one pane: it fills the stage; the others collapse into a right-edge
 // avatar rail (replaces the old maximize that hid every other pane).
-export function focusPane(ws: Workspace, pane: Pane): void {
+export function focusPane(ws: Workspace, pane: Pane, ev?: MouseEvent): void {
   for (const p of ws.panes.values()) p.el.classList.toggle("focused", p === pane);
   pane.el.style.setProperty("--stg", pane.color); // tints the stage's hue ring
   pane.el.querySelector("[data-max]")?.setAttribute("aria-label", "Back to canvas");
+  // Grow the zoom out of the click point (the mockup's --ox/--oy), else centre.
+  if (ev) {
+    const g = ws.gridEl.getBoundingClientRect();
+    pane.el.style.setProperty("--ox", `${Math.round(ev.clientX - g.left - 12)}px`);
+    pane.el.style.setProperty("--oy", `${Math.round(ev.clientY - g.top - 12)}px`);
+  } else {
+    pane.el.style.removeProperty("--ox");
+    pane.el.style.removeProperty("--oy");
+  }
   ws.gridEl.classList.add("has-focus");
   renderRail(ws, pane);
   requestAnimationFrame(() => {
+    pane.term.setFontSize(Math.min(20, getTermFontSize() + 2)); // bigger on the stage
     const s = pane.term.fit();
     if (pane.running) void resizePty(pane.id, s.cols, s.rows).catch(() => {});
     pane.term.focus();
@@ -86,21 +97,23 @@ export function focusPane(ws: Workspace, pane: Pane): void {
 export function exitFocus(ws: Workspace): void {
   if (!ws.gridEl.classList.contains("has-focus")) return;
   ws.gridEl.classList.remove("has-focus");
+  const focused = [...ws.panes.values()].find((p) => p.el.classList.contains("focused"));
   for (const p of ws.panes.values()) {
     p.el.classList.remove("focused");
     p.el.querySelector("[data-max]")?.setAttribute("aria-label", "Focus pane");
   }
   ws.gridEl.querySelector(".cloud-rail")?.remove();
   requestAnimationFrame(() => {
+    focused?.term.setFontSize(getTermFontSize()); // restore the settings font size
     for (const p of ws.panes.values()) {
       const s = p.term.fit();
       if (p.running) void resizePty(p.id, s.cols, s.rows).catch(() => {});
     }
   });
 }
-export function toggleMax(ws: Workspace, pane: Pane): void {
+export function toggleMax(ws: Workspace, pane: Pane, ev?: MouseEvent): void {
   if (pane.el.classList.contains("focused")) exitFocus(ws);
-  else focusPane(ws, pane);
+  else focusPane(ws, pane, ev);
 }
 // The other panes as a tiny avatar column down the right edge of the stage.
 function renderRail(ws: Workspace, focused: Pane): void {

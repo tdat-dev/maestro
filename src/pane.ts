@@ -83,8 +83,9 @@ function buildPaneEl(
   name: string,
   _sub: string,
   badge: string,
-  _color: string,
+  color: string,
 ): HTMLElement {
+  const initial = name.trim().charAt(0).toUpperCase() || "◆";
   const el = document.createElement("section");
   el.className = "pane";
   el.dataset.id = id;
@@ -94,6 +95,7 @@ function buildPaneEl(
   el.innerHTML = `
     <div class="pane-bar" data-drag>
       <span class="pb-dot"></span>
+      <span class="pb-av" style="background:${color}" aria-hidden="true">${initial}</span>
       <span class="pb-name pane-name">${name}</span>
       <span class="pb-cli">${badge}</span>
       <span class="pb-sp"></span>
@@ -199,7 +201,7 @@ export function createAgent(
     await removeAgent(ws, id);
     await createAgent(ws, spec)();
   });
-  el.querySelector("[data-max]")?.addEventListener("click", () => toggleMax(ws, pane));
+  el.querySelector("[data-max]")?.addEventListener("click", (e) => toggleMax(ws, pane, e as MouseEvent));
   // "⋯ more" reveals the extra controls (search / record / restart) so the
   // header shows the mockup's exact three by default. Toggle on click; close
   // after a pick or when the pointer leaves the pane.

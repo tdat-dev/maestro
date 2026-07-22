@@ -151,6 +151,11 @@ function closeAc(): void {
 function nameColor(name: string): string {
   return activeRunning().find((p) => p.spec.name === name)?.color ?? "var(--muted)";
 }
+function nameMeta(name: string): string {
+  const p = activeRunning().find((p) => p.spec.name === name);
+  if (!p) return "";
+  return `${p.spec.badge} · ${p.running ? "running" : "idle"}`;
+}
 function updateAc(): void {
   const q = activeMention(bcastInput.value, bcastInput.selectionStart ?? bcastInput.value.length);
   if (q === null) return closeAc();
@@ -159,10 +164,14 @@ function updateAc(): void {
   if (!acItems.length) return closeAc();
   acSel = 0;
   bcastAc.replaceChildren();
+  const header = document.createElement("div");
+  header.className = "bcast-ac-h";
+  header.textContent = "Mention an agent";
+  bcastAc.appendChild(header);
   acItems.forEach((n, i) => {
     const row = document.createElement("button");
     row.className = "bcast-ac-item" + (i === acSel ? " sel" : "");
-    row.innerHTML = `<span class="dot" style="background:${nameColor(n)}"></span>${n}`;
+    row.innerHTML = `<span class="dot" style="background:${nameColor(n)}"></span>${n}<span class="r">${nameMeta(n)}</span>`;
     row.addEventListener("mousedown", (ev) => {
       ev.preventDefault();
       pickAc(n);
@@ -174,7 +183,7 @@ function updateAc(): void {
 function moveAc(delta: number): void {
   if (!acItems.length) return;
   acSel = (acSel + delta + acItems.length) % acItems.length;
-  [...bcastAc.children].forEach((c, i) => c.classList.toggle("sel", i === acSel));
+  [...bcastAc.querySelectorAll(".bcast-ac-item")].forEach((c, i) => c.classList.toggle("sel", i === acSel));
 }
 function pickAc(name: string): void {
   const caret = bcastInput.selectionStart ?? bcastInput.value.length;

@@ -13,12 +13,12 @@ import { type Pane, type Workspace } from "./panetypes";
 import { workspaces } from "./appstate";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const LIFETIME_MS = 1500;
+const LIFETIME_MS = 2600;
 const TOAST_LIFETIME_MS = 2600;
 const TOAST_MESSAGE_MAX = 90;
 
 const overlays = new WeakMap<Workspace, SVGSVGElement>();
-let gradCounter = 0;
+let linkCounter = 0;
 let styleInjected = false;
 
 /** Inject the overlay's CSS once, the first time anything is ever drawn. */
@@ -30,15 +30,14 @@ function ensureStyle(): void {
 .deleg-overlay{position:absolute;inset:0;z-index:20;overflow:visible;pointer-events:none}
 .deleg-link{opacity:0;animation:deleg-fade ${LIFETIME_MS}ms ease-out forwards}
 .deleg-path{fill:none;stroke-width:2;stroke-linecap:round;stroke-dasharray:7 7;
-  animation:deleg-flow .7s linear infinite}
-.deleg-dot{filter:drop-shadow(0 0 4px var(--accent))}
-@keyframes deleg-flow{to{stroke-dashoffset:-28}}
+  animation:deleg-flow .5s linear infinite}
+@keyframes deleg-flow{to{stroke-dashoffset:-14}}
 @keyframes deleg-fade{0%{opacity:0}12%{opacity:1}75%{opacity:1}100%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.deleg-path{animation:none}.deleg-dot{display:none}}
-.deleg-toast{position:fixed;right:18px;bottom:18px;z-index:9999;display:flex;align-items:center;gap:10px;
+.deleg-toast{position:fixed;right:18px;bottom:72px;z-index:250;display:flex;align-items:center;gap:10px;
   max-width:360px;padding:10px 14px;border-radius:var(--r3);background:var(--surface-1);
-  border:1px solid var(--line-strong);box-shadow:0 8px 24px rgba(0,0,0,.45);
-  font-size:12.5px;color:var(--text-2);opacity:0;transform:translateY(8px);pointer-events:none;
+  border:1px solid var(--line-2);box-shadow:0 24px 50px -18px rgba(0,0,0,.85);
+  font-size:12.5px;color:var(--text);opacity:0;transform:translateY(8px);pointer-events:none;
   transition:opacity .28s,transform .28s}
 .deleg-toast.on{opacity:1;transform:translateY(0)}
 .deleg-toast-av{width:22px;height:22px;border-radius:var(--r1);flex:none;display:grid;place-items:center;
@@ -63,22 +62,22 @@ function overlayFor(ws: Workspace): SVGSVGElement {
   return svg;
 }
 
-/** A fresh brand-gradient `<linearGradient>` inside `svg`, returning its id. */
-function addGradient(svg: SVGSVGElement): string {
-  gradCounter += 1;
-  const id = `deleg-grad-${gradCounter}`;
-  const grad = document.createElementNS(SVG_NS, "linearGradient");
-  grad.setAttribute("id", id);
-  grad.setAttribute("gradientUnits", "userSpaceOnUse");
-  const stop1 = document.createElementNS(SVG_NS, "stop");
-  stop1.setAttribute("offset", "0%");
-  stop1.setAttribute("stop-color", "#c6f135");
-  const stop2 = document.createElementNS(SVG_NS, "stop");
-  stop2.setAttribute("offset", "100%");
-  stop2.setAttribute("stop-color", "#27b9a3");
-  grad.append(stop1, stop2);
-  svg.appendChild(grad);
-  return id;
+/** A ~6×6 triangular `<marker>` filled with `color`, appended to `svg` under
+ *  `id` so a path can reference it via `marker-end:url(#id)`. */
+function addArrowMarker(svg: SVGSVGElement, id: string, color: string): void {
+  const marker = document.createElementNS(SVG_NS, "marker");
+  marker.setAttribute("id", id);
+  marker.setAttribute("viewBox", "0 0 6 6");
+  marker.setAttribute("refX", "5");
+  marker.setAttribute("refY", "3");
+  marker.setAttribute("markerWidth", "6");
+  marker.setAttribute("markerHeight", "6");
+  marker.setAttribute("orient", "auto-start-reverse");
+  const tri = document.createElementNS(SVG_NS, "path");
+  tri.setAttribute("d", "M0 0 L6 3 L0 6 Z");
+  tri.setAttribute("fill", color);
+  marker.appendChild(tri);
+  svg.appendChild(marker);
 }
 
 /** Find a pane by agent name, case-insensitive and trimmed (same matching
@@ -99,40 +98,46 @@ function center(pane: Pane): { x: number; y: number } {
   };
 }
 
-/** Draw one transient flowing link from `from` to `to` into `svg`, and remove
- *  it after its animation finishes. */
-function drawLink(svg: SVGSVGElement, from: { x: number; y: number }, to: { x: number; y: number }): void {
-  const gradId = addGradient(svg);
+/** Draw one transient flowing link from `from` to `to` into `svg`, stroked in
+ *  `strokeColor` (the target pane's own colour) with an arrowhead, plus a
+ *  travelling dot in `dotColor` (the sender's colour). Removed after its fade
+ *  animation finishes. */
+function drawLink(
+  svg: SVGSVGElement,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  strokeColor: string,
+  dotColor: string,
+): void {
+  linkCounter += 1;
+  const id = `deleg-link-${linkCounter}`;
+  const markerId = `${id}-arrow`;
+  addArrowMarker(svg, markerId, strokeColor);
+
   const g = document.createElementNS(SVG_NS, "g");
   g.setAttribute("class", "deleg-link");
 
-  // A gentle bow perpendicular to the line, so hand-offs between the same two
-  // panes (or ones that happen to line up) don't stack exactly on top of
-  // each other and read as a single blob.
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const len = Math.hypot(dx, dy) || 1;
-  const bow = Math.min(48, len * 0.18);
-  const cx = (from.x + to.x) / 2 - (dy / len) * bow;
-  const cy = (from.y + to.y) / 2 + (dx / len) * bow;
-  const pathId = `deleg-path-${gradId}`;
+  // A cubic S-curve — flatter and more deliberate than a simple perpendicular
+  // bow, and reads well between panes at any relative position.
+  const midX = (from.x + to.x) / 2;
+  const pathId = `deleg-path-${id}`;
 
   const path = document.createElementNS(SVG_NS, "path");
   path.setAttribute("id", pathId);
   path.setAttribute("class", "deleg-path");
-  path.setAttribute("d", `M ${from.x} ${from.y} Q ${cx} ${cy} ${to.x} ${to.y}`);
-  path.setAttribute("stroke", `url(#${gradId})`);
+  path.setAttribute("d", `M ${from.x} ${from.y} C ${midX} ${from.y} ${midX} ${to.y} ${to.x} ${to.y}`);
+  path.setAttribute("stroke", strokeColor);
+  path.setAttribute("marker-end", `url(#${markerId})`);
   g.appendChild(path);
 
-  // A small dot riding the path from sender to target — optional flourish,
-  // freezes at the target so it reads as "arrived" for the rest of the fade.
+  // A small dot riding the path from sender to target — optional flourish.
   const dot = document.createElementNS(SVG_NS, "circle");
   dot.setAttribute("class", "deleg-dot");
-  dot.setAttribute("r", "3.5");
-  dot.setAttribute("fill", "#eafccb");
+  dot.setAttribute("r", "4");
+  dot.setAttribute("fill", dotColor);
   const motion = document.createElementNS(SVG_NS, "animateMotion");
-  motion.setAttribute("dur", "0.8s");
-  motion.setAttribute("fill", "freeze");
+  motion.setAttribute("dur", "1s");
+  motion.setAttribute("repeatCount", "2");
   const mpath = document.createElementNS(SVG_NS, "mpath");
   mpath.setAttribute("href", `#${pathId}`);
   motion.appendChild(mpath);
@@ -151,11 +156,14 @@ export function showDelegation(ws: Workspace, fromName: string | null, toPanes: 
   if (!fromName || !fromName.trim() || toPanes.length === 0) return;
   const sender = findPane(ws, fromName);
   if (!sender) return;
+  // A zoomed-in focus pane's on-screen position is meaningless for drawing an
+  // arc between panes — skip the visual, the toast still fires from bridges.
+  if (ws.gridEl.classList.contains("has-focus")) return;
   const svg = overlayFor(ws);
   const from = center(sender);
   for (const target of toPanes) {
     if (target === sender) continue;
-    drawLink(svg, from, center(target));
+    drawLink(svg, from, center(target), target.color, sender.color);
   }
 }
 

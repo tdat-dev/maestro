@@ -45,7 +45,7 @@ const STYLE_ID = "spawnMenuStyles";
 const CSS = `
 .sm-anchor{position:relative;flex:none}
 .spawn-menu{position:absolute;right:0;bottom:calc(100% + 8px);width:256px;background:var(--surface-1);
-  border:1px solid var(--line-strong);border-radius:13px;padding:8px;box-shadow:0 24px 50px -18px rgba(0,0,0,.85);
+  border:1px solid var(--line-2);border-radius:13px;padding:8px;box-shadow:0 24px 50px -18px rgba(0,0,0,.85);
   display:none;z-index:210}
 .spawn-menu.on{display:block;animation:smPop .14s ease}
 .sm-h{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding:4px 6px 8px}
@@ -67,13 +67,13 @@ const CSS = `
 .sm-custom{display:flex;align-items:center;gap:8px;margin-top:6px;padding-top:8px;border-top:1px solid var(--line)}
 .sm-cin{flex:1;min-width:0;background:var(--surface-2);border:1px solid var(--line-strong);border-radius:8px;
   padding:7px 9px;color:var(--text);font-family:var(--mono);font-size:11.5px;outline:none}
-.sm-cin:focus{border-color:var(--accent-dim)}
+.sm-cin:focus{border-color:color-mix(in oklab,var(--teal) 50%,var(--line-2))}
 .sm-cin::placeholder{color:var(--muted)}
 .sm-foot{display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding:0 4px}
 .sm-total{font-size:12px;color:var(--muted)}
 .sm-total b{color:var(--text);font-variant-numeric:tabular-nums}
-.sm-spawn{padding:8px 16px;border-radius:9px;font-weight:700;font-size:12.5px;color:var(--accent-ink);
-  background:linear-gradient(135deg,var(--accent),var(--accent-dim));border:0}
+.sm-spawn{padding:8px 16px;border-radius:9px;font-weight:700;font-size:12.5px;color:#0a0d07;
+  background:var(--grad);border:0}
 .sm-spawn:disabled{opacity:.4;filter:grayscale(.35);cursor:default}
 .sm-spawn:not(:disabled):hover{filter:brightness(1.06)}
 @keyframes smPop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}

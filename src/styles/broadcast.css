@@ -1,34 +1,36 @@
 /* Single-line command bar — ⚙ settings · field (› input · mic · send) · +Agent.
    Floats bottom-center over the canvas; layout ported from the approved mockup,
    the target dropdown + @mention popover kept for real fleet targeting. */
-#bcast.cmdbar{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:200;
+#bcast.cmdbar{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:200;
   display:flex;align-items:center;gap:8px}
 
 /* left settings icon + right +Agent share the field's glass look */
 .cb-ico{width:40px;height:40px;flex:none;display:grid;place-items:center;border-radius:11px;
-  border:1px solid var(--line-strong);background:rgba(16,20,26,.9);backdrop-filter:blur(10px);
+  border:1px solid var(--line-2);background:rgba(16,20,26,.9);backdrop-filter:blur(10px);
   color:var(--muted);transition:color .18s,border-color .18s}
 .cb-ico:hover{color:var(--text);border-color:rgba(255,255,255,.2)}
-.cb-add{flex:none;display:flex;align-items:center;gap:6px;height:40px;padding:0 14px;border-radius:11px;
-  border:1px solid var(--line-strong);background:rgba(16,20,26,.9);backdrop-filter:blur(10px);
+.cb-add{flex:none;display:flex;align-items:center;gap:6px;height:40px;padding:0 12px 0 14px;border-radius:11px;
+  border:1px solid var(--line-2);background:rgba(16,20,26,.9);backdrop-filter:blur(10px);
   color:var(--text);font-size:12.5px;font-weight:600;transition:border-color .18s}
 .cb-add svg{color:var(--accent)}
+.cb-add .cb-caret{width:12px;height:12px;color:var(--muted);margin-left:1px}
 .cb-add:hover{border-color:rgba(255,255,255,.2)}
 
 /* the input field itself */
-.cb-field{position:relative;display:flex;align-items:center;gap:8px;height:40px;width:min(560px,46vw);
-  padding:0 6px 0 13px;border-radius:12px;border:1px solid var(--line-strong);
+.cb-field{position:relative;display:flex;align-items:center;gap:9px;height:40px;width:min(540px,46vw);
+  padding:0 6px 0 13px;border-radius:12px;border:1px solid var(--line-2);
   background:rgba(16,20,26,.9);backdrop-filter:blur(10px);transition:border-color .2s,box-shadow .2s}
-.cb-field:focus-within{border-color:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-glow)}
-.cb-gt{font-family:var(--mono);color:var(--accent);font-size:14px;line-height:1;flex:none;text-shadow:0 0 8px var(--accent-glow)}
+.cb-field:focus-within{border-color:color-mix(in oklab,var(--teal) 50%,var(--line-2));
+  box-shadow:0 0 0 3px color-mix(in oklab,var(--teal) 12%,transparent)}
+.cb-gt{font-family:var(--mono);color:var(--accent);font-size:14px;line-height:1;flex:none}
 .binput{flex:1;min-width:0;background:transparent;border:0;color:var(--text);font-family:var(--mono);
   font-size:12.5px;outline:none;caret-color:var(--accent);letter-spacing:.01em}
-.binput::placeholder{color:var(--muted-2)}
+.binput::placeholder{color:var(--muted)}
 .binput:focus,.binput:focus-visible{outline:none;box-shadow:none}
 
 /* icon send button (brand green) */
 .bsend{width:30px;height:30px;flex:none;display:grid;place-items:center;border-radius:8px;
-  color:var(--accent-ink);background:var(--accent);border:0;transition:filter .18s,opacity .18s}
+  color:#0a0d07;background:var(--grad);border:0;transition:filter .18s,opacity .18s}
 .bsend:disabled{opacity:.4;filter:grayscale(.35);cursor:default}
 .bsend:not(:disabled):hover{filter:brightness(1.06)}
 
@@ -82,11 +84,15 @@
 @keyframes recvFlash{0%{box-shadow:0 0 0 0 var(--accent-glow)}40%{box-shadow:0 0 0 3px var(--accent-glow)}100%{box-shadow:0 0 0 0 transparent}}
 
 /* @mention autocomplete — floats above the field while typing "@name" */
-.bcast-ac{position:absolute;left:0;bottom:calc(100% + 8px);min-width:200px;max-height:240px;overflow-y:auto;
-  background:var(--surface-1);border:1px solid var(--line-strong);border-radius:12px;padding:6px;
+.bcast-ac{position:absolute;left:0;bottom:calc(100% + 8px);width:252px;max-height:240px;overflow-y:auto;
+  background:var(--surface-1);border:1px solid var(--line-2);border-radius:12px;padding:6px;
   box-shadow:0 24px 50px -18px rgba(0,0,0,.85);z-index:210}
 .bcast-ac.hidden{display:none}
+.bcast-ac:not(.hidden){animation:bcastAcPop .14s ease}
+@keyframes bcastAcPop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.bcast-ac-h{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding:5px 8px}
 .bcast-ac-item{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:8px 10px;border-radius:8px;
   font-size:13px;color:var(--text);background:none;border:0;cursor:pointer}
 .bcast-ac-item:hover,.bcast-ac-item.sel{background:var(--surface-2)}
 .bcast-ac-item .dot{width:8px;height:8px;border-radius:50%;flex:none}
+.bcast-ac-item .r{margin-left:auto;font-size:10px;color:var(--muted);font-family:var(--mono)}

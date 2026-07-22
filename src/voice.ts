@@ -11,6 +11,7 @@
 
 import { activeWs } from "./appstate";
 import { sendInput } from "./ipc";
+import { showDelegationToast } from "./delegation";
 
 // Minimal shape of SpeechRecognition — enough surface for push-to-talk. Kept
 // local (not global) and suffixed "Like" so it can't collide with a lib.dom
@@ -49,33 +50,28 @@ const SR = ((window as any).SpeechRecognition || (window as any).webkitSpeechRec
   | undefined;
 
 const MIC_ICON =
-  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">` +
-  `<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>` +
-  `<path d="M19 10v2a7 7 0 0 1-14 0v-2"/>` +
-  `<line x1="12" y1="19" x2="12" y2="23"/>` +
-  `<line x1="8" y1="23" x2="16" y2="23"/>` +
+  `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
+  `<rect x="9" y="3" width="6" height="11" rx="3"/>` +
+  `<path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>` +
   `</svg>`;
 
-// Matches the bar's existing icon-button look (see .bcast-target-btn /
-// .bcast-send in styles/broadcast.css); .listening gets a red-tinted pulse
-// instead of the accent green, since green already means "broadcast live".
+// Matches the mockup's calm treatment: no border, no red/pulse — the panel
+// itself does the animating (v-ring/v-wave) once listening starts.
 const MIC_STYLE = `
-.bcast-mic{flex:none;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;
-  border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.05);
-  color:var(--muted);cursor:pointer;transition:all .2s ease}
-.bcast-mic:hover{background:rgba(255,255,255,0.1);color:var(--text);border-color:rgba(255,255,255,0.15)}
-.bcast-mic.listening{color:#ff6b6b;border-color:rgba(255,107,107,0.4);background:rgba(255,107,107,0.12);
-  animation:bcastMicPulse 1.4s ease-in-out infinite}
-@keyframes bcastMicPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,107,107,0.35)}50%{box-shadow:0 0 0 6px rgba(255,107,107,0)}}
+.bcast-mic{flex:none;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;
+  border-radius:8px;border:0;background:none;color:var(--muted);cursor:pointer;transition:all .2s ease}
+.bcast-mic:hover{color:var(--text);background:rgba(255,255,255,.07)}
+.bcast-mic.listening{color:var(--accent);background:color-mix(in oklab,var(--teal) 18%,transparent)}
 `;
 
 // Voice → dispatch panel — ported from the approved mockup's .voice component
 // (orb + rings + wave, live transcript, per-agent task list, Dispatch/Cancel).
 const VOICE_PANEL_STYLE = `
 .voice{position:absolute;left:50%;bottom:calc(100% + 12px);transform:translateX(-50%);width:min(460px,84vw);
-  background:var(--surface-1);border:1px solid var(--line-strong);border-radius:16px;padding:15px 16px;
+  background:var(--surface-1);border:1px solid var(--line-2);border-radius:16px;padding:15px 16px;
   box-shadow:0 30px 70px -22px rgba(0,0,0,.9);display:none;z-index:230}
-.voice.on{display:flex;gap:14px;align-items:flex-start}
+.voice.on{display:flex;gap:14px;align-items:flex-start;animation:pop .16s ease}
+@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .v-orb{position:relative;width:44px;height:44px;flex:none;display:grid;place-items:center}
 .v-ring{position:absolute;inset:3px;border-radius:50%;border:2px solid #27b9a3;opacity:0}
 .voice.listening .v-ring{animation:vring 1.8s ease-out infinite}
@@ -92,9 +88,8 @@ const VOICE_PANEL_STYLE = `
 .v-task{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text)}
 .v-task .d{width:18px;height:18px;border-radius:6px;display:grid;place-items:center;font-size:9px;font-weight:800;color:#0a0d07;flex:none;background:var(--muted)}
 .v-task b{color:var(--text)}
-.v-empty{font-size:12px;color:var(--muted-2);margin-top:9px}
 .v-actions{display:flex;flex-direction:column;gap:7px;flex:none}
-.v-go{padding:8px 16px;border-radius:9px;font-weight:700;font-size:12px;color:var(--accent-ink);background:var(--accent);border:0;cursor:pointer}
+.v-go{padding:8px 16px;border-radius:9px;font-weight:700;font-size:12px;color:#0a0d07;background:var(--grad);border:0;cursor:pointer}
 .v-go:hover{filter:brightness(1.06)}
 .v-go:disabled{opacity:.4;filter:grayscale(.35);cursor:default}
 .v-cancel{padding:7px 16px;border-radius:9px;font-size:12px;color:var(--muted);background:none;border:1px solid var(--line-strong);cursor:pointer}
@@ -213,7 +208,7 @@ function reviewTasks(): void {
   const go = panel.querySelector<HTMLButtonElement>("#vGo");
   const tasks = computeTasks(lastTranscript);
   if (!tasks.length) return hidePanel();
-  if (state) state.textContent = tasks.length > 1 ? `${tasks.length} tasks · review` : "Review · dispatch";
+  if (state) state.textContent = "Suggested dispatch";
   if (tasksEl) {
     tasksEl.replaceChildren();
     for (const t of tasks) {
@@ -222,7 +217,7 @@ function reviewTasks(): void {
       const label = t.name ?? "All";
       row.innerHTML =
         `<span class="d" style="background:${t.hue}">${escapeHtml(t.name ? initials(t.name) : "∀")}</span>` +
-        `<span><b>${escapeHtml(label)}</b> ${escapeHtml(t.body)}</span>`;
+        `<span><b>${escapeHtml(label)}</b> · ${escapeHtml(t.body)}</span>`;
       tasksEl.appendChild(row);
     }
   }
@@ -242,7 +237,10 @@ function dispatchTasks(): void {
     } catch {
       /* corrupt — nothing to dispatch */
     }
-    for (const t of tasks) for (const id of t.ids) void sendInput(id, t.body + "\r").catch(() => {});
+    for (const t of tasks) {
+      for (const id of t.ids) void sendInput(id, t.body + "\r").catch(() => {});
+      if (t.name && t.ids.length) showDelegationToast("You", [t.name], t.body);
+    }
   }
   clearInput();
   hidePanel();
@@ -348,5 +346,12 @@ export function initVoice(): void {
       stopListening();
       hidePanel();
     }
+  });
+  document.addEventListener("click", (e) => {
+    if (!panel?.classList.contains("on")) return;
+    const target = e.target as Node;
+    if (panel.contains(target) || micBtn?.contains(target)) return;
+    stopListening();
+    hidePanel();
   });
 }

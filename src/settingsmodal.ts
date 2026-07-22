@@ -70,7 +70,7 @@ export function closeSettings() {
 export function initSettingsModal(): void {
   // Show the running version in the Settings "Updates" row.
   void getVersion()
-    .then((v) => { if (setVersion) setVersion.textContent = `Maestro v${v}`; })
+    .then((v) => { if (setVersion) setVersion.textContent = `Maestro · v${v}`; })
     .catch(() => {});
 
   // Manual update check. Unlike the silent startup check, this one always reports

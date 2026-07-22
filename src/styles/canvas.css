@@ -17,8 +17,8 @@
   z-index: 0;
   pointer-events: none;
   opacity: 0.5;
-  background-image: linear-gradient(var(--line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-image: linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
   background-size: 34px 34px;
   -webkit-mask: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent);
   mask: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent);

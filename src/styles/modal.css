@@ -176,7 +176,12 @@
 .usage-note{font-size:11px;color:var(--muted-2);line-height:1.5;margin-top:14px}
 
 /* ---- full-screen settings (ported faithfully from the approved mockup) ---- */
-#settingsModal{padding:5vh 4vw}
+/* Scrim: frosted blur + the mockup's exact tint; --text/--muted are remapped to
+   the mockup's --ink/--muted literals so every settings label matches exactly. */
+#settingsModal{padding:5vh 4vw;background:rgba(6,8,11,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  --text:#e9edf3;--muted:#8b95a3}
+#settingsModal.open .set-shell{animation:pop .18s ease}
+@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .set-shell{width:min(1000px,100%);height:min(82vh,740px);display:flex;flex-direction:column;overflow:hidden;
   background:#0e1217;border:1px solid rgba(255,255,255,.12);border-radius:18px;box-shadow:0 50px 120px -30px rgba(0,0,0,.9)}
 .set-head{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid rgba(255,255,255,.07)}

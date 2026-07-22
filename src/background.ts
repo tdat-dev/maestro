@@ -95,6 +95,7 @@ function setSpec(ws: Workspace, spec: BgSpec): void {
   }
   applyBackground(ws);
   markActive(ws);
+  onToast(spec.kind === "image" ? "Background image set" : "Background updated");
 }
 
 /** Downscale an image File to a JPEG data-URI no larger than IMG_MAX_EDGE. */

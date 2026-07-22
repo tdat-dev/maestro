@@ -25,11 +25,33 @@
 }
 .grid.canvas .pane {
   position: absolute;
+  z-index: 2;
   border-radius: 12px;
   overflow: hidden;
+  background: rgba(12, 14, 19, 0.62);
+  border: 1px solid var(--line-2);
   box-shadow: 0 22px 50px -22px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  transition: box-shadow 0.18s, border-color 0.18s;
+  transition: box-shadow 0.18s, border-color 0.18s, transform 0.12s;
   animation: none;
+}
+.grid.canvas .pane:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 30px 62px -22px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+/* canvas mode has its own free-drag lift — override the generic dim+dashed
+   drag styling from workspace.css (tiling grid reorder), which reads wrong here. */
+.grid.canvas .pane.dragging {
+  transform: scale(1.015);
+  box-shadow: 0 42px 74px -20px rgba(0, 0, 0, 0.95);
+  z-index: 9;
+  opacity: 1;
+  outline: none;
+}
+.grid.canvas .pane.stopped {
+  opacity: 0.62;
+}
+.grid.canvas .pane.run::before {
+  opacity: 0.6;
 }
 
 /* slim draggable title bar (grab anywhere on the bar) */
@@ -60,6 +82,25 @@
 .grid.canvas .pane.run .pb-dot {
   background: var(--run);
   box-shadow: 0 0 7px var(--run);
+  animation: breathe 2.4s ease-in-out infinite;
+}
+.grid.canvas .pb-dot.work {
+  background: #f4b740;
+  box-shadow: 0 0 7px #f4b740;
+}
+.grid.canvas .pb-dot.done {
+  background: var(--teal);
+}
+@keyframes breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* dots don't breathe */
+  .grid.canvas .pane.run .pb-dot,
+  .cloud-rail .rc .av .s.running {
+    animation: none;
+  }
 }
 .grid.canvas .pb-name {
   font-size: 12.5px;
@@ -114,7 +155,24 @@
   top: 0 !important;
   width: calc(100% - var(--rail-w, 74px)) !important;
   height: 100% !important;
+  /* lifted stage: bigger radius, a ring in the focused agent's hue, deep shadow,
+     and a zoom-in on entry — the mockup's focus-stage feel. */
+  border-radius: 16px;
+  box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.9),
+    0 0 0 1px color-mix(in oklab, var(--stg, #27b9a3) 22%, transparent);
+  animation: zoomIn 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+@keyframes zoomIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .grid.canvas.has-focus .pane.focused { animation: none; }
+}
+/* the stage header reads bigger than a tiled pane's slim bar */
+.grid.canvas.has-focus .pane.focused .pane-bar { height: 38px; }
+.grid.canvas.has-focus .pane.focused .pb-name { font-size: 14.5px; }
+.grid.canvas.has-focus .pane.focused .pb-dot { width: 9px; height: 9px; }
 .cloud-rail {
   position: absolute;
   top: 0;
@@ -157,7 +215,19 @@
   font-weight: 800;
   color: #0a0d07;
   position: relative;
-  box-shadow: 0 0 0 2px var(--bg);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px color-mix(in oklab, var(--hue) 55%, transparent);
+  transition: transform 0.15s;
+}
+.cloud-rail .rc:hover .av {
+  transform: scale(1.08);
+}
+.rail-lbl {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 700;
+  color: #5a6472;
+  text-align: center;
 }
 .cloud-rail .rc .av .s {
   position: absolute;
@@ -170,6 +240,7 @@
 }
 .cloud-rail .rc .av .s.running {
   background: var(--run);
+  animation: breathe 2.4s ease-in-out infinite;
 }
 .cloud-rail .rc .av .s.idle {
   background: var(--idle);
@@ -199,6 +270,12 @@
 *::-webkit-scrollbar {
   width: 10px;
   height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 *::-webkit-scrollbar-thumb {
   background: transparent;

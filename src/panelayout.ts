@@ -73,6 +73,7 @@ export function tidyLayout(ws: Workspace): void {
 // avatar rail (replaces the old maximize that hid every other pane).
 export function focusPane(ws: Workspace, pane: Pane): void {
   for (const p of ws.panes.values()) p.el.classList.toggle("focused", p === pane);
+  pane.el.style.setProperty("--stg", pane.color); // tints the stage's hue ring
   ws.gridEl.classList.add("has-focus");
   renderRail(ws, pane);
   requestAnimationFrame(() => {
@@ -106,16 +107,19 @@ function renderRail(ws: Workspace, focused: Pane): void {
     ws.gridEl.appendChild(rail);
   }
   const others = [...ws.panes.values()].filter((p) => p !== focused);
-  rail.innerHTML = others
-    .map((p) => {
-      const s = p.attention ? "attention" : p.running ? "running" : "idle";
-      const nm = p.spec.name;
-      const letter = (nm.trim()[0] ?? "?").toUpperCase();
-      return `<button class="rc" data-id="${p.id}" title="${nm}">
-        <span class="av" style="background:${p.color}">${letter}<span class="s ${s}"></span></span>
+  const label = others.length ? `<span class="rail-lbl">Others</span>` : "";
+  rail.innerHTML =
+    label +
+    others
+      .map((p) => {
+        const s = p.attention ? "attention" : p.running ? "running" : "idle";
+        const nm = p.spec.name;
+        const letter = (nm.trim()[0] ?? "?").toUpperCase();
+        return `<button class="rc" data-id="${p.id}" title="${nm}">
+        <span class="av" style="background:${p.color};--hue:${p.color}">${letter}<span class="s ${s}"></span></span>
         <span class="n">${nm}</span></button>`;
-    })
-    .join("");
+      })
+      .join("");
   rail.querySelectorAll<HTMLElement>(".rc").forEach((rc) =>
     rc.addEventListener("click", () => {
       const p = rc.dataset.id ? ws.panes.get(rc.dataset.id) : undefined;

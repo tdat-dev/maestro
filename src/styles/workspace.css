@@ -10,7 +10,7 @@
 .app.code-hidden{--code-w:0px}
 
 /* ---------- unified top bar ---------- */
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 196px 0 10px;background:rgba(15,17,21,.75);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);z-index:100}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 196px 0 10px;background:rgba(14,18,23,.72);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);z-index:100}
 .tb-left, .tb-right{display:flex;align-items:center;gap:10px;flex:1}
 .tb-right{justify-content:flex-end}
 .tb-center{display:flex;align-items:center;justify-content:center;gap:3px;flex:2;min-width:0}
@@ -21,11 +21,11 @@
 /* tabs — pill style (Arc/Warp), one per workspace */
 .tabstrip{display:flex;align-items:center;gap:3px;min-width:0;overflow-x:auto;overflow-y:hidden}
 .tabstrip::-webkit-scrollbar{height:0}
-.tab{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 7px 0 11px;border-radius:8px;color:var(--muted);background:transparent;font-size:12.5px;font-weight:500;white-space:nowrap;flex:none;cursor:pointer;transition:background .14s,color .14s}
+.tab{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 7px 0 11px;border-radius:8px;color:var(--muted);background:transparent;font-size:12.5px;font-weight:500;white-space:nowrap;flex:none;cursor:pointer;transition:background .14s,color .14s}
 .tab:hover{background:var(--surface-1);color:var(--text-2)}
-.tab.active{background:var(--surface-2);color:var(--text);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.tab.active{background:rgba(255,255,255,.06);color:var(--text)}
 .tab .tdot{width:6px;height:6px;border-radius:50%;background:var(--idle);flex:none}
-.tab.live .tdot{background:var(--run);box-shadow:0 0 6px var(--run)}
+.tab.live .tdot{background:#3ddc84;box-shadow:0 0 6px #3ddc84}
 /* a workspace with any "needs you" pane → amber dot (wins over live green) */
 .tab.attn .tdot{background:#ffb84c;box-shadow:0 0 6px #ffb84c}
 .tab .tname{max-width:170px;overflow:hidden;text-overflow:ellipsis}
@@ -75,38 +75,16 @@
 .pane.err{box-shadow:inset 0 0 0 1px rgba(255,107,107,.4)}
 .pane.stopped{opacity:.66;transition:opacity .15s,box-shadow .15s}
 .pane.stopped:hover{opacity:1}
-/* slim AI core floating header — glass strip above the terminal */
-.ai-core-container { position:absolute; top:16px; right:20px; z-index:100; cursor:grab; user-select:none; }
-.ai-core-container:active { cursor:grabbing; }
-
-.ai-core { height:28px; width:max-content; max-width:36px; border-radius:14px; background:rgba(15,15,15,0.4); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,0.05); display:flex; align-items:center; overflow:hidden; transition:max-width 0.4s cubic-bezier(0.34,1.56,0.64,1), background 0.3s ease, border-color 0.3s ease; }
-.ai-core-container:hover .ai-core { max-width:280px; background:rgba(24,24,27,0.85); border:1px solid rgba(255,255,255,0.15); box-shadow:0 10px 40px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.1); }
-
-.waveform-wrapper { min-width:36px; height:28px; display:flex; align-items:center; justify-content:center; gap:2px; transition:transform 0.3s ease; }
-.bar { width:2px; border-radius:2px; background:rgba(255,255,255,0.6); animation:wave 1.2s ease-in-out infinite; }
-.bar:nth-child(1) { height:6px; animation-delay:0.0s; }
-.bar:nth-child(2) { height:12px; animation-delay:-0.2s; }
-.bar:nth-child(3) { height:16px; animation-delay:-0.4s; }
-.bar:nth-child(4) { height:10px; animation-delay:-0.6s; }
-
-@keyframes wave { 0%, 100% { transform:scaleY(0.5); opacity:0.5; } 50% { transform:scaleY(1.2); opacity:1; background:#fff; } }
-
-.ai-core-container:hover .waveform-wrapper { transform:scale(0.7); }
-.ai-core-container:hover .bar { animation-play-state:paused; background:rgba(255,255,255,0.3); }
-
-.core-content { display:flex; align-items:center; padding-right:6px; opacity:0; transform:translateX(10px); transition:opacity 0.3s ease, transform 0.4s cubic-bezier(0.16,1,0.3,1); pointer-events:none; white-space:nowrap; }
-.ai-core-container:hover .core-content { opacity:1; transform:translateX(0); pointer-events:auto; transition-delay:0.1s; }
-
 .pane-name { font-weight:600; font-size:11.5px; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:none; max-width:130px; margin-left:4px; margin-right:6px; }
 .pane:focus-within .pane-name { color:var(--text); }
 .action-group { display:flex; align-items:center; gap:1px; }
 /* controls appear on pane hover / keyboard focus so the bar stays quiet */
 .ctrls{display:flex;gap:1px;flex:none;opacity:0;transition:opacity .12s}
 .pane:hover .ctrls,.ctrls:focus-within{opacity:1}
-.pctrl{width:20px;height:20px;border-radius:5px;display:grid;place-items:center;color:var(--muted-2);transition:background .14s,color .14s}
+.pctrl{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--muted-2);transition:background .14s,color .14s}
 .pctrl:hover{background:rgba(255,255,255,.09);color:var(--text)}
-.pctrl.danger:hover{background:rgba(255,107,107,.16);color:var(--err)}
-.term-host{flex:1;min-height:0;background:transparent;padding:6px 8px;overflow:hidden}
+.pctrl.danger:hover{background:rgba(248,113,113,.16);color:var(--err)}
+.term-host{flex:1;min-height:0;background:transparent;padding:14px 16px;overflow:hidden;-webkit-mask-image:linear-gradient(180deg,transparent,#000 11%);mask-image:linear-gradient(180deg,transparent,#000 11%)}
 .term-host .xterm{height:100%}
 .term-host .xterm-viewport{overflow-y:auto}
 

@@ -404,6 +404,7 @@ export function clearAttention(pane: Pane) {
   pane.attentionNotified = false;
   pane.attentionClearedAt = Date.now();
   pane.el.classList.remove("attention");
+  pane.el.querySelector(".pb-dot")?.classList.remove("work");
   // Let the next tick re-derive the run/idle status; set a sane default now.
   setStatus(pane, pane.running ? "running" : "idle", pane.running ? "run" : "");
   refreshAttnTabs();
@@ -414,6 +415,7 @@ function setAttention(pane: Pane, ws: Workspace) {
   if (pane.attention) return;
   pane.attention = true;
   pane.el.classList.add("attention");
+  pane.el.querySelector(".pb-dot")?.classList.add("work");
   setStatus(pane, "needs you", "wait");
   refreshAttnTabs();
   // Notify only while the window is unattended, once per flag.

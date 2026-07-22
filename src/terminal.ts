@@ -87,7 +87,7 @@ export function mountTerminal(
     cursorBlink: true,
     // Monospace only — a proportional font here breaks xterm's cell grid, and
     // wide lineHeight/letterSpacing bloat every cell (fewer cols/rows per pane).
-    fontFamily: "'Cascadia Mono', 'Cascadia Code', Consolas, monospace",
+    fontFamily: "'Geist Mono', 'Cascadia Mono', 'Cascadia Code', Consolas, monospace",
     fontSize: opts.fontSize ?? 13,
     lineHeight: 1.2,
     letterSpacing: 0,

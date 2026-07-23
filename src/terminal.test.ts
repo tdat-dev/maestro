@@ -48,6 +48,9 @@ describe("decodeOsc52", () => {
 // with a 22px cell got 18 rows instead of 16, clipping "auto mode on…").
 // jsdom has no layout engine, so the regression is guarded at the CSS level.
 describe("terminal host layout (addon-fit contract)", () => {
+  // Read off disk, not `import ...?raw`: vitest stubs every CSS module to an
+  // empty string unless `test.css` is on. Path is relative to the repo root,
+  // where vitest runs.
   const css = readFileSync("src/styles/workspace.css", "utf8");
   const rule = (selector: string): string => {
     const m = css.match(new RegExp(`(?:^|\\})\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`, "m"));

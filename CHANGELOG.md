@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-23
+
+A workspace redesign: agents now live on a free-form canvas instead of a rigid
+tiling grid, and the controls that used to crowd the top bar have moved into a
+single command bar at the bottom of the screen.
+
+### Added
+
+- **Canvas workspace** — agent panes are now positioned freely: drag a pane by
+  its title bar to move it anywhere, and hit **Tidy** to tile everything back
+  into a clean grid that fills the screen. Positions persist per workspace.
+  Every agent gets a persona name and a colour it keeps across the pane header,
+  the focus rail, and `MAESTRO_AGENT`, so an agent is recognisable at a glance.
+- **Focus stage** — zoom a pane to fill the workspace; the other agents collapse
+  into a slim avatar rail down the right edge (each with a live/idle/needs-you
+  dot) so you can jump between them without leaving focus. The stage grows out
+  of the point you clicked, bumps the terminal font, and dims the canvas behind
+  it. The zoom button becomes a back arrow to return.
+- **Command bar** — one bar at the bottom holds settings, the fleet message
+  field, and **+Agent**. Typing `@` opens a picker of your agents, and a single
+  line can address several at once (`@Ana run tests @Bob deploy`). **+Agent**
+  opens an inline spawn menu — pick how many of each CLI (plus a custom command)
+  and spawn straight into the current workspace, without the full modal.
+- **Voice input** — push-to-talk in the command bar. The **voice → dispatch**
+  panel splits what you said by agent name, so one spoken sentence can hand a
+  different task to each agent; review the split before it sends.
+- **Delegation visualization** — when an agent hands work to another via
+  `fleet_send`, Maestro draws a transient animated link between their panes and
+  pops a toast (`Ana → Bob: …`), so hand-offs are visible even when the panes
+  involved are off-screen or in another workspace.
+- **Full-screen Settings** — reorganised into **Appearance**, **Fleet & Remote**,
+  **Schedule & Sessions**, and **System**, with a canvas **background picker**
+  (presets, a solid colour, or your own image, saved per workspace).
+- **Hint bar** — a top-centre pill for first-run tips and confirmations (e.g.
+  how many panes Tidy just arranged).
+
+### Changed
+
+- **Broadcast defaults to the whole fleet.** The per-agent target dropdown is
+  gone — it sat empty and inert whenever no agent was running. A message with no
+  mention now reaches every running agent, and `@name` targets one.
+- **Pane headers are down to three controls** — rename, zoom, and kill — with
+  search, record, and restart moved behind a **⋯** overflow. The agent name is
+  editable in place (click it or the pencil).
+- **Slimmer top bar** — the brand mark is gone (Home anchors the left) and
+  "Resume all" is now an accent pill. The settings gear that duplicated the one
+  in the command bar has been removed from the window controls.
+- **Internal restructuring** — `main.ts` went from 2035 to 496 lines and
+  `workspace.ts` from 674 to 474, with panes, canvas layout, broadcast, spawn,
+  settings, replay, dashboard, and shared state split into focused modules. No
+  behaviour change; it just makes the app far easier to work on.
+
+### Fixed
+
+- **`@` now lists idle agents too.** The mention picker only offered agents with
+  a live process, so an agent restored from a session or one whose CLI had
+  exited never appeared — even though its name is still a valid target.
+- **Transcript saving in agent panes.** Launching Maestro from inside a Claude
+  Code session leaked that session's markers into every agent it spawned, so
+  each agent believed it was a child session and silently stopped saving its
+  transcript. Those markers are now stripped from each agent's environment.
+- **A dev build can no longer kill your installed Maestro.** Development and
+  production both produced `maestro.exe`, differing only by path, so anything
+  matching processes by name while developing could take down the real app. The
+  dev build is now `maestro-dev.exe`; the shipped binary is unchanged.
+
 ## [0.4.1] - 2026-07-16
 
 ### Fixed

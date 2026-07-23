@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-23
+
+### Fixed
+
+- **Terminal panes no longer cut off their last line.** Every pane sliced its
+  bottom row in half — in a Claude Code agent that was the status line
+  (`auto mode on · 13 agents`) permanently chopped. The pane's inset sat on the
+  terminal's container, where xterm's fit addon can't see it, so the addon kept
+  proposing about two more rows and columns than actually fit and the overflow
+  was clipped away. The inset now lives on the terminal element itself, where
+  the fit maths accounts for it. The same fix applies to the remote dashboard.
+- **The top of a pane no longer erases output.** The fade under the title bar
+  was sized as a percentage of the pane, so on a normal pane it swallowed
+  roughly two full lines of text. It now spans only the padding strip.
+
 ## [0.5.0] - 2026-07-23
 
 A workspace redesign: agents now live on a free-form canvas instead of a rigid

@@ -100,8 +100,14 @@
 .pctrl{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--muted-2);transition:background .14s,color .14s}
 .pctrl:hover{background:rgba(255,255,255,.09);color:var(--text)}
 .pctrl.danger:hover{background:rgba(248,113,113,.16);color:var(--err)}
-.term-host{flex:1;min-height:0;background:transparent;padding:14px 16px;overflow:hidden;-webkit-mask-image:linear-gradient(180deg,transparent,#000 11%);mask-image:linear-gradient(180deg,transparent,#000 11%)}
-.term-host .xterm{height:100%}
+/* The inset lives on .xterm, NOT here. addon-fit derives rows/cols from this
+   host's box but only subtracts padding declared on .xterm itself, so padding
+   on the host is invisible to it — it proposed ~2 rows and ~2 cols too many and
+   .pane's overflow:hidden sliced the last line in half (a 399px host with a
+   22px cell got 18 rows where 16 fit). The mask fades across the inset only:
+   a percentage stop scales with the pane and erased real output at the top. */
+.term-host{flex:1;min-height:0;background:transparent;overflow:hidden;-webkit-mask-image:linear-gradient(180deg,transparent,#000 14px);mask-image:linear-gradient(180deg,transparent,#000 14px)}
+.term-host .xterm{height:100%;padding:14px 16px}
 .term-host .xterm-viewport{overflow-y:auto}
 
 /* ---------- maximize / focus one pane ---------- */

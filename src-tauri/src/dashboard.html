@@ -75,7 +75,11 @@
   .ttab.st-active .d{background:var(--run)} .ttab.st-needs .d{background:var(--accent)}
   .ttab.on{background:var(--accent);color:var(--ink);border-color:var(--accent)}
   .ttab.on .d{background:var(--ink)}
-  #termxt{flex:1;min-height:0;padding:6px 8px}
+  /* Insets go on .xterm: addon-fit only subtracts padding declared there, so
+     padding on the host makes it propose more rows than fit and the last line
+     gets clipped (same bug the app panes had). */
+  #termxt{flex:1;min-height:0}
+  #termxt .xterm{padding:6px 8px}
   #term-grid{flex:1;min-height:0;display:none;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
     grid-auto-rows:1fr;gap:6px;padding:6px}
   .gcell{display:flex;flex-direction:column;min-height:0;background:#0b0d12;border:1px solid var(--line);
@@ -85,7 +89,8 @@
   .gcell-h .d{width:7px;height:7px;border-radius:50%;background:var(--idle)}
   .gcell-h.st-active .d{background:var(--run)} .gcell-h.st-needs .d{background:var(--accent)}
   .gcell-h .exp{margin-left:auto;color:var(--muted2);font-size:11px}
-  .gcell-x{flex:1;min-height:0;padding:3px 5px}
+  .gcell-x{flex:1;min-height:0}
+  .gcell-x .xterm{padding:3px 5px}
   .xterm{height:100%}
 </style>
 <link rel="stylesheet" href="/xterm.css">

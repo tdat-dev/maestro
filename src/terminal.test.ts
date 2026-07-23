@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import { mountTerminal, decodeOsc52 } from "./terminal";
 
 // Smoke test: verifies the module (and its @xterm + CSS imports) resolves and
@@ -36,5 +37,36 @@ describe("decodeOsc52", () => {
     expect(decodeOsc52("c")).toBeNull();
     expect(decodeOsc52("c;***not-base64***")).toBeNull();
     expect(decodeOsc52(`c;${btoa("")}`)).toBeNull();
+  });
+});
+
+// Layout contract with @xterm/addon-fit. fit() proposes rows/cols from the
+// PARENT's height/width and only subtracts padding declared on `.xterm` itself
+// (see proposeDimensions in addon-fit). Padding on the parent is therefore
+// invisible to it: it proposes rows that don't fit, and .pane's overflow:hidden
+// slices the last line in half — which is exactly what shipped (a 399px host
+// with a 22px cell got 18 rows instead of 16, clipping "auto mode on…").
+// jsdom has no layout engine, so the regression is guarded at the CSS level.
+describe("terminal host layout (addon-fit contract)", () => {
+  const css = readFileSync("src/styles/workspace.css", "utf8");
+  const rule = (selector: string): string => {
+    const m = css.match(new RegExp(`(?:^|\\})\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`, "m"));
+    return m?.[1] ?? "";
+  };
+
+  it("keeps the terminal host free of padding", () => {
+    expect(rule(".term-host")).not.toMatch(/(^|;)\s*padding/);
+  });
+
+  it("puts the inset on .xterm, where fit() accounts for it", () => {
+    expect(rule(".term-host .xterm")).toMatch(/padding:/);
+  });
+
+  it("fades only the padding strip, not whole rows of text", () => {
+    // A percentage stop scales with the pane: 11% of a 399px host erased ~2
+    // rows of output at the top. An absolute stop can only ever cover the inset.
+    const host = rule(".term-host");
+    expect(host).toMatch(/mask-image:/);
+    expect(host).not.toMatch(/mask-image:[^;]*\d+%/);
   });
 });

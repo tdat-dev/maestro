@@ -12,7 +12,10 @@ export default defineConfig({
     port: 1630,
     strictPort: true,
   },
+  // Keep the test config here and nowhere else: a vitest.config.ts would be
+  // loaded *instead of* this file, silently dropping the excludes below.
   test: {
+    environment: "happy-dom",
     // mcp/ is its own package with its own vitest; .claude/ holds worktree copies.
     exclude: ["**/node_modules/**", "**/dist/**", "mcp/**", ".claude/**"],
   },

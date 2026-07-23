@@ -108,7 +108,10 @@ pub async fn watch_start(
         let stop = Arc::new(AtomicBool::new(false));
         let thread_stop = stop.clone();
         let thread_root = root_c.clone();
-        let emit_root = root_c.to_string_lossy().to_string();
+        // Echo back the caller's own root string, not the canonical one: on
+        // Windows `canonicalize` yields a `\\?\` verbatim path, which would
+        // never match the folder the frontend is showing.
+        let emit_root = root.clone();
         std::thread::spawn(move || {
             'outer: loop {
                 // Idle: wake periodically so a stopped watch can exit its thread.

@@ -4,7 +4,7 @@
 .file-tree{font-size:12.5px;color:var(--text-2);padding:4px 6px 8px;outline:none}
 .tw-msg{padding:22px 16px;color:var(--muted-2);font-size:11.5px;line-height:1.5;text-align:center}
 
-.tw-row{display:flex;align-items:center;gap:5px;height:24px;cursor:pointer;white-space:nowrap;border-radius:var(--r1);position:relative;
+.tw-row{display:flex;align-items:center;gap:5px;height:24px;cursor:pointer;white-space:nowrap;user-select:none;border-radius:var(--r1);position:relative;
   padding:0 6px 0 calc(6px + var(--d,0) * 12px);
   /* one hairline per indent level, like VS Code's indent guides */
   background-image:repeating-linear-gradient(to right,var(--line) 0 1px,transparent 1px 12px);
@@ -41,10 +41,16 @@
 .tw-c-gray{color:var(--muted-2)}
 .tw-row:hover .tw-c-gray,.tw-row.sel .tw-c-gray{color:var(--text-2)}
 
-/* while dragging a tree row, let dragover reach the panes (not the xterm canvas)
-   so the file/folder path can be dropped into a terminal */
+/* while dragging a tree row, hit-testing must reach the panes (not the xterm
+   canvas) so the file/folder path can be dropped into a terminal */
 body.tree-dragging .term-host{pointer-events:none}
+body.tree-dragging{cursor:grabbing}
 body.tree-dragging .tw-row{cursor:grabbing}
+/* the folder the drop would land in */
+.tw-row.drop{background-color:var(--accent-glow);box-shadow:inset 0 0 0 1px var(--accent-dim)}
+.file-tree.drop-root{box-shadow:inset 0 0 0 1px var(--accent-dim);border-radius:var(--r2)}
+/* cursor-following label: what's being dragged, and how much of it */
+.tw-ghost{position:fixed;z-index:400;display:flex;align-items:center;gap:6px;max-width:260px;padding:4px 9px;border-radius:var(--r2);background:var(--surface-2);border:1px solid var(--line-strong);box-shadow:0 10px 26px rgba(0,0,0,.45);color:var(--text-2);font-size:12px;white-space:nowrap;pointer-events:none}
 
 /* inline create / rename input — sits in the row, monospace like file names */
 .tw-input{flex:1;min-width:0;background:var(--surface-0);border:1px solid var(--accent-dim);border-radius:4px;color:var(--text);font:inherit;font-size:12px;padding:1px 6px;outline:none}

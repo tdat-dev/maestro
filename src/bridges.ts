@@ -83,12 +83,38 @@ function dropPathsIntoPane(target: Pane, paths: string[]) {
 // approved" type into the agent they're looking at (else the first pane).
 let lastFocusedPaneId: string | null = null;
 
-const TREE_PATH = "application/x-maestro-path";
-/** Pane under a CSS-pixel point (HTML5 client coords need no DPR scaling). */
+/** Pane under a CSS-pixel point (pointer client coords need no DPR scaling). */
 function paneAtClient(x: number, y: number): Pane | null {
   const el = document.elementFromPoint(x, y)?.closest<HTMLElement>(".pane");
   const id = el?.dataset.id;
   return id && activeWs ? activeWs.panes.get(id) ?? null : null;
+}
+
+/* ---- in-app drag: a file-tree row → a terminal pane ---- */
+// Tauri's onDragDrop only fires for files dragged from OUTSIDE the window, and
+// WebView2 swallows HTML5 drag events inside it, so the tree drives its own
+// Pointer-Events drag and calls these while it runs.
+
+/** Highlight the pane under the cursor mid-drag; returns true when there is one. */
+export function highlightPaneAt(x: number, y: number): boolean {
+  const pane = paneAtClient(x, y);
+  setDropTarget(pane);
+  return !!pane;
+}
+
+/** Type absolute path(s) into the pane under the cursor. Returns false when the
+ *  drop landed somewhere else (the tree then treats it as a move). */
+export function dropPathsAtPoint(x: number, y: number, paths: string[]): boolean {
+  const target = paneAtClient(x, y) ?? dropTarget;
+  setDropTarget(null);
+  if (!target) return false;
+  dropPathsIntoPane(target, paths);
+  return true;
+}
+
+/** Drop the highlight when a drag ends or leaves the panes. */
+export function clearPaneHighlight(): void {
+  setDropTarget(null);
 }
 
 /** Wire every drag-drop + Kanban-bridge listener/registration. Call once at
@@ -249,30 +275,6 @@ export function initBridges(): void {
     const target = paneAtPoint(e.position.x, e.position.y) ?? dropTarget;
     setDropTarget(null);
     if (target) dropPathsIntoPane(target, e.paths);
-  });
-
-  /* ---- in-app drag: a file-tree row → a terminal pane (HTML5 DnD) ---- */
-  // Tauri's onDragDrop only fires for files dragged from OUTSIDE the window, so
-  // tree-row drags use plain HTML5 DnD. `body.tree-dragging` lets dragover reach
-  // the panes (the xterm canvas otherwise swallows pointer events).
-  wsHost.addEventListener("dragover", (e) => {
-    if (!e.dataTransfer?.types.includes(TREE_PATH)) return; // not a tree drag
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-    setDropTarget(paneAtClient(e.clientX, e.clientY));
-  });
-  wsHost.addEventListener("dragleave", (e) => {
-    if (e.dataTransfer?.types.includes(TREE_PATH) && !wsHost.contains(e.relatedTarget as Node)) {
-      setDropTarget(null);
-    }
-  });
-  wsHost.addEventListener("drop", (e) => {
-    if (!e.dataTransfer?.types.includes(TREE_PATH)) return;
-    e.preventDefault();
-    const abs = e.dataTransfer.getData(TREE_PATH) || e.dataTransfer.getData("text/plain");
-    const target = paneAtClient(e.clientX, e.clientY) ?? dropTarget;
-    setDropTarget(null);
-    if (target && abs) dropPathsIntoPane(target, [abs]);
   });
 
   /* pty-exit listener LAST + guarded so it can never block the wiring above. */

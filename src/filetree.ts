@@ -16,6 +16,7 @@ import {
   fsReveal,
   fsOpenExternal,
   watchStart,
+  watchStop,
   onFsChanged,
   confirmDialog,
   type FsEntry,
@@ -33,6 +34,7 @@ import {
   type TreeRow,
   type SelectMode,
 } from "./codepanel";
+import { highlightPaneAt, dropPathsAtPoint, clearPaneHighlight } from "./bridges";
 
 interface FileTreeOpts {
   host: HTMLElement;
@@ -261,17 +263,6 @@ export function initFileTree(opts: FileTreeOpts): FileTreeApi {
         el.appendChild(p);
       }
     }
-    // Dragging a row into a terminal pane types its absolute path.
-    el.setAttribute("draggable", "true");
-    el.addEventListener("dragstart", (e) => {
-      const batch = selected.has(r.rel) ? [...selected] : [r.rel];
-      const text = batch.map((x) => `"${abs(x)}"`).join(" ");
-      e.dataTransfer?.setData("text/plain", batch.length > 1 ? text : abs(r.rel));
-      e.dataTransfer?.setData("application/x-maestro-path", abs(r.rel));
-      if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
-      document.body.classList.add("tree-dragging");
-    });
-    el.addEventListener("dragend", () => document.body.classList.remove("tree-dragging"));
     return el;
   }
 
@@ -679,9 +670,163 @@ export function initFileTree(opts: FileTreeOpts): FileTreeApi {
     showMenu(e.clientX, e.clientY, items);
   });
 
+  /* ---------------- drag & drop (Pointer Events) ---------------- */
+  // Not HTML5 DnD: this app has OS-level file-drop enabled, and on WebView2 that
+  // swallows dragstart/dragover inside the webview. Pointer capture lives on the
+  // host (never on a row) so an auto-expand re-render can't break the drag.
+
+  interface Drag {
+    rels: string[];
+    startX: number;
+    startY: number;
+    active: boolean;
+    ghost: HTMLElement | null;
+    dropDir: string | null;
+    hoverRel: string | null;
+    hoverTimer: number | undefined;
+    overPane: boolean;
+  }
+  let drag: Drag | null = null;
+  let dragged = false; // suppress the click that follows a real drag
+
+  const markDropDir = (rel: string | null) => {
+    host.querySelectorAll(".tw-row.drop").forEach((n) => n.classList.remove("drop"));
+    host.classList.toggle("drop-root", rel === "");
+    if (rel)
+      host.querySelector(`[data-rel="${CSS.escape(rel)}"]`)?.classList.add("drop");
+  };
+
+  function endDrag(): void {
+    if (!drag) return;
+    window.clearTimeout(drag.hoverTimer);
+    drag.ghost?.remove();
+    drag = null;
+    document.body.classList.remove("tree-dragging");
+    markDropDir(null);
+    clearPaneHighlight();
+  }
+
+  host.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || editing || results) return;
+    const rowNode = (e.target as HTMLElement).closest<HTMLElement>(".tw-row");
+    const rel = rowNode?.dataset.rel;
+    if (!rel) return;
+    dragged = false;
+    drag = {
+      rels: selected.has(rel) ? topLevelOnly([...selected]) : [rel],
+      startX: e.clientX,
+      startY: e.clientY,
+      active: false,
+      ghost: null,
+      dropDir: null,
+      hoverRel: null,
+      hoverTimer: undefined,
+      overPane: false,
+    };
+  });
+
+  host.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    if (!drag.active) {
+      if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < 5) return;
+      drag.active = true;
+      dragged = true;
+      host.setPointerCapture(e.pointerId);
+      document.body.classList.add("tree-dragging");
+      const g = document.createElement("div");
+      g.className = "tw-ghost";
+      const first = rowOf(drag.rels[0]);
+      g.innerHTML = entryIcon(first?.name ?? "", !!first?.isDir, false);
+      const label = document.createElement("span");
+      label.textContent =
+        drag.rels.length > 1 ? `${drag.rels.length} items` : (first?.name ?? drag.rels[0]);
+      g.appendChild(label);
+      document.body.appendChild(g);
+      drag.ghost = g;
+    }
+    if (drag.ghost) {
+      drag.ghost.style.left = `${e.clientX + 12}px`;
+      drag.ghost.style.top = `${e.clientY + 10}px`;
+    }
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    // Over a terminal pane → this is the "type the path into the agent" drag.
+    if (el?.closest(".pane")) {
+      drag.overPane = highlightPaneAt(e.clientX, e.clientY);
+      drag.dropDir = null;
+      markDropDir(null);
+      return;
+    }
+    drag.overPane = false;
+    clearPaneHighlight();
+    const overRow = el?.closest<HTMLElement>(".tw-row");
+    const overRel = overRow?.dataset.rel;
+    let dir: string | null = null;
+    if (overRel !== undefined) {
+      const r = rowOf(overRel);
+      dir = r?.isDir ? overRel : parentOf(overRel);
+    } else if (el?.closest(".file-tree")) {
+      dir = ""; // empty space under the rows = the workspace root
+    }
+    // A folder can't take its own subtree, and dropping where it already lives
+    // is a no-op — don't offer either as a target.
+    if (dir !== null && drag.rels.some((rel) => isInside(dir!, rel) || parentOf(rel) === dir)) {
+      dir = null;
+    }
+    if (dir !== drag.dropDir) {
+      drag.dropDir = dir;
+      markDropDir(dir);
+    }
+    // Hovering a closed folder for a beat opens it, so you can drill in mid-drag.
+    if (overRel !== drag.hoverRel) {
+      drag.hoverRel = overRel ?? null;
+      window.clearTimeout(drag.hoverTimer);
+      if (overRel && rowOf(overRel)?.isDir && !expanded.has(overRel)) {
+        drag.hoverTimer = window.setTimeout(() => void setOpen(overRel, true), 600);
+      }
+    }
+  });
+
+  host.addEventListener("pointerup", (e) => {
+    const d = drag;
+    if (!d) return;
+    if (!d.active) {
+      endDrag();
+      return;
+    }
+    const copy = e.ctrlKey || e.metaKey;
+    const { rels, dropDir, overPane } = d;
+    endDrag();
+    if (overPane) {
+      dropPathsAtPoint(e.clientX, e.clientY, rels.map(abs));
+      return;
+    }
+    if (dropDir === null || !root) return;
+    void (async () => {
+      const touched = new Set<string>([dropDir]);
+      for (const rel of rels) {
+        try {
+          const to = copy ? await fsCopy(root!, rel, dropDir) : await fsMove(root!, rel, dropDir);
+          if (!copy) {
+            afterMove(rel, to);
+            touched.add(parentOf(rel));
+          }
+        } catch (err) {
+          toast(`Could not move “${rel}” — ${errText(err)}`);
+        }
+      }
+      await reload([...touched]);
+    })();
+  });
+
+  host.addEventListener("lostpointercapture", () => endDrag());
+
   /* ---------------- pointer + keyboard ---------------- */
 
   host.addEventListener("click", (e) => {
+    if (dragged) {
+      dragged = false;
+      return;
+    }
     const rowNode = (e.target as HTMLElement).closest<HTMLElement>(".tw-row");
     const rel = rowNode?.dataset.rel;
     if (rel === undefined) return;
@@ -849,6 +994,7 @@ export function initFileTree(opts: FileTreeOpts): FileTreeApi {
     if (!dir) {
       host.replaceChildren();
       host.innerHTML = `<div class="tw-msg">No folder for this workspace</div>`;
+      void watchStop().catch(() => {});
       return;
     }
     host.innerHTML = `<div class="tw-msg">Loading…</div>`;

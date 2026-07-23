@@ -290,6 +290,10 @@ const editor = initEditor({
 fileTree = initFileTree({
   host: document.getElementById("fileTree") as HTMLElement,
   onOpenFile: (rel) => void editor.open(rel),
+  // Keep the open tab pointing at the file after a rename/move, and let go of
+  // it when the file is deleted from the tree.
+  onPathChanged: (from, to) => editor.pathChanged(from, to),
+  onPathsGone: (rels) => editor.pathsGone(rels),
   // "Open in terminal here" — a shell pane already parked in that folder.
   onOpenTerminal: (dir) => {
     const ws = activeWs;

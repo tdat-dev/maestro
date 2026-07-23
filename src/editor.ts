@@ -91,7 +91,15 @@ function baseName(p: string): string {
   return i < 0 ? p : p.slice(i + 1);
 }
 
-export function initEditor(opts: EditorOpts): { open(relPath: string): Promise<void> } {
+export interface EditorApi {
+  open(relPath: string): Promise<void>;
+  /** An open file (or a folder above it) was renamed or moved in the tree. */
+  pathChanged(from: string, to: string): void;
+  /** Paths that no longer exist — close the tab if it points at one of them. */
+  pathsGone(rels: string[]): void;
+}
+
+export function initEditor(opts: EditorOpts): EditorApi {
   const { host, getRoot } = opts;
 
   const EXPAND_SVG =
@@ -363,5 +371,34 @@ export function initEditor(opts: EditorOpts): { open(relPath: string): Promise<v
     }
   }
 
-  return { open };
+  /** True when `rel` is `dir` itself or lives under it. */
+  const under = (rel: string, dir: string) => rel === dir || rel.startsWith(`${dir}\\`);
+
+  /** Back to the empty state — the file behind the tab is gone. */
+  function closeFile(note: string): void {
+    teardownEditor();
+    tab.hidden = true;
+    mount.hidden = true;
+    imgWrap.hidden = true;
+    mdEl.hidden = true;
+    previewBtn.hidden = true;
+    setBanner(null);
+    empty.hidden = false;
+    (empty.lastElementChild as HTMLElement).textContent = note;
+  }
+
+  function pathChanged(from: string, to: string): void {
+    if (!openRel || !under(openRel, from)) return;
+    openRel = to + openRel.slice(from.length);
+    tabName.textContent = baseName(openRel);
+    tabName.title = openRel.replace(/\\/g, " / ");
+  }
+
+  function pathsGone(rels: string[]): void {
+    if (!openRel) return;
+    if (!rels.some((r) => under(openRel!, r))) return;
+    closeFile(isDirty() ? "The open file was deleted — its unsaved text is gone" : "File deleted");
+  }
+
+  return { open, pathChanged, pathsGone };
 }

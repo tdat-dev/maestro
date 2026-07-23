@@ -33,7 +33,7 @@ import { initTitlebar } from "./titlebar";
 import { initIdleAnimationPause } from "./power";
 import { initDock, dockSetContext, dockToggle, dockOpen } from "./dock";
 import { initPanels } from "./panels";
-import { initFileTree } from "./filetree";
+import { initFileTree, type FileTreeApi } from "./filetree";
 import { initEditor } from "./editor";
 import { setFileOpener, setDiffOpener } from "./agentbridge";
 
@@ -88,7 +88,7 @@ const appEl = document.getElementById("app") as HTMLElement;
 const tabAdd = document.getElementById("railAdd") as HTMLElement;
 
 // Code panel (right): file tree + editor, wired up in the startup block.
-let fileTree: { setRoot(dir: string | null): void } | null = null;
+let fileTree: FileTreeApi | null = null;
 
 function showWorkspace() {
   homeEl.hidden = true;
@@ -290,6 +290,20 @@ const editor = initEditor({
 fileTree = initFileTree({
   host: document.getElementById("fileTree") as HTMLElement,
   onOpenFile: (rel) => void editor.open(rel),
+  // "Open in terminal here" — a shell pane already parked in that folder.
+  onOpenTerminal: (dir) => {
+    const ws = activeWs;
+    if (!ws) return;
+    const ps = CLI_PRESETS.find((p) => p.id === "powershell")!;
+    void createAgent(ws, {
+      program: ps.program,
+      args: ps.args,
+      cwd: dir,
+      name: basename(dir),
+      badge: ps.badge,
+      ...cliLook(ps.badge, ps.label),
+    })();
+  },
 });
 // Let the board reveal an evidence file in the code panel, or open the diff.
 setFileOpener((path) => {
@@ -297,6 +311,7 @@ setFileOpener((path) => {
   localStorage.setItem("maestro.codeHidden", "0");
   document.getElementById("btnToggleCode")?.classList.add("on");
   void editor.open(path);
+  void fileTree?.reveal(path);
 });
 setDiffOpener(() => dockOpen("diff"));
 

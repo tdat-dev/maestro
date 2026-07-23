@@ -139,8 +139,19 @@
     <div class="code-split" id="codeSplit" title="Drag to resize"></div>
     <header class="cp-head">
       <span class="cp-eyebrow">Explorer</span>
+      <div class="cp-tools" id="cpTools">
+        <button class="cp-btn" id="cpNewFile" aria-label="New file" title="New file"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M12 11v6M9 14h6"/></svg></button>
+        <button class="cp-btn" id="cpNewFolder" aria-label="New folder" title="New folder"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h3.6a2 2 0 0 1 1.4.6L11.8 7H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10v6M9 13h6"/></svg></button>
+        <button class="cp-btn" id="cpRefresh" aria-label="Refresh" title="Refresh"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-.6 4M20 5v6h-6"/></svg></button>
+        <button class="cp-btn" id="cpCollapse" aria-label="Collapse all folders" title="Collapse all folders"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h12M8 20h12M4 9l3-3 3 3M4 15l3 3 3-3M12 12h8"/></svg></button>
+        <button class="cp-btn" id="cpHidden" aria-label="Show hidden and build folders" title="Show hidden &amp; build folders (.git, node_modules, target)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+      </div>
       <button class="cp-btn" id="cpClose" aria-label="Hide code panel" title="Hide code panel (Ctrl+Shift+E)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6l6 6-6 6M5 6l6 6-6 6"/></svg></button>
     </header>
+    <div class="cp-filterbar">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input class="cp-filter" id="cpFilter" placeholder="Filter files…" spellcheck="false" autocomplete="off" autocapitalize="off">
+    </div>
     <div class="file-tree" id="fileTree"></div>
     <div class="editor-host" id="editorHost"></div>
   </aside>

@@ -6,3 +6,4 @@ pub mod screenshot;
 pub mod job;
 pub mod pty_session;
 pub mod registry;
+pub mod watch;

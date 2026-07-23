@@ -210,6 +210,170 @@ pub fn fs_delete(root: String, path: String) -> Result<(), CommandError> {
     Ok(())
 }
 
+/// Resolve a destination *folder* that must already exist inside `root`.
+/// `""` means the root itself.
+fn scoped_dir(root: &str, dir: &str) -> Result<PathBuf, CommandError> {
+    let p = if dir.is_empty() {
+        std::fs::canonicalize(root).map_err(|e| CommandError::Failed(format!("bad root: {e}")))?
+    } else {
+        scoped(root, dir)?
+    };
+    if !p.is_dir() {
+        return Err(CommandError::Failed("not a folder".into()));
+    }
+    Ok(p)
+}
+
+/// Split a file name into (stem, extension-with-dot). `.gitignore` counts as a
+/// stem with no extension, matching how explorers rename dotfiles.
+fn split_name(name: &str) -> (&str, &str) {
+    match name.rfind('.') {
+        Some(i) if i > 0 => (&name[..i], &name[i..]),
+        _ => (name, ""),
+    }
+}
+
+/// First free path in `dir` for `name`, appending ` copy`, ` copy 2`, … the way
+/// Explorer/Finder do. Used by paste, duplicate and drag-copy so a collision
+/// never silently overwrites the destination.
+fn unique_in(dir: &Path, name: &str) -> PathBuf {
+    let direct = dir.join(name);
+    if !direct.exists() {
+        return direct;
+    }
+    let (stem, ext) = split_name(name);
+    for n in 1..1000 {
+        let candidate = if n == 1 {
+            format!("{stem} copy{ext}")
+        } else {
+            format!("{stem} copy {n}{ext}")
+        };
+        let p = dir.join(&candidate);
+        if !p.exists() {
+            return p;
+        }
+    }
+    direct
+}
+
+/// Recursively copy `src` (file or directory) to the exact path `dst`.
+fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
+    if src.is_dir() {
+        std::fs::create_dir_all(dst)?;
+        for ent in std::fs::read_dir(src)? {
+            let ent = ent?;
+            copy_tree(&ent.path(), &dst.join(ent.file_name()))?;
+        }
+        Ok(())
+    } else {
+        if let Some(parent) = dst.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::copy(src, dst).map(|_| ())
+    }
+}
+
+/// Path of `p` relative to the canonical `root`, backslash-separated.
+fn rel_of(root: &Path, p: &Path) -> String {
+    p.strip_prefix(root)
+        .unwrap_or(p)
+        .to_string_lossy()
+        .replace('/', "\\")
+}
+
+/// Copy an entry into `to_dir` (`""` = root), auto-renaming on collision.
+/// Returns the new path, relative to the root.
+#[tauri::command]
+pub fn fs_copy(root: String, from: String, to_dir: String) -> Result<String, CommandError> {
+    let src = scoped(&root, &from)?;
+    let dir = scoped_dir(&root, &to_dir)?;
+    if dir.starts_with(&src) {
+        return Err(CommandError::Failed("cannot copy a folder into itself".into()));
+    }
+    let name = src
+        .file_name()
+        .ok_or_else(|| CommandError::Failed("invalid source".into()))?
+        .to_string_lossy()
+        .to_string();
+    let dst = unique_in(&dir, &name);
+    copy_tree(&src, &dst).map_err(|e| CommandError::Failed(e.to_string()))?;
+    let root_c = std::fs::canonicalize(&root).map_err(|e| CommandError::Failed(e.to_string()))?;
+    Ok(rel_of(&root_c, &dst))
+}
+
+/// Move an entry into `to_dir` (`""` = root), auto-renaming on collision.
+/// Returns the new path, relative to the root. Falls back to copy+delete when
+/// the rename crosses a volume boundary.
+#[tauri::command]
+pub fn fs_move(root: String, from: String, to_dir: String) -> Result<String, CommandError> {
+    let src = scoped(&root, &from)?;
+    let dir = scoped_dir(&root, &to_dir)?;
+    if dir == src || dir.starts_with(&src) {
+        return Err(CommandError::Failed("cannot move a folder into itself".into()));
+    }
+    let name = src
+        .file_name()
+        .ok_or_else(|| CommandError::Failed("invalid source".into()))?
+        .to_string_lossy()
+        .to_string();
+    // Already there: nothing to do (dropping onto the current parent).
+    if src.parent() == Some(dir.as_path()) {
+        let root_c =
+            std::fs::canonicalize(&root).map_err(|e| CommandError::Failed(e.to_string()))?;
+        return Ok(rel_of(&root_c, &src));
+    }
+    let dst = unique_in(&dir, &name);
+    if std::fs::rename(&src, &dst).is_err() {
+        copy_tree(&src, &dst).map_err(|e| CommandError::Failed(e.to_string()))?;
+        if src.is_dir() {
+            std::fs::remove_dir_all(&src).map_err(|e| CommandError::Failed(e.to_string()))?;
+        } else {
+            std::fs::remove_file(&src).map_err(|e| CommandError::Failed(e.to_string()))?;
+        }
+    }
+    let root_c = std::fs::canonicalize(&root).map_err(|e| CommandError::Failed(e.to_string()))?;
+    Ok(rel_of(&root_c, &dst))
+}
+
+/// Send entries to the OS trash (Recycle Bin) in one operation, so a bulk delete
+/// stays recoverable. Every path is validated against the root first; if the
+/// platform has no trash, the caller is told and can fall back to `fs_delete`.
+#[tauri::command]
+pub fn fs_trash(root: String, paths: Vec<String>) -> Result<(), CommandError> {
+    let mut targets = Vec::with_capacity(paths.len());
+    for p in &paths {
+        targets.push(scoped(&root, p)?);
+    }
+    if targets.is_empty() {
+        return Ok(());
+    }
+    trash::delete_all(&targets).map_err(|e| CommandError::Failed(e.to_string()))
+}
+
+/// Open the OS file manager with the entry selected.
+#[tauri::command]
+pub fn fs_reveal(app: tauri::AppHandle, root: String, path: String) -> Result<(), CommandError> {
+    use tauri_plugin_opener::OpenerExt;
+    let target = scoped(&root, &path)?;
+    app.opener()
+        .reveal_item_in_dir(&target)
+        .map_err(|e| CommandError::Failed(e.to_string()))
+}
+
+/// Open an entry with the OS default application.
+#[tauri::command]
+pub fn fs_open_external(
+    app: tauri::AppHandle,
+    root: String,
+    path: String,
+) -> Result<(), CommandError> {
+    use tauri_plugin_opener::OpenerExt;
+    let target = scoped(&root, &path)?;
+    app.opener()
+        .open_path(target.to_string_lossy(), None::<&str>)
+        .map_err(|e| CommandError::Failed(e.to_string()))
+}
+
 /// Refuse to inline images bigger than this as a data URL (base64 is +33%).
 pub const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024; // 25 MiB
 
@@ -349,6 +513,90 @@ mod tests {
         let root = tmp.path().to_string_lossy().to_string();
         assert!(fs_create_file(root.clone(), "..\\evil.txt".into()).is_err());
         assert!(fs_create_dir(root.clone(), "a\\..\\..\\b".into()).is_err());
+    }
+
+    #[test]
+    fn copy_is_recursive_and_avoids_collisions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_string_lossy().to_string();
+        std::fs::create_dir_all(tmp.path().join("src").join("deep")).unwrap();
+        std::fs::write(tmp.path().join("src").join("deep").join("a.txt"), "hi").unwrap();
+        std::fs::create_dir(tmp.path().join("out")).unwrap();
+
+        let rel = fs_copy(root.clone(), "src".into(), "out".into()).unwrap();
+        assert_eq!(rel, "out\\src");
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("out").join("src").join("deep").join("a.txt"))
+                .unwrap(),
+            "hi"
+        );
+        // Copying again next to the original must not overwrite it.
+        let again = fs_copy(root.clone(), "src".into(), "out".into()).unwrap();
+        assert_eq!(again, "out\\src copy");
+        // A folder can never be copied inside itself.
+        assert!(fs_copy(root, "src".into(), "src\\deep".into()).is_err());
+    }
+
+    #[test]
+    fn copy_file_suffixes_before_the_extension() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_string_lossy().to_string();
+        std::fs::write(tmp.path().join("a.txt"), "x").unwrap();
+        let rel = fs_copy(root, "a.txt".into(), "".into()).unwrap();
+        assert_eq!(rel, "a copy.txt");
+    }
+
+    #[test]
+    fn move_relocates_and_avoids_collisions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_string_lossy().to_string();
+        std::fs::create_dir(tmp.path().join("a")).unwrap();
+        std::fs::create_dir(tmp.path().join("b")).unwrap();
+        std::fs::write(tmp.path().join("a").join("f.txt"), "1").unwrap();
+        std::fs::write(tmp.path().join("b").join("f.txt"), "2").unwrap();
+
+        let rel = fs_move(root.clone(), "a\\f.txt".into(), "b".into()).unwrap();
+        assert_eq!(rel, "b\\f copy.txt");
+        assert!(!tmp.path().join("a").join("f.txt").exists());
+        // The pre-existing file at the destination is untouched.
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("b").join("f.txt")).unwrap(),
+            "2"
+        );
+        // Dropping onto the folder it already lives in is a no-op, not a copy.
+        let same = fs_move(root.clone(), "b\\f.txt".into(), "b".into()).unwrap();
+        assert_eq!(same, "b\\f.txt");
+        // A folder can never be moved into its own subtree.
+        std::fs::create_dir(tmp.path().join("b").join("deep")).unwrap();
+        assert!(fs_move(root, "b".into(), "b\\deep".into()).is_err());
+    }
+
+    #[test]
+    fn trash_validates_every_path_before_deleting() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_string_lossy().to_string();
+        std::fs::write(tmp.path().join("keep.txt"), "x").unwrap();
+        let outside = tmp.path().parent().unwrap().join("outside-trash.txt");
+        std::fs::write(&outside, "x").unwrap();
+        let rel = format!("..\\{}", outside.file_name().unwrap().to_string_lossy());
+
+        assert!(fs_trash(root, vec!["keep.txt".into(), rel]).is_err());
+        // Nothing was removed: validation happens up-front, not per item.
+        assert!(tmp.path().join("keep.txt").exists());
+        assert!(outside.exists());
+        let _ = std::fs::remove_file(&outside);
+    }
+
+    #[test]
+    fn unique_in_walks_past_taken_copies() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("a.txt"), "x").unwrap();
+        std::fs::write(tmp.path().join("a copy.txt"), "x").unwrap();
+        assert_eq!(
+            unique_in(tmp.path(), "a.txt").file_name().unwrap(),
+            "a copy 2.txt"
+        );
+        assert_eq!(unique_in(tmp.path(), "free.txt").file_name().unwrap(), "free.txt");
     }
 
     #[test]

@@ -455,3 +455,53 @@ export async function fsRename(root: string, from: string, to: string): Promise<
 export async function fsDelete(root: string, path: string): Promise<void> {
   await invoke("fs_delete", { root, path });
 }
+
+/** Copy an entry into `toDir` ("" = root), auto-renaming on collision.
+ *  Returns the new path relative to the root. */
+export async function fsCopy(root: string, from: string, toDir: string): Promise<string> {
+  return invoke<string>("fs_copy", { root, from, toDir });
+}
+
+/** Move an entry into `toDir` ("" = root), auto-renaming on collision.
+ *  Returns the new path relative to the root. */
+export async function fsMove(root: string, from: string, toDir: string): Promise<string> {
+  return invoke<string>("fs_move", { root, from, toDir });
+}
+
+/** Send entries to the Recycle Bin in one operation (recoverable delete). */
+export async function fsTrash(root: string, paths: string[]): Promise<void> {
+  await invoke("fs_trash", { root, paths });
+}
+
+/** Show the entry in the OS file manager, selected. */
+export async function fsReveal(root: string, path: string): Promise<void> {
+  await invoke("fs_reveal", { root, path });
+}
+
+/** Open the entry with the OS default application. */
+export async function fsOpenExternal(root: string, path: string): Promise<void> {
+  await invoke("fs_open_external", { root, path });
+}
+
+/** Directories that changed on disk, coalesced by the backend watcher.
+ *  `bulk` means the change set was too large to enumerate — refresh everything. */
+export interface FsChange {
+  root: string;
+  dirs: string[];
+  bulk: boolean;
+}
+
+/** Start (or re-point) the recursive filesystem watch behind the live tree. */
+export async function watchStart(root: string): Promise<void> {
+  await invoke("watch_start", { root });
+}
+
+/** Stop watching. */
+export async function watchStop(): Promise<void> {
+  await invoke("watch_stop", {});
+}
+
+/** Subscribe to coalesced filesystem changes under the watched root. */
+export async function onFsChanged(cb: (c: FsChange) => void): Promise<UnlistenFn> {
+  return listen<FsChange>("fs-changed", (e) => cb(e.payload));
+}

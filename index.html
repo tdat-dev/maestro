@@ -8,7 +8,7 @@
 <!-- First-paint guard: dark immediately so there's no white flash before the
      app's CSS loads. The intro splash stays hidden until its real styles apply,
      so it can't render as an unstyled static frame. -->
-<style>html,body{height:100%;margin:0;background:#0d1014;overflow:hidden}</style>
+<style>html,body{height:100%;margin:0;background:#090a0c;overflow:hidden}</style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -56,7 +56,6 @@
 
 <!-- ============== custom window controls (frameless) ============== -->
 <div class="win-ctrls">
-  <button class="wc" id="btnSettings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
   <button class="wc" id="wcMin" aria-label="Minimize"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><path d="M0 5h10"/></svg></button>
   <button class="wc" id="wcMax" aria-label="Maximize"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="0.5" y="0.5" width="9" height="9"/></svg></button>
   <button class="wc close" id="wcClose" aria-label="Close"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M0 0l10 10M10 0L0 10"/></svg></button>
@@ -105,20 +104,57 @@
 <!-- ===================== WORKSPACE ===================== -->
 <div class="app" id="app" hidden>
   <header class="topbar" data-tauri-drag-region>
-    <button class="tb-home" id="btnHome" aria-label="Home" title="Home (keep agents running)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5M5.5 9.2V20a1 1 0 0 0 1 1H10v-5.5h4V21h3.5a1 1 0 0 0 1-1V9.2"/></svg></button>
-    <nav class="tabstrip" id="tabstrip">
-      <button class="tab-add" id="tabAdd" aria-label="New workspace"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
-    </nav>
-    <div class="spacer" data-tauri-drag-region></div>
-    <button class="tb-btn" id="btnMergeMain" hidden title="Move this workspace back into the main Maestro window"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M14 12H3M10 8l4 4-4 4M21 3v18"/></svg> Merge</button>
-    <button class="tb-btn" id="btnNewAgent"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Agent</button>
-    <div class="stats" data-tauri-drag-region>
-      <span class="stat live"><span class="pip"></span><b id="runCount">0</b> live</span>
-      <span class="stat"><b id="agentCount">0</b> total</span>
+    <div class="tb-left">
+      <button class="tb-home" id="btnHome" aria-label="Home" title="Home (keep agents running)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5M5.5 9.2V20a1 1 0 0 0 1 1H10v-5.5h4V21h3.5a1 1 0 0 0 1-1V9.2"/></svg></button>
     </div>
-    <span class="clock" id="clock" data-tauri-drag-region>--:--:--</span>
+    
+    <div class="tb-center" data-tauri-drag-region>
+      <div class="tabstrip" id="railList"></div>
+      <button class="tb-btn" id="railAdd" title="New project"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
+    </div>
+    
+    <div class="tb-right">
+      <button class="tb-btn" id="btnResumeAll" hidden title="Resume every stopped agent in this project"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg> Resume all<span class="ra-count" id="btnResumeAllCount"></span></button>
+
+      <div class="stats" data-tauri-drag-region hidden>
+        <span class="stat live"><span class="pip"></span><b id="runCount">0</b> live</span>
+        <span class="stat"><b id="agentCount">0</b> total</span>
+      </div>
+      <span class="clock" id="clock" data-tauri-drag-region hidden>--:--:--</span>
+      
+      <span class="tb-div"></span>
+      <button class="tb-pane" id="btnToggleCode" aria-label="Toggle code panel" title="Show / hide code panel  ·  Ctrl+Shift+E"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg></button>
+    </div>
   </header>
-  <main class="main" id="workspaces"></main>
+
+
+
+  <main class="main" id="workspaces">
+    <button class="tidy-fab" id="btnTidy" title="Tidy — tile panes to fit (Ctrl+Shift+G)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Tidy</button>
+  </main>
+
+  <!-- Code panel (right): lazy file tree + lightweight CodeMirror editor.
+       Built by src/filetree.ts and src/editor.ts. -->
+  <aside class="code-panel" id="codePanel">
+    <div class="code-split" id="codeSplit" title="Drag to resize"></div>
+    <header class="cp-head">
+      <span class="cp-eyebrow">Explorer</span>
+      <div class="cp-tools" id="cpTools">
+        <button class="cp-btn" id="cpNewFile" aria-label="New file" title="New file"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M12 11v6M9 14h6"/></svg></button>
+        <button class="cp-btn" id="cpNewFolder" aria-label="New folder" title="New folder"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h3.6a2 2 0 0 1 1.4.6L11.8 7H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10v6M9 13h6"/></svg></button>
+        <button class="cp-btn" id="cpRefresh" aria-label="Refresh" title="Refresh"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-.6 4M20 5v6h-6"/></svg></button>
+        <button class="cp-btn" id="cpCollapse" aria-label="Collapse all folders" title="Collapse all folders"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h12M8 20h12M4 9l3-3 3 3M4 15l3 3 3-3M12 12h8"/></svg></button>
+        <button class="cp-btn" id="cpHidden" aria-label="Show hidden and build folders" title="Show hidden &amp; build folders (.git, node_modules, target)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+      </div>
+      <button class="cp-btn" id="cpClose" aria-label="Hide code panel" title="Hide code panel (Ctrl+Shift+E)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6l6 6-6 6M5 6l6 6-6 6"/></svg></button>
+    </header>
+    <div class="cp-filterbar">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input class="cp-filter" id="cpFilter" placeholder="Filter files…" spellcheck="false" autocomplete="off" autocapitalize="off">
+    </div>
+    <div class="file-tree" id="fileTree"></div>
+    <div class="editor-host" id="editorHost"></div>
+  </aside>
 
   <!-- Tool dock rail (right edge): Kanban / Pomodoro / Diff. The sliding panel
        is built by src/dock.ts; these buttons toggle it. -->
@@ -133,15 +169,21 @@
     <button class="dr-btn" data-tool="diff" id="drDiff" role="tab" aria-selected="false" title="Changes — git diff (Ctrl+Shift+D)" aria-label="Git changes">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="8" r="3"/><path d="M6 9v6m12-4a6 6 0 0 1-6 6H9"/></svg>
     </button>
+    <button class="dr-btn" data-tool="fleet" id="drFleet" role="tab" aria-selected="false" title="Fleet — all agents (Ctrl+Shift+L)" aria-label="Fleet monitor">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3"/><circle cx="5" cy="17" r="2.5"/><circle cx="19" cy="17" r="2.5"/><path d="M12 10v3M12 13l-6 2M12 13l6 2"/></svg>
+    </button>
   </nav>
 
-  <div class="bcast" id="bcast">
-    <span class="bcast-emitter" id="bcastEmitter" title="Broadcast"><span class="be-core"></span></span>
-    <span class="bcast-caret">&#10095;</span>
-    <input class="bcast-input" id="bcastInput" placeholder="broadcast a command to the whole fleet…" spellcheck="false" autocapitalize="off" autocomplete="off">
-    <div class="bcast-targets" id="bcastTargets"></div>
-    <span class="bcast-count" id="bcastCount">0 agents</span>
-    <button class="bcast-send" id="bcastSend" disabled><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg> Broadcast <kbd>&#9166;</kbd></button>
+  <div class="cmdbar" id="bcast">
+    <button class="cb-ico" id="cbSettings" type="button" title="Settings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+    <div class="cb-field">
+      <span class="cb-gt">&#8250;</span>
+      <span class="bcast-emitter" id="bcastEmitter" title="Broadcast" hidden><span class="be-core"></span></span>
+      <input class="binput" id="bcastInput" placeholder="Message the fleet…  @name to target one" spellcheck="false" autocapitalize="off" autocomplete="off">
+      <button class="bsend" id="bcastSend" type="button" disabled title="Send · Enter"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg></button>
+      <div class="bcast-ac hidden" id="bcastAc" role="listbox" aria-label="Mention agent"></div>
+    </div>
+    <button class="cb-add" id="cbAddAgent" type="button" title="Spawn agent"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Agent<svg class="cb-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
   </div>
 </div>
 
@@ -183,12 +225,12 @@
           <span>Auto-adds the skip-permission flag for: Claude, Codex, Gemini, Qwen, Aider, Copilot</span>
         </span>
       </label>
-      <label class="perm-toggle" for="mIsolate" id="mIsolateRow" hidden>
-        <input type="checkbox" id="mIsolate" checked>
+      <label class="perm-toggle" for="mConductor">
+        <input type="checkbox" id="mConductor">
         <span class="pt-sw"></span>
         <span class="pt-text">
-          <b>Isolate each agent in its own git worktree</b>
-          <span>Each agent works on its own branch off HEAD, so changes are reviewable per agent. Only available when the folder is a git repo.</span>
+          <b>Conductor mode <em>directs the crew</em></b>
+          <span>Makes the first agent a conductor (not an extra one): it plans the board, spawns &amp; assigns workers, and tracks progress instead of coding. Pick 0 workers to run just the conductor and let it build its own crew.</span>
         </span>
       </label>
       <div class="crew-total">Total: <b id="crewTotal">0</b> agents</div>
@@ -296,14 +338,6 @@
             <span>Auto-adds the skip-permission flag for: Claude, Codex, Gemini, Qwen, Aider, Copilot</span>
           </span>
         </label>
-        <label class="perm-toggle" for="wizIsolate" id="wizIsolateRow" hidden>
-          <input type="checkbox" id="wizIsolate" checked>
-          <span class="pt-sw"></span>
-          <span class="pt-text">
-            <b>Isolate each agent in its own git worktree</b>
-            <span>Each agent works on its own branch off HEAD, so changes are reviewable per agent. Only available when the folder is a git repo.</span>
-          </span>
-        </label>
         <div class="crew-total">Total: <b id="wizCrewTotal">0</b> agents</div>
       </section>
     </div>
@@ -343,51 +377,134 @@
 
 <!-- ===================== SETTINGS ===================== -->
 <div class="backdrop" id="settingsModal">
-  <div class="modal" role="dialog" aria-modal="true" aria-label="Settings">
+  <div class="set-shell" role="dialog" aria-modal="true" aria-label="Settings">
+    <header class="set-head">
+      <span class="set-title">Settings</span>
+      <button class="set-x" id="setClose" type="button" aria-label="Close" title="Close · Esc"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </header>
+    <div class="set-body">
+      <nav class="set-nav" aria-label="Settings sections">
+        <button class="sn on" type="button" data-sec="appearance">Appearance</button>
+        <button class="sn" type="button" data-sec="fleet">Fleet &amp; Remote</button>
+        <button class="sn" type="button" data-sec="sessions">Schedule &amp; Sessions</button>
+        <button class="sn" type="button" data-sec="system">System</button>
+      </nav>
+      <div class="set-content" id="setContent">
+        <section class="sec" data-sec="appearance">
+          <h3>Appearance</h3>
+          <div class="srow col">
+            <div class="sr-txt"><b>Canvas background</b><span>Pick a backdrop for this workspace — a preset, a colour, or an image from disk.</span></div>
+            <div class="bg-grid" id="bgGrid">
+              <button class="bg-opt" type="button" data-bg="glow" title="Default" style="background:radial-gradient(120% 90% at 82% 0,rgba(198,241,53,.55),transparent 60%),radial-gradient(120% 90% at 0 100%,rgba(56,189,248,.45),transparent 60%),#0b0f14"></button>
+              <button class="bg-opt" type="button" data-bg="dark" title="Solid dark" style="background:#090a0c"></button>
+              <button class="bg-opt" type="button" data-bg="grid" title="Grid" style="background:linear-gradient(#2a2f38 1px,transparent 1px),linear-gradient(90deg,#2a2f38 1px,transparent 1px),#0b0f14;background-size:8px 8px"></button>
+              <button class="bg-opt" type="button" data-bg="violet" title="Violet" style="background:radial-gradient(130% 90% at 82% 0,rgba(139,92,246,.6),transparent 60%),#0a0910"></button>
+              <button class="bg-opt" type="button" data-bg="ocean" title="Ocean" style="background:radial-gradient(130% 90% at 82% 0,rgba(56,189,248,.6),transparent 60%),#070d12"></button>
+              <label class="bg-opt bg-cust" title="Custom colour"><input type="color" id="bgColor" value="#0b0f14"><span>+</span></label>
+              <label class="bg-opt bg-img" title="Image from disk"><input type="file" id="bgImg" accept="image/*"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 18 5-4 4 3 3-2 4 3"/></svg></label>
+            </div>
+          </div>
+          <div class="srow">
+            <div class="sr-txt"><b>Terminal font size</b><span>Applies live to every running pane.</span></div>
+            <div class="stepper" id="setFontStepper"><button type="button" data-dec aria-label="Smaller">−</button><span class="n" id="setFontN">15</span><button type="button" data-inc aria-label="Larger">+</button></div>
+          </div>
+          <div class="srow">
+            <div class="sr-txt"><b>Mascot</b><span>The Home character — pacing or standing still.</span></div>
+            <div class="seg" id="setMascotMode" role="group" aria-label="Mascot mode"><button type="button" data-mode="move">Walk</button><button type="button" data-mode="still">Stand still</button></div>
+          </div>
+        </section>
+        <section class="sec" data-sec="fleet">
+          <h3>Fleet &amp; Remote</h3>
+          <label class="toggle"><input type="checkbox" id="setDashOn"><span class="tg"></span><span class="sr-txt"><b>Remote fleet dashboard</b><span id="setDashUrl">View &amp; drive the fleet from your phone's browser.</span></span></label>
+          <label class="toggle"><input type="checkbox" id="setDashLan"><span class="tg"></span><span class="sr-txt"><b>Allow other devices (LAN)</b><span>Reachable from devices on the same Wi-Fi. Only enable on a network you trust.</span></span></label>
+        </section>
+        <section class="sec" data-sec="sessions">
+          <h3>Schedule &amp; Sessions</h3>
+          <div class="srow"><div class="sr-txt"><b>Scheduled agents</b><span>Auto-launch a saved crew preset at a set time.</span></div><button class="sbtn" type="button" id="setOpenSched">Manage</button></div>
+          <div class="srow"><div class="sr-txt"><b>Session replays</b><span>Watch back recorded agent sessions (● on any pane).</span></div><button class="sbtn" type="button" id="setOpenReplays">Open</button></div>
+          <div class="srow"><div class="sr-txt"><b>Token usage &amp; cost</b><span>Total Claude tokens for this workspace, with an estimated cost.</span></div><button class="sbtn" type="button" id="setOpenUsage">View</button></div>
+        </section>
+        <section class="sec" data-sec="system">
+          <h3>System</h3>
+          <label class="toggle"><input type="checkbox" id="setHideTray"><span class="tg"></span><span class="sr-txt"><b>Hide to tray</b><span>Minimizing tucks Maestro into the system tray; agents keep running.</span></span></label>
+          <div class="srow"><div class="sr-txt"><b>Updates</b><span id="setVersion">Maestro</span></div><button class="sbtn" type="button" id="setCheckUpdate">Check for updates</button></div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="backdrop" id="schedModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Scheduled agents">
     <div class="modal-head">
-      <span class="t">Settings</span>
-      <button class="x" id="setClose" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      <span class="t">Scheduled agents</span>
+      <button class="x" id="schedClose" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
     <div class="modal-body">
-      <label class="perm-toggle" for="setHideTray">
-        <input type="checkbox" id="setHideTray">
-        <span class="pt-sw"></span>
-        <span class="pt-text">
-          <b>Hide to tray</b>
-          <span>Minimizing tucks Maestro into the system tray (agents keep running) instead of dropping to the taskbar. The close button still quits.</span>
-        </span>
-      </label>
-      <div class="set-row">
-        <span class="pt-text">
-          <b>Mascot</b>
-          <span>How the Home character behaves. Drag the character to place it anywhere.</span>
-        </span>
-        <div class="set-seg" id="setMascotMode" role="group" aria-label="Mascot mode">
-          <button type="button" data-mode="move">Walk around</button>
-          <button type="button" data-mode="still">Stand still</button>
-        </div>
+      <div class="sched-add">
+        <select class="input" id="schedTpl" aria-label="Preset"></select>
+        <input class="input" id="schedTime" type="time" value="09:00" aria-label="Time">
+        <select class="input" id="schedRepeat" aria-label="Repeat">
+          <option value="daily">Daily</option>
+          <option value="once">Once</option>
+        </select>
+        <button class="btn" id="schedAdd">Add</button>
       </div>
-      <div class="set-row">
-        <span class="pt-text">
-          <b>Terminal font size</b>
-          <span>Text size in every terminal pane. Applies live to running agents.</span>
-        </span>
-        <div class="stepper" id="setFontStepper">
-          <button type="button" data-dec aria-label="Smaller">−</button>
-          <span class="n" id="setFontN">15</span>
-          <button type="button" data-inc aria-label="Larger">+</button>
+      <p class="sched-empty" id="schedEmpty" hidden>Save a crew preset in the workspace wizard first, then schedule it here.</p>
+      <div class="sched-list" id="schedList"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" id="schedCloseBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="backdrop" id="usageModal">
+  <div class="modal usage" role="dialog" aria-modal="true" aria-label="Token usage">
+    <div class="modal-head">
+      <span class="t">Token usage &amp; cost</span>
+      <span class="replay-crumb" id="usageCrumb"></span>
+      <button class="x" id="usageClose" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div class="usage-wrap" id="usageWrap"></div>
+      <p class="replay-empty" id="usageEmpty" hidden>No Claude usage found for this workspace yet. Costs come from Claude Code's own session logs, so they appear once a Claude agent has run here.</p>
+      <p class="usage-note">Estimated from Claude Code's session transcripts. Claude agents only; other CLIs aren't counted. Prices are approximate — treat the total as a guide, not a bill.</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" id="usageCloseBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="backdrop" id="replayModal">
+  <div class="modal replay" role="dialog" aria-modal="true" aria-label="Session replays">
+    <div class="modal-head">
+      <span class="t">Session replays</span>
+      <span class="replay-crumb" id="replayCrumb"></span>
+      <button class="x" id="replayClose" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="modal-body replay-body">
+      <div class="replay-list" id="replayList"></div>
+      <p class="replay-empty" id="replayEmpty" hidden>No recordings yet. Hit the ● button on any running pane to record a session, then it shows up here.</p>
+      <div class="replay-player" id="replayPlayer" hidden>
+        <div class="replay-term" id="replayTerm"></div>
+        <div class="replay-ctrls">
+          <button class="rpl-play" id="replayPlay" aria-label="Play / pause"></button>
+          <input class="rpl-seek" id="replaySeek" type="range" min="0" max="1000" value="0" aria-label="Timeline">
+          <span class="rpl-time" id="replayTime">0:00 / 0:00</span>
+          <select class="rpl-speed input" id="replaySpeed" aria-label="Speed">
+            <option value="1">1×</option>
+            <option value="2">2×</option>
+            <option value="4">4×</option>
+            <option value="8">8×</option>
+          </select>
         </div>
-      </div>
-      <div class="set-update">
-        <span class="pt-text">
-          <b>Updates</b>
-          <span id="setVersion">Maestro</span>
-        </span>
-        <button class="btn-ghost" id="setCheckUpdate">Check for updates</button>
       </div>
     </div>
     <div class="modal-foot">
-      <button class="btn-ghost" id="setCloseBtn">Close</button>
+      <button class="btn-ghost" id="replayBack" hidden>← Back to list</button>
+      <button class="btn-ghost" id="replayCloseBtn">Close</button>
     </div>
   </div>
 </div>
@@ -407,6 +524,7 @@
     </div>
     <span class="upd-ver" id="updVer">Maestro</span>
     <div class="upd-bar" id="updBar" hidden><span id="updBarFill"></span></div>
+    <div class="upd-size" id="updSize" hidden></div>
     <div class="upd-actions" id="updActions">
       <button class="upd-later" id="updLater">Later</button>
       <button class="upd-go" id="updGo">Update <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>

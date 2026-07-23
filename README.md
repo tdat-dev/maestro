@@ -59,6 +59,24 @@ tiled live terminals, one broadcast bar, one diff review.
   restore, system tray, signed auto-updates… and a mascot who lives on the
   home screen.
 
+## MCP server (agent ⇄ board)
+
+Maestro ships a kanban board per workspace (`.maestro/board.json`). The
+[`maestro-mcp`](mcp/README.md) package exposes that board to any MCP-capable
+agent (Claude Code, etc.) as tools — read the board, add/move/update/delete
+cards — so an agent can manage its own task list from inside the terminal
+you spawned it in. Dispatch works the other way too: send a card to a
+specific agent from the board (it records the assignee and reports back when
+the agent marks it done).
+
+```
+claude mcp add --scope user maestro -- npx -y maestro-mcp
+```
+
+On native Windows, wrap with `cmd /c` (see [mcp/README.md](mcp/README.md) for
+why). See that README for the full tool reference, the local-checkout install
+command, and a worktree-isolation caveat.
+
 ## Install
 
 Grab `maestro_<version>_x64-setup.exe` from the

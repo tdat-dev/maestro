@@ -8,8 +8,6 @@
 .wc.close::before{background:#e3402f}
 .wc.close:hover{color:#fff}
 .wc svg{position:relative;width:10px;height:10px;display:block;transition:transform .15s cubic-bezier(.2,.7,.2,1)}
-/* The gear carries more detail than the min/max/close glyphs — render it larger so it reads. */
-#btnSettings svg{width:16px;height:16px}
 .wc:hover svg{transform:scale(1.14)}
 .wc:active svg{transform:scale(.88)}
 .drag-strip{position:fixed;top:0;left:0;right:0;height:38px;z-index:250}

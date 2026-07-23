@@ -54,6 +54,33 @@
 .dp-title{font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.01em;color:var(--text)}
 .dp-actions{margin-left:auto;display:flex;align-items:center;gap:4px}
 .dp-actgrp{display:flex;align-items:center;gap:4px}
+/* Kanban plan-gate toolbar buttons (Plan with AI / Import / Send approved) */
+.kb-tool{height:24px;padding:0 9px;border-radius:6px;border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text-2);font-size:11px;font-weight:600;white-space:nowrap;transition:border-color .14s,color .14s,background .14s}
+.kb-tool:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--accent-glow)}
+.kb-tool:first-child{border-color:var(--accent-dim);color:var(--accent)}
+/* Icon-only utility button (Capture web): square, recessed, no label */
+.kb-tool-icon{width:24px;padding:0;display:grid;place-items:center;color:var(--muted);
+  border-color:var(--line-strong);background:transparent}
+.kb-tool-icon:hover{color:var(--accent);border-color:var(--accent-dim);background:var(--accent-glow)}
+/* Conductor toggle: lit when semi, filled + pulsing when auto */
+.kb-tool.on{border-color:var(--accent);color:var(--accent-ink);background:var(--accent)}
+.kb-tool.on:hover{color:var(--accent-ink);background:var(--accent)}
+.kb-tool.on.auto{animation:kb-cond-pulse 1.8s ease-in-out infinite}
+@keyframes kb-cond-pulse{0%,100%{box-shadow:0 0 0 0 rgba(198,241,53,.0)}50%{box-shadow:0 0 0 3px rgba(198,241,53,.28)}}
+@media (prefers-reduced-motion:reduce){.kb-tool.on.auto{animation:none}}
+/* Done evidence footer on a card: changed files + a diff link */
+.kb-done{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:7px;padding-top:7px;border-top:1px solid var(--line)}
+.kb-done-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--run)}
+.kb-file{font-family:var(--mono);font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 6px;border-radius:4px;background:var(--surface-3);color:var(--text-2);border:1px solid transparent;transition:border-color .12s,color .12s}
+.kb-file:hover{border-color:var(--accent-dim);color:var(--accent)}
+.kb-file.kb-diff{color:var(--info);background:rgba(94,194,240,.12)}
+.kb-file.kb-diff:hover{border-color:var(--info);color:var(--info)}
+/* "Capture web" URL bar (top of the board) */
+.kb-urlbar{display:flex;align-items:center;gap:6px;padding:8px;margin-bottom:6px;background:var(--surface-1);border:1px solid var(--line-strong);border-radius:var(--r3)}
+.kb-url{flex:1;min-width:0;background:var(--surface-0);border:1px solid var(--line-strong);border-radius:var(--r1);color:var(--text);font-family:var(--mono);font-size:12px;padding:6px 9px;outline:none}
+.kb-url:focus{border-color:var(--accent-dim);box-shadow:0 0 0 2px var(--accent-glow)}
+.kb-url-x{width:28px;height:28px;border-radius:var(--r1);display:grid;place-items:center;color:var(--muted-2);font-size:13px}
+.kb-url-x:hover{background:var(--surface-3);color:var(--err)}
 .dock-act,.dp-close{
   width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--muted);
   transition:background .14s,color .14s;flex:none;
@@ -96,6 +123,17 @@
 .kb-card:active{transform:translateY(1px)}
 /* the live-moving card: faded + click-through so elementFromPoint finds the list beneath */
 .kb-card.dragging{opacity:.4;pointer-events:none;box-shadow:0 0 0 1.5px var(--accent-dim)}
+/* pill that trails the cursor while a card is aimed at an agent pane */
+.kb-pill{
+  position:fixed;left:0;top:0;z-index:80;pointer-events:none;max-width:240px;
+  padding:5px 11px;border-radius:999px;background:var(--accent);color:var(--accent-ink);
+  font-size:11.5px;font-weight:700;letter-spacing:.01em;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;box-shadow:0 8px 22px -6px rgba(0,0,0,.7);
+  opacity:0;transform:translate(14px,14px) scale(.92);
+  transition:opacity .12s ease-out,transform .16s cubic-bezier(.2,.7,.2,1);
+}
+.kb-pill.on{opacity:1;transform:translate(14px,14px) scale(1)}
+@media (prefers-reduced-motion:reduce){.kb-pill{transition:none}}
 .kb-labels{display:flex;flex-wrap:wrap;gap:4px}
 .kb-label{width:34px;height:7px;border-radius:4px}
 .kb-card-title{font-size:12.5px;line-height:1.4;color:var(--text);word-break:break-word;white-space:pre-wrap}
@@ -259,3 +297,22 @@
 .dv-empty p{font-size:12.5px;max-width:34ch;line-height:1.5}
 .dv-empty-ic{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;color:var(--muted);border:1px solid var(--line-strong)}
 .dv-empty.clean .dv-empty-ic{color:var(--run);border-color:rgba(58,210,159,.4)}
+
+/* ---- kanban: agent assignment (chip, picker, done-toast) ---- */
+.kb-assignee{display:inline-flex;align-items:center;gap:4px;margin-top:6px;padding:2px 8px;
+  border:1px solid var(--accent-glow);border-radius:999px;background:var(--accent-glow);
+  color:var(--accent);font-size:11px;max-width:100%;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.kb-assignee:hover{background:rgba(198,241,53,.2)}
+.kb-assignee.big{font-size:12px;padding:4px 10px;margin-top:0}
+.kb-agent-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.kb-agent-pick{background:var(--surface-1);color:var(--text);border:1px solid var(--line-strong);
+  border-radius:var(--r1);padding:5px 8px;font-size:12px;font-family:inherit}
+.kb-agent-none{color:var(--muted-2);font-size:12px}
+.kb-toast{position:fixed;right:18px;bottom:18px;z-index:9999;max-width:340px;
+  padding:10px 14px;border-radius:var(--r3);background:var(--surface-1);
+  border:1px solid var(--line-strong);color:var(--text);font-size:12.5px;
+  box-shadow:0 8px 24px rgba(0,0,0,.45);opacity:0;transform:translateY(8px);
+  transition:opacity .25s,transform .25s;pointer-events:none}
+.kb-toast.on{opacity:1;transform:translateY(0)}
+@media (prefers-reduced-motion:reduce){.kb-toast{transition:none}}

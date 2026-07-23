@@ -20,6 +20,33 @@ export interface TerminalHandle {
   setFontSize(n: number): void;
   /** Subscribe to result-count changes (current index is 1-based, 0 = none). */
   onSearchResults(cb: (current: number, total: number) => void): void;
+  /** Subscribe to terminal title changes (OSC 0/1/2). */
+  onTitleChange(cb: (title: string) => void): void;
+  /** Plain-text snapshot of the last `lines` rendered rows (what's on screen,
+   *  de-duplicated by the emulator — not the raw byte stream). For the remote
+   *  dashboard's read-only view. */
+  snapshot(lines?: number): string;
+}
+
+/**
+ * Decode an OSC 52 payload (`<targets>;<base64 text>`) to the text a program
+ * wants placed on the clipboard. Returns null for anything that must NOT
+ * write: the query form (`?` asks the terminal to REPLY with clipboard
+ * contents — answering would let any program in the pane read the user's
+ * clipboard), a missing/empty payload, or malformed base64.
+ */
+export function decodeOsc52(data: string): string | null {
+  const semi = data.indexOf(";");
+  if (semi === -1) return null;
+  const payload = data.slice(semi + 1);
+  if (!payload || payload === "?") return null;
+  try {
+    const bytes = Uint8Array.from(atob(payload), (c) => c.charCodeAt(0));
+    const text = new TextDecoder().decode(bytes);
+    return text || null;
+  } catch {
+    return null; // malformed base64
+  }
 }
 
 // WebGL renderer is DISABLED (budget 0 → every pane uses the DOM renderer).
@@ -58,10 +85,39 @@ export function mountTerminal(
   const term = new Terminal({
     convertEol: false, // ConPTY already emits \r\n
     cursorBlink: true,
-    fontFamily: "Consolas, 'Cascadia Mono', monospace",
-    fontSize: opts.fontSize ?? 15,
-    lineHeight: 1.15,
+    // Monospace only — a proportional font here breaks xterm's cell grid, and
+    // wide lineHeight/letterSpacing bloat every cell (fewer cols/rows per pane).
+    fontFamily: "'Geist Mono', 'Cascadia Mono', 'Cascadia Code', Consolas, monospace",
+    fontSize: opts.fontSize ?? 13,
+    lineHeight: 1.2,
+    letterSpacing: 0,
     scrollback: 5000, // generous history so search/scroll can reach older output
+    theme: {
+      // Not 'transparent': the WebGL renderer can't blend it and falls back to
+      // dead #000, splitting panes into black boxes. A near-black with the
+      // pane's own tint keeps every renderer consistent with the glass frame.
+      background: '#0b0d12',
+      foreground: '#e2e8f0', // slate-200
+      cursor: '#c6f135',     // maestro accent
+      cursorAccent: '#0a0c10',
+      selectionBackground: 'rgba(198, 241, 53, 0.3)',
+      black: '#1e293b',
+      red: '#ef4444',
+      green: '#22c55e',
+      yellow: '#eab308',
+      blue: '#3b82f6',
+      magenta: '#d946ef',
+      cyan: '#06b6d4',
+      white: '#f8fafc',
+      brightBlack: '#475569',
+      brightRed: '#f87171',
+      brightGreen: '#4ade80',
+      brightYellow: '#fde047',
+      brightBlue: '#60a5fa',
+      brightMagenta: '#e879f9',
+      brightCyan: '#22d3ee',
+      brightWhite: '#ffffff'
+    }
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
@@ -156,6 +212,30 @@ export function mountTerminal(
     if (sel) void navigator.clipboard.writeText(sel).catch(() => {});
   });
 
+  // OSC 52: programs in the pane set the clipboard themselves. Claude Code's
+  // TUI enables mouse tracking, so drag-select never reaches xterm's own
+  // selection (copy-on-select above can't fire) — instead Claude Code renders
+  // the highlight itself and emits `ESC ] 52 ; c ; <base64> BEL` to copy.
+  // xterm has no built-in OSC 52 handler, so without this the sequence is
+  // silently dropped and copying inside Claude Code does nothing.
+  term.parser.registerOscHandler(52, (data) => {
+    const text = decodeOsc52(data);
+    if (text) void navigator.clipboard.writeText(text).catch(() => {});
+    return true; // consume even when not writing (e.g. the `?` query form)
+  });
+
+  // Right-click = copy the selection too. Copy-on-select can silently lose
+  // the clipboard write on Windows (another process holding the clipboard
+  // lock makes writeText reject), so a right-click retries the copy —
+  // deliberate and dependable, like Windows Terminal. With no selection the
+  // default context menu behaviour is left untouched.
+  container.addEventListener("contextmenu", (e) => {
+    const sel = term.getSelection();
+    if (!sel) return;
+    e.preventDefault();
+    void navigator.clipboard.writeText(sel).catch(() => {});
+  });
+
   const ro = new ResizeObserver(() => {
     fit.fit();
     onResize(term.cols, term.rows);
@@ -196,5 +276,22 @@ export function mountTerminal(
         if (!r || r.resultCount === 0) cb(0, 0);
         else cb(r.resultIndex + 1, r.resultCount);
       }),
+    onTitleChange: (cb) => term.onTitleChange(cb),
+    snapshot: (lines = 40) => {
+      try {
+        const buf = term.buffer.active;
+        const end = buf.length; // includes scrollback
+        const start = Math.max(0, end - lines);
+        const rows: string[] = [];
+        for (let i = start; i < end; i += 1) {
+          rows.push(buf.getLine(i)?.translateToString(true) ?? "");
+        }
+        // Drop trailing blank rows so idle prompts don't pad the view.
+        while (rows.length && rows[rows.length - 1].trim() === "") rows.pop();
+        return rows.join("\n");
+      } catch {
+        return ""; // terminal disposed (e.g. after a tab detach)
+      }
+    },
   };
 }

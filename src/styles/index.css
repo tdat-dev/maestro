@@ -3,9 +3,15 @@
 @import "./titlebar.css";
 @import "./home.css";
 @import "./workspace.css";
+@import "./canvas.css";
+@import "./panels.css";
+
+@import "./filetree.css";
+@import "./editor.css";
 @import "./broadcast.css";
 @import "./modal.css";
 @import "./wizard.css";
 @import "./splash.css";
 @import "./dock.css";
+@import "./fleet.css";
 @import "./updater.css";

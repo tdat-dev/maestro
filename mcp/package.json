@@ -1,0 +1,30 @@
+{
+  "name": "maestro-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for the Maestro kanban board (.maestro/board.json)",
+  "license": "MIT",
+  "author": "tdat-dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tdat-dev/maestro.git",
+    "directory": "mcp"
+  },
+  "type": "module",
+  "bin": { "maestro-mcp": "dist/index.js" },
+  "files": ["dist"],
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "zod": "^3.25.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
+  }
+}

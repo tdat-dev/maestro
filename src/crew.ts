@@ -6,6 +6,9 @@ export interface CliPreset {
   args: string[];
   badge: string;
   shell?: boolean;
+  /** A conductor runs the same CLI but with the orchestration system prompt —
+   *  it directs the fleet (spawns workers, hands out cards) instead of coding. */
+  role?: "conductor";
   /** Flag(s) that make this CLI skip its permission/approval prompts (full
    *  access). Omitted for CLIs that only configure this via a file/env. */
   skipPermsArgs?: string[];
@@ -98,4 +101,17 @@ export async function runLimited<T>(
   const workers = Math.max(1, Math.min(limit, tasks.length));
   await Promise.all(Array.from({ length: workers }, () => worker()));
   return results;
+}
+
+// Short, neutral persona names given to panes on spawn; renameable in the UI.
+export const PERSONA_NAMES = [
+  "Ana", "Bob", "Cid", "Dot", "Eve", "Fin", "Gio", "Hux", "Ivy", "Jax",
+  "Kim", "Lux", "Mei", "Nix", "Oz", "Pia", "Rue", "Sol", "Tao", "Uma",
+] as const;
+
+/** Next persona not already used in this workspace; else "<cli> N". */
+export function nameForNewPane(cli: string, taken: string[]): string {
+  const used = new Set(taken);
+  for (const n of PERSONA_NAMES) if (!used.has(n)) return n;
+  return `${cli} ${taken.length + 1}`;
 }

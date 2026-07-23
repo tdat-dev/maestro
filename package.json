@@ -1,7 +1,7 @@
 {
   "name": "maestro",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.5.1",
   "description": "Spawn & orchestrate fleets of AI agent CLIs — real terminals, real tree-kill.",
   "license": "MIT",
   "author": "tdat-dev",
@@ -15,9 +15,21 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev -c src-tauri/tauri.dev.conf.json"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.4",
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-html": "^6.4.11",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/lang-rust": "^6.0.2",
+    "@codemirror/lang-yaml": "^6.1.3",
+    "@codemirror/state": "^6.7.0",
+    "@codemirror/view": "^6.43.3",
     "@tauri-apps/api": "2.11.0",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-notification": "^2.3.3",
@@ -28,7 +40,10 @@
     "@xterm/addon-search": "^0.16.0",
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/addon-webgl": "0.19.0",
-    "@xterm/xterm": "6.0.0"
+    "@xterm/xterm": "6.0.0",
+    "codemirror": "^6.0.2",
+    "dompurify": "^3.4.11",
+    "marked": "^18.0.5"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.2",

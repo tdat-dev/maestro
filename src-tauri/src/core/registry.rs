@@ -54,6 +54,31 @@ impl Registry {
         Ok(())
     }
 
+    /// Subscribe to an agent's live output (remote web terminal). Scrollback is
+    /// replayed into the returned channel first.
+    pub fn tap(&self, id: &str) -> Result<std::sync::mpsc::Receiver<Vec<u8>>> {
+        Ok(self
+            .agents
+            .get(id)
+            .ok_or_else(|| anyhow!("no agent '{id}'"))?
+            .tap())
+    }
+
+    /// Start recording an agent's output to `path` (see `Agent::record_start`).
+    pub fn record_start(&self, id: &str, path: &str) -> Result<()> {
+        self.agents
+            .get(id)
+            .ok_or_else(|| anyhow!("no agent '{id}'"))?
+            .record_start(path)
+    }
+
+    /// Stop recording an agent's output. No-op if the agent is gone.
+    pub fn record_stop(&self, id: &str) {
+        if let Some(a) = self.agents.get(id) {
+            a.record_stop();
+        }
+    }
+
     pub fn write_input(&mut self, id: &str, bytes: &[u8]) -> Result<()> {
         self.agents
             .get_mut(id)

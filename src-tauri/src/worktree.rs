@@ -1,9 +1,17 @@
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
-use crate::error::CommandError;
+use crate::error::{run_blocking, CommandError};
 use std::process::Command;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
+
+/// Serializes `git worktree add` runs. Creating a worktree is a FULL checkout
+/// of the repo; several at once (a crew of isolated agents booting together)
+/// thrash the disk and can race on the shared `.git` lock files, so concurrent
+/// creations queue here instead. The queue runs off the main thread, so the UI
+/// stays live while agents wait their turn.
+static ADD_LOCK: Mutex<()> = Mutex::new(());
 
 /// CREATE_NO_WINDOW — the release build is a windowed subsystem app with no
 /// console, so a child `git` spawned without this flag pops up a flashing
@@ -73,6 +81,31 @@ pub fn worktree_path_for(repo_root: &str, branch: &str) -> PathBuf {
     p
 }
 
+/// Drop a `.cargo/config.toml` in the worktree-parent folder so all worktrees of
+/// this repo share the main repo's `src-tauri/target` instead of each building its
+/// own. Cargo finds it by searching parent dirs up from `<worktree>/src-tauri`.
+/// No-op for non-Rust repos and best-effort (never blocks worktree creation).
+fn write_shared_cargo_target(worktree_parent: &Path, repo_root: &str) {
+    let src_tauri = Path::new(repo_root).join("src-tauri");
+    if !src_tauri.join("Cargo.toml").exists() {
+        return; // not a Tauri/Rust repo — nothing to share
+    }
+    let cargo_dir = worktree_parent.join(".cargo");
+    let cfg = cargo_dir.join("config.toml");
+    if cfg.exists() {
+        return; // already configured — don't clobber
+    }
+    // Cargo accepts forward slashes on Windows; avoids TOML backslash escaping.
+    let target_dir = format!("{}/src-tauri/target", repo_root.replace('\\', "/"));
+    let body = format!(
+        "# Auto-added by Maestro: share the main repo's Cargo target across all\n\
+         # worktrees so each worktree build does not duplicate src-tauri/target.\n\
+         [build]\ntarget-dir = \"{target_dir}\"\n"
+    );
+    let _ = std::fs::create_dir_all(&cargo_dir);
+    let _ = std::fs::write(&cfg, body);
+}
+
 fn git(args: &[&str], cwd: &str) -> Result<String, CommandError> {
     let mut cmd = Command::new("git");
     cmd.args(args).current_dir(cwd);
@@ -89,10 +122,22 @@ fn git(args: &[&str], cwd: &str) -> Result<String, CommandError> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+// The commands are async wrappers over sync `*_impl` bodies: git spawns block,
+// and sync Tauri commands run on the main thread — three isolated agents
+// booting used to freeze the whole window for the length of 3 full checkouts.
+// Tests exercise the `*_impl` functions directly.
+
 /// Return the repo root if `dir` is inside a single git repo, else `None`
 /// (a non-git folder, or a parent that merely *contains* repos).
 #[tauri::command]
-pub fn git_repo_root(dir: String) -> Option<String> {
+pub async fn git_repo_root(dir: String) -> Option<String> {
+    run_blocking(move || Ok(git_repo_root_impl(dir)))
+        .await
+        .ok()
+        .flatten()
+}
+
+fn git_repo_root_impl(dir: String) -> Option<String> {
     git(&["rev-parse", "--show-toplevel"], &dir)
         .ok()
         .map(|p| p.replace('/', "\\"))
@@ -100,15 +145,25 @@ pub fn git_repo_root(dir: String) -> Option<String> {
 
 /// Create a worktree on a new branch off HEAD. Returns the worktree path.
 #[tauri::command]
-pub fn worktree_add(repo_root: String, branch: String) -> Result<String, CommandError> {
+pub async fn worktree_add(repo_root: String, branch: String) -> Result<String, CommandError> {
+    run_blocking(move || worktree_add_impl(repo_root, branch)).await
+}
+
+fn worktree_add_impl(repo_root: String, branch: String) -> Result<String, CommandError> {
     if !valid_branch(&branch) {
         return Err(CommandError::Failed(format!("invalid branch name: {branch}")));
     }
+    // One full checkout at a time — see ADD_LOCK.
+    let _serial = ADD_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let path = worktree_path_for(&repo_root, &branch);
     let path_str = path.to_string_lossy().to_string();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| CommandError::Failed(format!("mkdir worktree root: {e}")))?;
+        // Make every worktree of this repo share the main repo's Cargo target dir.
+        // Without this, each worktree that runs `cargo build` grows its own
+        // src-tauri/target (~10 GB for a Tauri app), silently filling the disk.
+        write_shared_cargo_target(parent, &repo_root);
     }
     git(
         &["worktree", "add", "-b", &branch, &path_str, "HEAD"],
@@ -119,7 +174,15 @@ pub fn worktree_add(repo_root: String, branch: String) -> Result<String, Command
 
 /// Remove a worktree (and optionally delete its branch).
 #[tauri::command]
-pub fn worktree_remove(
+pub async fn worktree_remove(
+    repo_root: String,
+    path: String,
+    branch: Option<String>,
+) -> Result<(), CommandError> {
+    run_blocking(move || worktree_remove_impl(repo_root, path, branch)).await
+}
+
+fn worktree_remove_impl(
     repo_root: String,
     path: String,
     branch: Option<String>,
@@ -154,7 +217,7 @@ mod tests {
 
     #[test]
     fn worktree_add_rejects_bad_branch() {
-        let result = worktree_add("D:\\whatever".into(), "../evil".into());
+        let result = worktree_add_impl("D:\\whatever".into(), "../evil".into());
         assert!(result.is_err(), "expected Err for bad branch name, got Ok");
     }
 
@@ -174,12 +237,12 @@ mod tests {
         let repo = tmp.path().join("proj");
         std::fs::create_dir(&repo).unwrap();
         init_repo(&repo);
-        let got = git_repo_root(repo.to_string_lossy().to_string());
+        let got = git_repo_root_impl(repo.to_string_lossy().to_string());
         assert!(got.is_some());
 
         let plain = tmp.path().join("plain");
         std::fs::create_dir(&plain).unwrap();
-        assert!(git_repo_root(plain.to_string_lossy().to_string()).is_none());
+        assert!(git_repo_root_impl(plain.to_string_lossy().to_string()).is_none());
     }
 
     #[test]
@@ -192,12 +255,13 @@ mod tests {
 
         // Note: worktree_path_for puts the tree on the repo's drive; for the test we
         // verify the branch+worktree are created and listed, then removed.
-        let wt = worktree_add(root.clone(), "maestro/test-1".into()).expect("add");
+        let wt = worktree_add_impl(root.clone(), "maestro/test-1".into()).expect("add");
         assert!(std::path::Path::new(&wt).join("a.txt").exists());
         let list = git(&["worktree", "list"], &root).unwrap();
         assert!(list.contains("maestro/test-1") || list.contains(&wt));
 
-        worktree_remove(root.clone(), wt.clone(), Some("maestro/test-1".into())).expect("remove");
+        worktree_remove_impl(root.clone(), wt.clone(), Some("maestro/test-1".into()))
+            .expect("remove");
         assert!(!std::path::Path::new(&wt).exists());
     }
 }

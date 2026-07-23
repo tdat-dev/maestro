@@ -1,0 +1,357 @@
+/* Canvas: absolute-positioned panes over the ambient glow; a slim draggable
+   title bar per pane; focus pushes the rest into a right-edge avatar rail.
+   Everything pane-related is scoped to `.grid.canvas` so it stays dormant
+   until main.ts opts a workspace grid into canvas mode. */
+.grid.canvas {
+  position: relative;
+  display: block;
+  gap: 0;
+  background: transparent;
+}
+/* Optional 34px grid overlay, toggled by the "glow"/"grid" background presets
+   (background.ts). Masked to fade at the edges; sits behind the panes. */
+.grid.canvas.sg-grid::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 34px 34px;
+  -webkit-mask: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent);
+  mask: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent);
+}
+.grid.canvas .pane {
+  position: absolute;
+  z-index: 2;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(12, 14, 19, 0.62);
+  border: 1px solid var(--line-2);
+  box-shadow: 0 22px 50px -22px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: box-shadow 0.18s, border-color 0.18s, transform 0.12s;
+  animation: none;
+}
+.grid.canvas .pane:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 30px 62px -22px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+/* canvas mode has its own free-drag lift — override the generic dim+dashed
+   drag styling from workspace.css (tiling grid reorder), which reads wrong here. */
+.grid.canvas .pane.dragging {
+  transform: scale(1.015);
+  box-shadow: 0 42px 74px -20px rgba(0, 0, 0, 0.95);
+  z-index: 9;
+  opacity: 1;
+  outline: none;
+}
+.grid.canvas .pane.stopped {
+  opacity: 0.62;
+}
+.grid.canvas .pane.run::before {
+  opacity: 0.6;
+}
+
+/* slim draggable title bar (grab anywhere on the bar) */
+.grid.canvas .pane-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  flex: none;
+  padding: 0 7px 0 11px;
+  background: rgba(255, 255, 255, 0.025);
+  border-bottom: 1px solid var(--line);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.grid.canvas .pane-bar:active,
+.grid.canvas .pane.dragging .pane-bar {
+  cursor: grabbing;
+}
+.grid.canvas .pb-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--idle);
+}
+.grid.canvas .pane.run .pb-dot {
+  background: var(--run);
+  box-shadow: 0 0 7px var(--run);
+  animation: breathe 2.4s ease-in-out infinite;
+}
+.grid.canvas .pb-dot.work {
+  background: #f4b740;
+  box-shadow: 0 0 7px #f4b740;
+}
+.grid.canvas .pb-dot.done {
+  background: var(--teal);
+}
+@keyframes breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* dots don't breathe */
+  .grid.canvas .pane.run .pb-dot,
+  .cloud-rail .rc .av .s.running {
+    animation: none;
+  }
+}
+/* per-agent avatar — hidden while tiled; becomes the mockup's stage-head avatar
+   (and the status dot hides) when the pane is the focused stage. */
+.grid.canvas .pb-av {
+  display: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  flex: none;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: #0a0d07;
+}
+.grid.canvas.has-focus .pane.focused .pb-av {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+.grid.canvas.has-focus .pane.focused .pb-dot { display: none; }
+.grid.canvas .pb-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 170px;
+}
+.grid.canvas .pb-name[contenteditable] {
+  outline: none;
+  border-bottom: 1px dashed var(--accent-dim);
+  cursor: text;
+}
+.grid.canvas .pb-cli {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  padding: 2px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  flex: none;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* "⋯ more" overflow — holds the extra controls (search/record/restart) so the
+   header shows the mockup's exact three (rename · focus · kill) by default. */
+.grid.canvas .pb-more { position: relative; display: flex; }
+.grid.canvas .pb-more-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  display: flex;
+  gap: 1px;
+  padding: 3px;
+  background: var(--surface-1);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  box-shadow: 0 12px 30px -12px rgba(0, 0, 0, 0.7);
+  z-index: 10;
+}
+.grid.canvas .pb-more-menu[hidden] { display: none; }
+/* the focus button shows a back-arrow while its pane is the focused stage */
+.grid.canvas .pctrl[data-max] .ic-max { display: grid; place-items: center; }
+.grid.canvas .pctrl[data-max] .ic-back { display: none; }
+.grid.canvas.has-focus .pane.focused .pctrl[data-max] .ic-max { display: none; }
+.grid.canvas.has-focus .pane.focused .pctrl[data-max] .ic-back { display: grid; place-items: center; }
+.grid.canvas .pb-sp {
+  flex: 1;
+}
+.grid.canvas .pb-ctrls {
+  display: flex;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.grid.canvas .pane:hover .pb-ctrls,
+.grid.canvas .pb-ctrls:focus-within {
+  opacity: 1;
+}
+
+/* focus: the focused pane fills a stage; others become a tiny avatar rail */
+.grid.canvas.has-focus .pane {
+  display: none;
+}
+/* dimmed + blurred canvas behind the floating focus stage (the mockup's .focus
+   scrim). Sits above the tiled panes but below the focused pane (z-index:2) and
+   the rail (z-index:8). */
+.grid.canvas.has-focus::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: rgba(6, 8, 11, 0.55);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+.grid.canvas.has-focus .pane.focused {
+  display: flex;
+  /* inset from the edges so the dimmed canvas shows around the stage */
+  left: 12px !important;
+  top: 12px !important;
+  width: calc(100% - var(--rail-w, 74px) - 16px) !important;
+  height: calc(100% - 24px) !important;
+  /* lifted stage: bigger radius, a ring in the focused agent's hue, deep shadow,
+     and a zoom-in on entry — the mockup's focus-stage feel. */
+  border-radius: 16px;
+  box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.9),
+    0 0 0 1px color-mix(in oklab, var(--stg, #27b9a3) 22%, transparent);
+  transform-origin: var(--ox, 50%) var(--oy, 50%);
+  animation: zoomIn 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+/* keep the controls (esp. the back button) visible while focused — beats the
+   two opacity:0 rules the pane bar inherits (.ctrls + .grid.canvas .pb-ctrls). */
+.grid.canvas.has-focus .pane.focused .pb-ctrls { opacity: 1 !important; }
+@keyframes zoomIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .grid.canvas.has-focus .pane.focused { animation: none; }
+}
+/* the stage header reads bigger than a tiled pane's slim bar */
+.grid.canvas.has-focus .pane.focused .pane-bar { height: 38px; }
+.grid.canvas.has-focus .pane.focused .pb-name { font-size: 14.5px; }
+.grid.canvas.has-focus .pane.focused .pb-dot { width: 9px; height: 9px; }
+.cloud-rail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--rail-w, 74px);
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  overflow-y: auto;
+  padding: 12px 8px;
+}
+.grid.canvas:not(.has-focus) .cloud-rail {
+  display: none;
+}
+.cloud-rail .rc {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 2px;
+  border-radius: 12px;
+  cursor: pointer;
+  width: 100%;
+  background: none;
+  border: 0;
+}
+.cloud-rail .rc:hover {
+  background: var(--surface-1);
+}
+.cloud-rail .rc .av {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: #0a0d07;
+  position: relative;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px color-mix(in oklab, var(--hue) 55%, transparent);
+  transition: transform 0.15s;
+}
+.cloud-rail .rc:hover .av {
+  transform: scale(1.08);
+}
+.rail-lbl {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 700;
+  color: #5a6472;
+  text-align: center;
+}
+.cloud-rail .rc .av .s {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--surface-0);
+}
+.cloud-rail .rc .av .s.running {
+  background: var(--run);
+  animation: breathe 2.4s ease-in-out infinite;
+}
+.cloud-rail .rc .av .s.idle {
+  background: var(--idle);
+}
+.cloud-rail .rc .av .s.attention {
+  background: #ffb84c;
+  box-shadow: 0 0 7px #ffb84c;
+}
+.cloud-rail .rc .n {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--muted);
+  max-width: 66px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* scrollbars: slim, hidden until the area is scrolled or hovered */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+*:hover,
+*.scrolling {
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  transition: background 0.3s;
+}
+*.scrolling::-webkit-scrollbar-thumb,
+*:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+  background-clip: padding-box;
+}

@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod core;
+pub mod dashboard;
 pub mod error;
 pub mod state;
 pub mod review;
@@ -83,16 +84,42 @@ pub fn run() {
             commands::set_tray_visible,
             commands::set_tray_tooltip,
             commands::programs_on_path,
+            commands::record_start,
+            commands::record_stop,
+            commands::record_read,
+            commands::claude_usage,
             worktree::git_repo_root,
             worktree::worktree_add,
             worktree::worktree_remove,
             review::git_repos_under,
             review::repo_diff,
+            review::git_changed_files,
             review::review_repo_info,
             review::review_commit,
             review::review_merge,
             review::review_discard,
             review::review_remove_worktree,
+            core::fs::fs_read_dir,
+            core::fs::fs_read_file,
+            core::fs::fs_stat,
+            core::fs::fs_write_file,
+            core::fs::fs_read_data_url,
+            core::fs::fs_create_file,
+            core::fs::fs_create_dir,
+            core::fs::fs_rename,
+            core::fs::fs_delete,
+            core::fs::fs_copy,
+            core::fs::fs_move,
+            core::fs::fs_trash,
+            core::fs::fs_reveal,
+            core::fs::fs_open_external,
+            core::watch::watch_start,
+            core::watch::watch_stop,
+            core::screenshot::capture_window,
+            dashboard::dashboard_status,
+            dashboard::dashboard_start,
+            dashboard::dashboard_stop,
+            dashboard::dashboard_push,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

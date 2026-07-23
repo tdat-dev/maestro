@@ -7,6 +7,249 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-23
+
+### Fixed
+
+- **Terminal panes no longer cut off their last line.** Every pane sliced its
+  bottom row in half — in a Claude Code agent that was the status line
+  (`auto mode on · 13 agents`) permanently chopped. The pane's inset sat on the
+  terminal's container, where xterm's fit addon can't see it, so the addon kept
+  proposing about two more rows and columns than actually fit and the overflow
+  was clipped away. The inset now lives on the terminal element itself, where
+  the fit maths accounts for it. The same fix applies to the remote dashboard.
+- **The top of a pane no longer erases output.** The fade under the title bar
+  was sized as a percentage of the pane, so on a normal pane it swallowed
+  roughly two full lines of text. It now spans only the padding strip.
+
+## [0.5.0] - 2026-07-23
+
+A workspace redesign: agents now live on a free-form canvas instead of a rigid
+tiling grid, and the controls that used to crowd the top bar have moved into a
+single command bar at the bottom of the screen.
+
+### Added
+
+- **Canvas workspace** — agent panes are now positioned freely: drag a pane by
+  its title bar to move it anywhere, and hit **Tidy** to tile everything back
+  into a clean grid that fills the screen. Positions persist per workspace.
+  Every agent gets a persona name and a colour it keeps across the pane header,
+  the focus rail, and `MAESTRO_AGENT`, so an agent is recognisable at a glance.
+- **Focus stage** — zoom a pane to fill the workspace; the other agents collapse
+  into a slim avatar rail down the right edge (each with a live/idle/needs-you
+  dot) so you can jump between them without leaving focus. The stage grows out
+  of the point you clicked, bumps the terminal font, and dims the canvas behind
+  it. The zoom button becomes a back arrow to return.
+- **Command bar** — one bar at the bottom holds settings, the fleet message
+  field, and **+Agent**. Typing `@` opens a picker of your agents, and a single
+  line can address several at once (`@Ana run tests @Bob deploy`). **+Agent**
+  opens an inline spawn menu — pick how many of each CLI (plus a custom command)
+  and spawn straight into the current workspace, without the full modal.
+- **Voice input** — push-to-talk in the command bar. The **voice → dispatch**
+  panel splits what you said by agent name, so one spoken sentence can hand a
+  different task to each agent; review the split before it sends.
+- **Delegation visualization** — when an agent hands work to another via
+  `fleet_send`, Maestro draws a transient animated link between their panes and
+  pops a toast (`Ana → Bob: …`), so hand-offs are visible even when the panes
+  involved are off-screen or in another workspace.
+- **Full-screen Settings** — reorganised into **Appearance**, **Fleet & Remote**,
+  **Schedule & Sessions**, and **System**, with a canvas **background picker**
+  (presets, a solid colour, or your own image, saved per workspace).
+- **Hint bar** — a top-centre pill for first-run tips and confirmations (e.g.
+  how many panes Tidy just arranged).
+
+### Changed
+
+- **Broadcast defaults to the whole fleet.** The per-agent target dropdown is
+  gone — it sat empty and inert whenever no agent was running. A message with no
+  mention now reaches every running agent, and `@name` targets one.
+- **Pane headers are down to three controls** — rename, zoom, and kill — with
+  search, record, and restart moved behind a **⋯** overflow. The agent name is
+  editable in place (click it or the pencil).
+- **Slimmer top bar** — the brand mark is gone (Home anchors the left) and
+  "Resume all" is now an accent pill. The settings gear that duplicated the one
+  in the command bar has been removed from the window controls.
+- **Internal restructuring** — `main.ts` went from 2035 to 496 lines and
+  `workspace.ts` from 674 to 474, with panes, canvas layout, broadcast, spawn,
+  settings, replay, dashboard, and shared state split into focused modules. No
+  behaviour change; it just makes the app far easier to work on.
+
+### Fixed
+
+- **`@` now lists idle agents too.** The mention picker only offered agents with
+  a live process, so an agent restored from a session or one whose CLI had
+  exited never appeared — even though its name is still a valid target.
+- **Transcript saving in agent panes.** Launching Maestro from inside a Claude
+  Code session leaked that session's markers into every agent it spawned, so
+  each agent believed it was a child session and silently stopped saving its
+  transcript. Those markers are now stripped from each agent's environment.
+- **A dev build can no longer kill your installed Maestro.** Development and
+  production both produced `maestro.exe`, differing only by path, so anything
+  matching processes by name while developing could take down the real app. The
+  dev build is now `maestro-dev.exe`; the shipped binary is unchanged.
+
+## [0.4.1] - 2026-07-16
+
+### Fixed
+
+- **Copy inside Claude Code panes** — highlighting text in a Claude Code agent
+  pane now actually copies it. Claude Code's TUI captures the mouse and copies
+  through the OSC 52 escape sequence, which Maestro's terminal silently dropped;
+  Maestro now handles OSC 52 and writes the text to the OS clipboard. The
+  clipboard *query* form is deliberately ignored so a program in a pane can't
+  read your clipboard. Copy-on-select in plain shells is unchanged.
+
+## [0.4.0] - 2026-07-13
+
+### Added
+
+- **Token usage & cost** — Settings → **Token usage & cost** shows a per-model
+  breakdown of tokens (input / output / cache) and an estimated USD cost for the
+  current workspace. The numbers are *real* — read from Claude Code's own
+  session transcripts (`~/.claude/projects/<slug>/*.jsonl`), not scraped from the
+  terminal — so they're accurate, but Claude-only and per-workspace (a transcript
+  folder isn't split per Maestro agent). Prices are an approximate estimate for
+  the Opus/Sonnet/Haiku families; other models show tokens without a cost.
+- **Session replay** — every pane header has a **●** record button: hit it to
+  record that agent's terminal to `<workspace>/.maestro/recordings/*.jsonl`
+  (raw output frames with millisecond timestamps, starting from a snapshot of
+  the current screen), hit it again to stop. Settings → **Session replays** (or
+  the "Recording saved" toast) opens a player that replays the session in a real
+  xterm.js terminal with the original timing — play/pause, a scrubbable
+  timeline, and 1×/2×/4×/8× speed. Seeking rewinds and re-renders from the start
+  so the screen is always exactly what the agent showed at that moment.
+  Recording auto-stops (and flushes) when the agent exits or is killed.
+- **Conductor mode** — the spawn modal has a **Conductor** toggle that turns the
+  first agent into a conductor (it does *not* add an extra agent): it directs the
+  crew instead of coding — plans the board, spawns & assigns workers with
+  `agent_spawn`/`fleet_send`, watches them with `agent_output`, marks cards done.
+  It uses the **same CLI as your first pick** (pick Codex → a Codex conductor,
+  not a hardcoded Claude). Pick 0 workers to run just the conductor and let it
+  build its own crew. Off by default.
+- **Conductor tools for agents** — maestro-mcp gains `agent_output` (read another
+  agent's on-screen text to check its progress) and `agent_spawn` (ask Maestro to
+  boot new worker agents into the same workspace, with an optional task). Combined
+  with the board and fleet tools, one agent can now act as a conductor: read the
+  board, spawn a crew, hand out work, watch each worker's screen, and mark cards
+  done. Maestro publishes each agent's screen into `.maestro/fleet.json` and
+  watches `.maestro/spawn-requests.jsonl` for the spawn requests.
+- **Full web terminal in the remote dashboard** — tapping an agent now offers
+  *Open full terminal*: a real xterm.js terminal streamed from the app over
+  Server-Sent Events, with keystrokes (including arrows, Enter, Ctrl+C, and
+  editing) sent straight to the agent's PTY. Type directly and interactively
+  from your phone — no key buttons needed — the same as sitting at the machine.
+  xterm.js is bundled and served same-origin so it works offline/LAN. Output is
+  streamed over a **WebSocket** (on the dashboard port + 1) with TCP_NODELAY, so
+  typing and deleting feel near-direct — bidirectional, ordered by nature, no
+  per-keystroke HTTP round-trip. (An earlier SSE + POST transport was too laggy:
+  tiny_http buffers streaming responses and can't set TCP_NODELAY.) The terminal
+  view has a **tab bar** of all agents (tap to switch without going back to the
+  roster) and a **Grid** toggle that tiles every running agent's terminal so you
+  can watch many at once and tap one to open it full.
+
+- **Board ⇄ Agent loop** — kanban cards can be dispatched to a specific
+  running agent ("Send to agent…" in the card detail, or drag the card onto a
+  pane): the agent receives a structured prompt, the card records its
+  `assignee` and jumps to Doing, and the card shows a clickable agent chip
+  that focuses the pane. Maestro sets `MAESTRO_AGENT` on every spawn so
+  maestro-mcp records who moved/finished each card, and the app toasts (+ OS
+  notification when unfocused) when an agent lands a card in Done.
+- **Right-click copies the terminal selection** — copy-on-select can lose the
+  clipboard write when another Windows process holds the clipboard lock;
+  right-clicking a selection retries the copy.
+- **Fleet monitor** (`Ctrl+Shift+L`) — a dock panel listing every agent across
+  all workspaces with live status (needs-you / working / idle / stopped),
+  uptime, and owning workspace; click to jump to any agent, and a rail badge
+  counts how many are waiting on you.
+- **Fleet coordination for agents** — maestro-mcp gains `fleet_status` (see the
+  other agents and their status) and `fleet_send` (message another agent, or
+  broadcast), delivered through a `.maestro/fleet.json` + `outbox.jsonl` file
+  bridge so agents can hand off work to each other.
+- **Remote fleet dashboard** — Settings → *Remote fleet dashboard*: Maestro
+  serves a small web page (default localhost, LAN opt-in) showing every agent
+  and its status. Tap an agent to see a live tail of its terminal output (read
+  straight from the rendered screen, so a TUI's spinners don't spam) *and* drive
+  it: a row of key buttons (up/down/Enter/Esc/Tab/^C) sends raw keys so you can
+  navigate an interactive menu like `/resume` from your phone, plus a message
+  box for text. The LAN toggle is off by default since the page can drive an
+  agent.
+- **Scheduled agents** — Settings → *Manage schedules*: launch a saved crew
+  preset automatically at a set time, once or daily. Each schedule shows its
+  next run and can be paused or deleted.
+- **Conductor** — an in-app auto-dispatch scheduler on the board toolbar,
+  cycling Off → Semi → Auto → Pipeline. *Semi* hands each free agent the next
+  approved ("To do") card automatically; *Auto* also promotes cards from
+  Proposed to keep agents fed; *Pipeline* flows each card through Build → Test
+  → Review → Done, handing every stage to a free agent with a stage-specific
+  prompt and detecting each hand-off. Deterministic (no extra LLM cost — the
+  agents do the work), scoped per workspace, click through to Off to stop.
+
+### Changed
+
+- **Maestro enforces its board protocol on Claude agents** — every Claude Code
+  agent Maestro spawns is launched with `--append-system-prompt` carrying the
+  plan-first rules, so it *must* plan on the board (call `board_get`, add cards,
+  report via `card_move`/`card_done`) rather than treating the MCP hint as
+  optional. No button, no terminal noise; other CLIs still get the MCP tools
+  and server instructions.
+- **Board toolbar simplified** — the maestro-mcp server now ships the plan-first
+  convention (few big cards, small steps as each card's checklist, report via
+  `card_move`/`card_done`) as its MCP instructions, so an agent with the board
+  tools plans and adds cards directly. The **Plan with AI** button (which used
+  to drop a rules file and prime the agent) is therefore gone, alongside the
+  earlier **Import** and **Send approved** removals — the board toolbar is now
+  just the Conductor and a compact Capture-web icon.
+
+### Fixed
+
+- **MCP wrote to the wrong project's board** — maestro-mcp resolved the board
+  from the agent's current directory, so an agent whose cwd drifted (a `cd`, a
+  subdir, a git worktree) could write cards into a different project's board.
+  It now prefers the `MAESTRO_WORKSPACE` env Maestro sets on every spawn.
+
+## [0.3.9] - 2026-07-09
+
+### Removed
+
+- **Merge button** on the topbar in detached windows (workspace fold-back still
+  works via drag-and-drop between windows).
+- **Isolate each agent in its own git worktree** toggle from the spawn modal
+  and workspace wizard — new agents always run in the project folder.
+
+## [0.3.8] - 2026-07-05
+
+### Added
+
+- **Resume all** — reopening a project parks every agent as *stopped*, and you
+  used to have to click ⟳ on each pane to bring the fleet back. A new **Resume
+  all** button now appears in the topbar whenever the current project has any
+  stopped or exited agents (with a live count) — one click boots them all. They
+  start one at a time on purpose, so a large crew doesn't hammer the disk and
+  freeze the window the way a parallel spawn would.
+
+## [0.3.4] - 2026-07-02
+
+### Fixed
+
+- **App froze while spawning a crew** — booting several isolated agents at once
+  locked up the whole window (and dragged the machine down) until every agent
+  had started. All Tauri commands ran synchronously on the main/UI thread, so
+  each agent's `git worktree add` (a full repo checkout) and ConPTY creation
+  blocked rendering and input. Heavy commands (PTY, worktree, git review, PATH
+  probing) now run on a background thread pool, and worktree checkouts queue
+  one-at-a-time instead of thrashing the disk in parallel. The UI stays
+  responsive for the whole boot.
+
+## [0.3.1] - 2026-06-29
+
+### Fixed
+
+- **Worktree disk bloat** — every git worktree that ran `cargo build` created its
+  own `src-tauri/target` (~10 GB for a Tauri build), silently filling the disk.
+  New worktrees now get a `.cargo/config.toml` pointing `target-dir` at the main
+  repo's target, so all worktrees of a repo share one build cache instead of
+  duplicating it.
+
 ## [0.2.0] - 2026-06-19
 
 ### Added

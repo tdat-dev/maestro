@@ -24,6 +24,7 @@ export async function spawnPty(
   cwd: string | null,
   cols: number,
   rows: number,
+  env: Array<[string, string]>,
   onBytes: (bytes: Uint8Array) => void,
 ): Promise<void> {
   // PTY output streams as raw binary (ArrayBuffer), NOT a JSON number[]. The
@@ -31,7 +32,7 @@ export async function spawnPty(
   // choked the whole app under a chatty fleet; a raw buffer is ~100x cheaper.
   const ch = new Channel<ArrayBuffer>();
   ch.onmessage = (buf) => onBytes(new Uint8Array(buf));
-  await invoke("pty_spawn", { agentId, program, args, cwd, cols, rows, onBytes: ch });
+  await invoke("pty_spawn", { agentId, program, args, cwd, cols, rows, env, onBytes: ch });
 }
 
 /** Re-attach a RUNNING agent's output to this window (tab detach hand-off).
@@ -137,6 +138,70 @@ export async function onTrayQuit(cb: () => void | Promise<void>): Promise<Unlist
   return listen("tray-quit", () => void cb());
 }
 
+/* ---- local web dashboard ---- */
+
+export interface DashboardInfo {
+  running: boolean;
+  port: number;
+  lan: boolean;
+  urls: string[];
+}
+
+export async function dashboardStatus(): Promise<DashboardInfo> {
+  return invoke<DashboardInfo>("dashboard_status");
+}
+export async function dashboardStart(port: number, lan: boolean): Promise<DashboardInfo> {
+  return invoke<DashboardInfo>("dashboard_start", { port, lan });
+}
+export async function dashboardStop(): Promise<DashboardInfo> {
+  return invoke<DashboardInfo>("dashboard_stop");
+}
+/** Push the current fleet snapshot JSON for the dashboard to serve. */
+export async function dashboardPush(snapshot: string): Promise<void> {
+  await invoke("dashboard_push", { snapshot });
+}
+/** Fire `cb` with the raw JSON body when the dashboard POSTs a send request. */
+export async function onDashboardSend(cb: (body: string) => void): Promise<UnlistenFn> {
+  return listen<string>("dashboard-send", (e) => cb(e.payload));
+}
+
+/* ---- session recording (replay) ---- */
+
+/** Start recording an agent's terminal output to `path` (an absolute JSONL
+ *  "cast" file under `<workspace>/.maestro/recordings`). Its parent dir is
+ *  created if missing. Replaces any recording already running for the agent. */
+export async function recordStart(agentId: string, path: string): Promise<void> {
+  await invoke("record_start", { agentId, path });
+}
+
+/** Stop recording an agent's output and flush the file. */
+export async function recordStop(agentId: string): Promise<void> {
+  await invoke("record_stop", { agentId });
+}
+
+/** Read a recording file back (JSONL text) for the replay player. */
+export async function recordRead(path: string): Promise<string> {
+  return invoke<string>("record_read", { path });
+}
+
+/* ---- token usage / cost (Claude transcripts) ---- */
+
+export interface ModelUsage {
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation: number;
+  cache_read: number;
+  messages: number;
+}
+
+/** Real Claude Code token usage for a workspace folder, summed per model from
+ *  its session transcripts (~/.claude/projects/<slug>/*.jsonl). Claude-only and
+ *  per-workspace; empty when there are no transcripts. */
+export async function claudeUsage(dir: string): Promise<ModelUsage[]> {
+  return invoke<ModelUsage[]>("claude_usage", { dir });
+}
+
 /* ---- detached (multi-window) support ---- */
 
 /** Open a new Maestro window that boots straight into a detached workspace.
@@ -238,6 +303,13 @@ export async function repoDiff(repoRoot: string): Promise<string> {
   return invoke<string>("repo_diff", { repoRoot });
 }
 
+export interface ChangedFile { path: string; status: string }
+
+/** Files changed vs HEAD (incl. untracked), as {path, status} pairs. */
+export async function gitChangedFiles(repoRoot: string): Promise<ChangedFile[]> {
+  return invoke<ChangedFile[]>("git_changed_files", { repoRoot });
+}
+
 /* ---- AI Code Slice 2: write side (commit / merge / discard) ---- */
 
 export interface RepoInfo {
@@ -290,4 +362,146 @@ export async function reviewRemoveWorktree(
  *  Used to gray out CLI presets whose binary isn't installed. */
 export async function programsOnPath(programs: string[]): Promise<boolean[]> {
   return invoke<boolean[]>("programs_on_path", { programs });
+}
+
+/* ---- general filesystem (code panel) ---- */
+
+/** A directory entry from the backend `fs_read_dir`. */
+export interface FsEntry {
+  name: string;
+  is_dir: boolean;
+  size: number;
+}
+
+/** List one directory level under `root` (path is relative to root, or "."). */
+export async function fsReadDir(root: string, path: string): Promise<FsEntry[]> {
+  return invoke<FsEntry[]>("fs_read_dir", { root, path });
+}
+
+/** Read a text file (rejects binary/oversize). Returns content + mtime (ms). */
+export async function fsReadFile(
+  root: string,
+  path: string,
+): Promise<{ content: string; mtime: number }> {
+  return invoke<{ content: string; mtime: number }>("fs_read_file", { root, path });
+}
+
+/** Modified-time (ms) probe for external-change detection. */
+export async function fsStat(root: string, path: string): Promise<{ mtime: number }> {
+  return invoke<{ mtime: number }>("fs_stat", { root, path });
+}
+
+/** Write a text file. Pass the last-read mtime to guard against clobbering an
+ *  external edit; rejects with a `Conflict` error (carrying the current mtime)
+ *  on mismatch. Pass `null` to force-write. Returns the new mtime. */
+export async function fsWriteFile(
+  root: string,
+  path: string,
+  content: string,
+  expectedMtime: number | null,
+): Promise<{ mtime: number }> {
+  return invoke<{ mtime: number }>("fs_write_file", { root, path, content, expectedMtime });
+}
+
+/** Read an image file as a `data:<mime>;base64,...` URL for inline preview.
+ *  Rejects non-image extensions and files over 25 MB. */
+export async function fsReadDataUrl(root: string, path: string): Promise<string> {
+  return invoke<string>("fs_read_data_url", { root, path });
+}
+
+/** Open `url` in a temporary webview window, screenshot it natively, save it
+ *  under `<root>/.maestro/shots/<name>`, and return the path relative to root.
+ *  Used to grab a "done" preview of a web page the agent built. */
+export async function captureWebPage(url: string, root: string, name: string): Promise<string> {
+  const label = `shot-${Date.now()}`;
+  const w = new WebviewWindow(label, {
+    url,
+    width: 1280,
+    height: 860,
+    visible: true,
+    focus: false,
+    skipTaskbar: true,
+    title: "Capturing preview…",
+  });
+  await new Promise<void>((resolve, reject) => {
+    void w.once("tauri://created", () => resolve());
+    void w.once("tauri://error", (e) => reject(e.payload));
+  });
+  // Let the page load and paint before the native capture.
+  await new Promise((r) => setTimeout(r, 2200));
+  try {
+    return await invoke<string>("capture_window", { label, root, name });
+  } finally {
+    await w.close().catch(() => {});
+  }
+}
+
+/** Create a new empty file (rejects if it already exists). */
+export async function fsCreateFile(root: string, path: string): Promise<void> {
+  await invoke("fs_create_file", { root, path });
+}
+
+/** Create a new directory (rejects if it already exists). */
+export async function fsCreateDir(root: string, path: string): Promise<void> {
+  await invoke("fs_create_dir", { root, path });
+}
+
+/** Rename / move within the workspace root. */
+export async function fsRename(root: string, from: string, to: string): Promise<void> {
+  await invoke("fs_rename", { root, from, to });
+}
+
+/** Delete a file, or a directory and everything under it. */
+export async function fsDelete(root: string, path: string): Promise<void> {
+  await invoke("fs_delete", { root, path });
+}
+
+/** Copy an entry into `toDir` ("" = root), auto-renaming on collision.
+ *  Returns the new path relative to the root. */
+export async function fsCopy(root: string, from: string, toDir: string): Promise<string> {
+  return invoke<string>("fs_copy", { root, from, toDir });
+}
+
+/** Move an entry into `toDir` ("" = root), auto-renaming on collision.
+ *  Returns the new path relative to the root. */
+export async function fsMove(root: string, from: string, toDir: string): Promise<string> {
+  return invoke<string>("fs_move", { root, from, toDir });
+}
+
+/** Send entries to the Recycle Bin in one operation (recoverable delete). */
+export async function fsTrash(root: string, paths: string[]): Promise<void> {
+  await invoke("fs_trash", { root, paths });
+}
+
+/** Show the entry in the OS file manager, selected. */
+export async function fsReveal(root: string, path: string): Promise<void> {
+  await invoke("fs_reveal", { root, path });
+}
+
+/** Open the entry with the OS default application. */
+export async function fsOpenExternal(root: string, path: string): Promise<void> {
+  await invoke("fs_open_external", { root, path });
+}
+
+/** Directories that changed on disk, coalesced by the backend watcher.
+ *  `bulk` means the change set was too large to enumerate — refresh everything. */
+export interface FsChange {
+  root: string;
+  dirs: string[];
+  bulk: boolean;
+}
+
+/** Start (or re-point) the recursive filesystem watch behind the live tree. */
+export async function watchStart(root: string): Promise<void> {
+  await invoke("watch_start", { root });
+}
+
+/** Stop watching. */
+export async function watchStop(): Promise<void> {
+  await invoke("watch_stop", {});
+}
+
+/** Subscribe to coalesced filesystem changes under the watched root. */
+export async function onFsChanged(cb: (c: FsChange) => void): Promise<UnlistenFn> {
+  return listen<FsChange>("fs-changed", (e) => cb(e.payload));
 }

@@ -22,6 +22,13 @@ describe("tileToFit", () => {
       expect(t.y + t.h).toBeLessThanOrEqual(area.height - 80 + 0.5);
     }
   });
+  it("does not reserve the command bar twice (the canvas box already excludes it)", () => {
+    // Defaults only: a 2-row tidy used to lose 84px at the bottom on top of
+    // .main's own 56px padding, costing ~3 terminal rows per tile row.
+    const tiles = tileToFit(4, area);
+    const bottomMost = Math.max(...tiles.map((t) => t.y + t.h));
+    expect(area.height - bottomMost).toBeLessThanOrEqual(20);
+  });
   it("stretches a lone last tile to fill the rest of its row", () => {
     const tiles = tileToFit(3, area, { gap: 10, margin: 10, top: 10, bottom: 10 });
     expect(tiles[2].w).toBeGreaterThan(tiles[0].w + 1);

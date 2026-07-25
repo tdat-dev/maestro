@@ -105,6 +105,15 @@ export function loadCrew(): SavedCrew {
   }
 }
 
+/** Persist just the permission mode, leaving the rest of the saved crew alone.
+ *  The inline +Agent menu writes through this so both spawn entry points agree
+ *  on the mode — an agent booting in manual mode when the last one skipped
+ *  permissions reads as a bug, not a default. */
+export function saveSkipPerms(skipPerms: boolean): void {
+  const saved = loadCrew();
+  localStorage.setItem(STORE_KEY, JSON.stringify({ ...saved, skipPerms }));
+}
+
 export function renderCrew() {
   // Conductor converts the first agent (doesn't add) — with no workers it's a
   // lone conductor, so total is at least 1 when the toggle is on.

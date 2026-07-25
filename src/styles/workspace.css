@@ -106,8 +106,11 @@
    .pane's overflow:hidden sliced the last line in half (a 399px host with a
    22px cell got 18 rows where 16 fit). The mask fades across the inset only:
    a percentage stop scales with the pane and erased real output at the top. */
-.term-host{flex:1;min-height:0;background:transparent;overflow:hidden;-webkit-mask-image:linear-gradient(180deg,transparent,#000 14px);mask-image:linear-gradient(180deg,transparent,#000 14px)}
-.term-host .xterm{height:100%;padding:14px 16px}
+.term-host{flex:1;min-height:0;background:transparent;overflow:hidden;-webkit-mask-image:linear-gradient(180deg,transparent,#000 8px);mask-image:linear-gradient(180deg,transparent,#000 8px)}
+/* Inset kept tight (was 14/16): every 2 px of vertical padding is a fraction of
+   a terminal row, and a 2x2 tidy has none to spare. The mask fade above must
+   stay equal to the top padding — any taller and it eats the first row. */
+.term-host .xterm{height:100%;padding:8px 12px}
 .term-host .xterm-viewport{overflow-y:auto}
 
 /* ---------- maximize / focus one pane ---------- */

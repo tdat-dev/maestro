@@ -16,8 +16,12 @@ export interface TerminalHandle {
   findPrev(q: string): void;
   /** Drop all search highlights. */
   clearSearch(): void;
-  /** Live-change the font size (px) and refit the viewport to the new metrics. */
+  /** Live-change the base font size (px) and refit the viewport to the new
+   *  metrics. Auto-fit (if on) may still render smaller than `n`. */
   setFontSize(n: number): void;
+  /** Keep at least `rows` rows visible by shrinking the font (never below
+   *  AUTO_FIT_MIN) when the pane is too short for the base size. 0 = off. */
+  setAutoFit(rows: number): void;
   /** Subscribe to result-count changes (current index is 1-based, 0 = none). */
   onSearchResults(cb: (current: number, total: number) => void): void;
   /** Subscribe to terminal title changes (OSC 0/1/2). */
@@ -26,6 +30,32 @@ export interface TerminalHandle {
    *  de-duplicated by the emulator — not the raw byte stream). For the remote
    *  dashboard's read-only view. */
   snapshot(lines?: number): string;
+}
+
+/** Hard floor for auto-fit: below this the output is there but unreadable, so a
+ *  very short pane keeps the floor and clips instead of shrinking forever. */
+export const AUTO_FIT_MIN = 12;
+/** …and auto-fit never drops more than this far below the size the user picked.
+ *  It is a nudge for a cramped tile, not a licence to overrule the setting. */
+export const AUTO_FIT_DROP = 4;
+
+/**
+ * Largest size in [`min`, `base`] whose measured row count reaches `target`,
+ * or `min` when even that can't. `rowsAt` does the measuring and is expected to
+ * APPLY the size it is given — the returned size is always the one from the
+ * last call, so the caller never has to re-apply it.
+ */
+export function shrinkToFit(
+  base: number,
+  min: number,
+  target: number,
+  rowsAt: (size: number) => number,
+): number {
+  for (let size = Math.max(base, min); size > min; size--) {
+    if (rowsAt(size) >= target) return size;
+  }
+  rowsAt(min);
+  return min;
 }
 
 /**
@@ -236,8 +266,25 @@ export function mountTerminal(
     void navigator.clipboard.writeText(sel).catch(() => {});
   });
 
-  const ro = new ResizeObserver(() => {
+  // Auto-fit: tiled panes get short fast (a 2x2 tidy leaves ~360px per tile),
+  // and the CLI's own chrome — Claude's prompt box + status line — eats ~7 rows
+  // of whatever is left. Below the row floor we trade font size for rows so the
+  // pane still shows conversation instead of just its input box.
+  let baseFont = opts.fontSize ?? 13;
+  let autoRows = 0; // 0 = off, honour baseFont as-is
+  const measureAt = (size: number): number => {
+    if (term.options.fontSize !== size) term.options.fontSize = size;
     fit.fit();
+    return term.rows;
+  };
+  const fitToBox = () => {
+    if (autoRows > 0) {
+      shrinkToFit(baseFont, Math.max(AUTO_FIT_MIN, baseFont - AUTO_FIT_DROP), autoRows, measureAt);
+    } else measureAt(baseFont);
+  };
+
+  const ro = new ResizeObserver(() => {
+    fitToBox();
     onResize(term.cols, term.rows);
   });
   ro.observe(container);
@@ -245,7 +292,7 @@ export function mountTerminal(
   return {
     write: (data) => term.write(data),
     fit: () => {
-      fit.fit();
+      fitToBox();
       return { cols: term.cols, rows: term.rows };
     },
     reset: () => term.reset(),
@@ -264,10 +311,15 @@ export function mountTerminal(
     },
     clearSearch: () => search.clearDecorations(),
     setFontSize: (n) => {
-      term.options.fontSize = n;
+      baseFont = n;
       // New glyph metrics → reflow to fit the container, mirroring the
       // ResizeObserver so the PTY learns the new cols/rows.
-      fit.fit();
+      fitToBox();
+      onResize(term.cols, term.rows);
+    },
+    setAutoFit: (rows) => {
+      autoRows = Math.max(0, Math.round(rows));
+      fitToBox();
       onResize(term.cols, term.rows);
     },
     onSearchResults: (cb) =>

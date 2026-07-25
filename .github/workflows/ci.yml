@@ -40,6 +40,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -47,6 +53,11 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "src-tauri"
+
+      # dashboard.rs include_str!s xterm's js/css straight out of node_modules,
+      # so the crate does not compile until the npm tree is on disk.
+      - name: Install dependencies
+        run: npm ci
 
       - name: Cargo check
         run: cargo check

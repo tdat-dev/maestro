@@ -8,6 +8,7 @@
 
 import { CLI_PRESETS, type CrewState, type CliPreset } from "./crew";
 import { activeWs } from "./appstate";
+import { loadCrew, saveSkipPerms } from "./spawnmodal";
 
 let onSpawnCrew: (
   crewState: CrewState,
@@ -69,6 +70,11 @@ const CSS = `
   padding:7px 9px;color:var(--text);font-family:var(--mono);font-size:11.5px;outline:none}
 .sm-cin:focus{border-color:color-mix(in oklab,var(--teal) 50%,var(--line-2))}
 .sm-cin::placeholder{color:var(--muted)}
+.sm-perm{display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px 7px;border-radius:8px;cursor:pointer}
+.sm-perm:hover{background:var(--surface-2)}
+.sm-perm input{accent-color:var(--accent);width:14px;height:14px;flex:none;margin:0}
+.sm-perm .t{font-size:12px;color:var(--text-2)}
+.sm-perm .t b{color:var(--text);font-weight:600}
 .sm-foot{display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding:0 4px}
 .sm-total{font-size:12px;color:var(--muted)}
 .sm-total b{color:var(--text);font-variant-numeric:tabular-nums}
@@ -97,6 +103,7 @@ let customInputEl: HTMLInputElement;
 let customStepEl: HTMLElement;
 let totalEl: HTMLElement;
 let spawnBtnEl: HTMLButtonElement;
+let skipPermsEl: HTMLInputElement;
 
 function total(): number {
   return Object.values(counts).reduce((s, n) => s + n, 0) + customCount;
@@ -162,9 +169,10 @@ function closeMenu(): void {
 async function doSpawn(): Promise<void> {
   if (total() === 0) return;
   const crewState: CrewState = { counts: { ...counts }, custom: customInputEl.value, customCount };
+  const skipPerms = skipPermsEl.checked;
   closeMenu();
   resetMenu();
-  await onSpawnCrew(crewState, activeWs?.dir ?? null, false, "current");
+  await onSpawnCrew(crewState, activeWs?.dir ?? null, skipPerms, "current");
 }
 
 /** Build `#spawnMenu` and mount it beside `#cbAddAgent` (wrapping the button in
@@ -194,6 +202,10 @@ export function initSpawnMenu(): void {
         <button type="button" data-inc aria-label="One more">+</button>
       </div>
     </div>
+    <label class="sm-perm" title="Boots each CLI with its own skip-approvals flag (claude --dangerously-skip-permissions, codex --yolo, …)">
+      <input type="checkbox">
+      <span class="t"><b>Skip permission prompts</b> · remembered</span>
+    </label>
     <div class="sm-foot"><span class="sm-total">Total <b>0</b></span><button class="sm-spawn" type="button" disabled>Spawn</button></div>`;
   anchor.appendChild(menuEl);
 
@@ -204,6 +216,12 @@ export function initSpawnMenu(): void {
   customStepEl = menuEl.querySelector('.sm-step[data-cli="__custom"]') as HTMLElement;
   totalEl = menuEl.querySelector(".sm-total b") as HTMLElement;
   spawnBtnEl = menuEl.querySelector(".sm-spawn") as HTMLButtonElement;
+  skipPermsEl = menuEl.querySelector(".sm-perm input") as HTMLInputElement;
+
+  // Shared with the spawn modal, so the mode chosen in either place is the one
+  // the next agent boots in — wherever it was spawned from.
+  skipPermsEl.checked = loadCrew().skipPerms;
+  skipPermsEl.addEventListener("change", () => saveSkipPerms(skipPermsEl.checked));
 
   customStepEl.querySelector<HTMLButtonElement>("[data-dec]")!.addEventListener("click", () => {
     customCount = Math.max(0, customCount - 1);
@@ -223,6 +241,7 @@ export function initSpawnMenu(): void {
     if (opening) {
       onRefreshCliAvailability();
       refreshAvailability();
+      skipPermsEl.checked = loadCrew().skipPerms; // the modal may have changed it
     }
   });
   document.addEventListener("click", (e) => {

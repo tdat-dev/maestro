@@ -13,13 +13,16 @@ export function gridDimsFor(n: number): { cols: number; rows: number } {
   return { cols, rows };
 }
 
-/** Tile n panes to fill `area` (minus margins + a reserved bottom band for the
- *  command bar). A lone tile ending a short last row stretches to the right. */
+/** Tile n panes to fill `area` (minus margins). A lone tile ending a short last
+ *  row stretches to the right.
+ *  `bottom` is breathing room, NOT room for the command bar: `area` is the
+ *  canvas box, and .main's padding-bottom already reserves the bar's 56px.
+ *  Reserving it twice cost ~84px — three terminal rows per tile row. */
 export function tileToFit(n: number, area: Area, opts: TileOpts = {}): Tile[] {
   const gap = opts.gap ?? 12,
     mx = opts.margin ?? 18,
     top = opts.top ?? 16,
-    bottom = opts.bottom ?? 84;
+    bottom = opts.bottom ?? 16;
   const { cols, rows } = gridDimsFor(n);
   const tw = (area.width - 2 * mx - (cols - 1) * gap) / cols;
   const th = (area.height - top - bottom - (rows - 1) * gap) / rows;

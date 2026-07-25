@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { mountTerminal, decodeOsc52 } from "./terminal";
+import { mountTerminal, decodeOsc52, shrinkToFit, AUTO_FIT_MIN } from "./terminal";
 
 // Smoke test: verifies the module (and its @xterm + CSS imports) resolves and
 // compiles under the bundler. Real terminal rendering needs a browser and is
@@ -40,6 +40,43 @@ describe("decodeOsc52", () => {
   });
 });
 
+// Auto-fit: a tiled pane trades font size for rows so the agent CLI's chrome
+// (prompt box + status line, ~7 rows) doesn't consume the whole viewport.
+describe("shrinkToFit", () => {
+  // Rows a pane of `px` usable height renders at `size`, xterm-style: the cell
+  // is the font size times the 1.2 line-height, rounded up.
+  const paneOf = (px: number) => (size: number) => Math.floor(px / Math.ceil(size * 1.2));
+
+  it("leaves a roomy pane at the base size", () => {
+    expect(shrinkToFit(20, AUTO_FIT_MIN, 24, paneOf(760))).toBe(20);
+  });
+
+  it("shrinks a 2x2 tile until it clears the row floor", () => {
+    // ~360px is what a tile gets on a 2x2 tidy: 20px font renders 15 rows.
+    const size = shrinkToFit(20, AUTO_FIT_MIN, 24, paneOf(360));
+    expect(size).toBeLessThan(20);
+    expect(paneOf(360)(size)).toBeGreaterThanOrEqual(24);
+  });
+
+  it("stops at the floor instead of shrinking to nothing", () => {
+    expect(shrinkToFit(20, AUTO_FIT_MIN, 24, paneOf(120))).toBe(AUTO_FIT_MIN);
+  });
+
+  it("measures the size it returns last, so the caller need not re-apply it", () => {
+    const seen: number[] = [];
+    const size = shrinkToFit(20, AUTO_FIT_MIN, 24, (n) => {
+      seen.push(n);
+      return paneOf(120)(n);
+    });
+    expect(seen[seen.length - 1]).toBe(size);
+  });
+
+  it("never grows past the base, and honours a base already at the floor", () => {
+    expect(shrinkToFit(11, AUTO_FIT_MIN, 24, paneOf(760))).toBe(11);
+    expect(shrinkToFit(8, AUTO_FIT_MIN, 24, paneOf(760))).toBe(AUTO_FIT_MIN);
+  });
+});
+
 // Layout contract with @xterm/addon-fit. fit() proposes rows/cols from the
 // PARENT's height/width and only subtracts padding declared on `.xterm` itself
 // (see proposeDimensions in addon-fit). Padding on the parent is therefore
@@ -63,6 +100,12 @@ describe("terminal host layout (addon-fit contract)", () => {
 
   it("puts the inset on .xterm, where fit() accounts for it", () => {
     expect(rule(".term-host .xterm")).toMatch(/padding:/);
+  });
+
+  it("fades exactly the top inset — a longer fade would grey out the first row", () => {
+    const fade = rule(".term-host").match(/mask-image:linear-gradient\(180deg,transparent,#000 (\d+)px\)/);
+    const padTop = rule(".term-host .xterm").match(/padding:\s*(\d+)px/);
+    expect(fade?.[1]).toBe(padTop?.[1]);
   });
 
   it("fades only the padding strip, not whole rows of text", () => {

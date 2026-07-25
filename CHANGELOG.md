@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-07-25
+
+### Fixed
+
+- **Tiled panes show real output again.** With three or four agents on screen,
+  each pane rendered about twelve terminal rows — and an agent CLI spends
+  roughly seven of them on its own prompt box and status line, so almost no
+  conversation was visible. Tidy tiling reserved space for the command bar a
+  second time when the canvas box had already excluded it, costing about 84px
+  (three rows) per row of tiles, and the terminal's inset was wider than it
+  needed to be.
+- **Pane text shrinks instead of clipping when a tile gets short.** A pane below
+  twenty rows now steps its font down to fit, never more than 4px under the size
+  set in Settings and never below 12px, so a crowded canvas stays readable
+  without overruling the preference.
+- **Agents spawned from the command bar honour the saved permission mode.** The
+  inline +Agent menu always booted them in manual mode, even right after the
+  spawn modal launched one with permissions skipped. The menu now carries the
+  toggle itself, shared with the modal and the wizard, and applies each CLI's
+  own flag (Claude Code, Codex, Gemini, Qwen, Aider, Copilot).
+
 ## [0.5.1] - 2026-07-23
 
 ### Fixed

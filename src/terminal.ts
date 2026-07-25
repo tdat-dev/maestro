@@ -32,9 +32,12 @@ export interface TerminalHandle {
   snapshot(lines?: number): string;
 }
 
-/** Floor for auto-fit: below this the output is there but unreadable, so a very
- *  short pane keeps the floor and clips instead of shrinking forever. */
-export const AUTO_FIT_MIN = 10;
+/** Hard floor for auto-fit: below this the output is there but unreadable, so a
+ *  very short pane keeps the floor and clips instead of shrinking forever. */
+export const AUTO_FIT_MIN = 12;
+/** …and auto-fit never drops more than this far below the size the user picked.
+ *  It is a nudge for a cramped tile, not a licence to overrule the setting. */
+export const AUTO_FIT_DROP = 4;
 
 /**
  * Largest size in [`min`, `base`] whose measured row count reaches `target`,
@@ -275,8 +278,9 @@ export function mountTerminal(
     return term.rows;
   };
   const fitToBox = () => {
-    if (autoRows > 0) shrinkToFit(baseFont, AUTO_FIT_MIN, autoRows, measureAt);
-    else measureAt(baseFont);
+    if (autoRows > 0) {
+      shrinkToFit(baseFont, Math.max(AUTO_FIT_MIN, baseFont - AUTO_FIT_DROP), autoRows, measureAt);
+    } else measureAt(baseFont);
   };
 
   const ro = new ResizeObserver(() => {

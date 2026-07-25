@@ -71,9 +71,12 @@ describe("shrinkToFit", () => {
     expect(seen[seen.length - 1]).toBe(size);
   });
 
-  it("never grows past the base, and honours a base already at the floor", () => {
-    expect(shrinkToFit(11, AUTO_FIT_MIN, 24, paneOf(760))).toBe(11);
-    expect(shrinkToFit(8, AUTO_FIT_MIN, 24, paneOf(760))).toBe(AUTO_FIT_MIN);
+  it("never grows past the base — a roomy pane keeps a small base small", () => {
+    expect(shrinkToFit(AUTO_FIT_MIN + 1, AUTO_FIT_MIN, 24, paneOf(760))).toBe(AUTO_FIT_MIN + 1);
+  });
+
+  it("clamps a base under the floor up to it rather than below", () => {
+    expect(shrinkToFit(AUTO_FIT_MIN - 2, AUTO_FIT_MIN, 24, paneOf(760))).toBe(AUTO_FIT_MIN);
   });
 });
 

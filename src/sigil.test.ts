@@ -191,7 +191,9 @@ describe("sigilAlpha", () => {
     expect(sigilAlpha(1)).toBe(MAX_ALPHA);
     expect(sigilAlpha(4)).toBe(MAX_ALPHA);
     expect(sigilAlpha(-1)).toBe(0);
-    expect(MAX_ALPHA).toBeLessThan(0.35);
+    // A hairline, never a wash. Half is the point where the sigil would start
+    // reading as a surface rather than as a line drawn behind one.
+    expect(MAX_ALPHA).toBeLessThan(0.5);
   });
 
   it("scales the slider linearly below it", () => {

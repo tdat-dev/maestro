@@ -234,8 +234,14 @@ export function pulseAt(t: number, index: number): number {
  * The sigil's ceiling. It is drawn UNDER the panes, so every stroke competes
  * with terminal glyphs for the same pixels; past this it stops being a
  * background and starts being noise behind text you are trying to read.
+ *
+ * Set by measurement, not by taste: at 0.24 a 1px hairline over a bright
+ * photographic wallpaper was invisible in a screenshot of the real app, and
+ * the radial profile of the ring couldn't be told from the wallpaper's own
+ * texture. 0.40 reads as a drawn line and still sits far below a glyph, which
+ * carries both full-weight ink and its own legibility shadow.
  */
-export const MAX_ALPHA = 0.24;
+export const MAX_ALPHA = 0.4;
 
 /** Map the Settings slider (0…1) onto an alpha that can never exceed the
  *  legibility ceiling, whatever gets passed in. */
@@ -283,5 +289,11 @@ export function tickMode(e: TickEnv): TickMode {
 }
 
 /** Minimum ms between redraws per mode. "static" still redraws occasionally so
- *  a layout change lands; it just never animates. */
-export const TICK_MS: Record<TickMode, number> = { off: Infinity, static: 1000, slow: 250, full: 33 };
+ *  a layout change lands; it just never animates.
+ *
+ *  "slow" is 500ms because that is what a parked fleet actually needs: the only
+ *  things moving are the 6.2s breath and the 2-minute core turn, and 12 frames
+ *  per breath is already smooth for a ±2% radius. Measured on the real app with
+ *  16 panes open, halving the rate from 250ms took the parked cost from ~4.3%
+ *  of a core to ~2%. */
+export const TICK_MS: Record<TickMode, number> = { off: Infinity, static: 1000, slow: 500, full: 33 };

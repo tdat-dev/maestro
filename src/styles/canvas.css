@@ -26,7 +26,10 @@
 .grid.canvas .pane {
   position: absolute;
   z-index: 2;
-  border-radius: 12px;
+  /* Square: tiled panes sit flush (canvas.ts tiles at gap 0), and a rounded
+     corner would cut four notches of wallpaper into every join. The focus
+     stage — the one pane that stands alone — takes its radius back below. */
+  border-radius: 0;
   overflow: hidden;
   /* The plate behind the glyphs, handed down by background.ts so the frame and
      the terminal agree. At the default "Glass" opacity it is fully transparent
@@ -52,6 +55,15 @@
 }
 .grid.canvas[data-glass="1"][data-tone="dark"] .term-host .xterm-rows {
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.75);
+}
+/* With no gap between panes a border-colour change is too quiet to say which
+   pane has the keyboard. Lift the one whose terminal is focused above its
+   neighbours so its ring draws over their edges. */
+.grid.canvas .pane:has(.xterm.focus) {
+  z-index: 4;
+  border-color: color-mix(in oklab, var(--accent) 45%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 30%, transparent),
+    0 26px 56px -24px rgba(0, 0, 0, 0.9);
 }
 .grid.canvas .pane:hover {
   border-color: rgba(255, 255, 255, 0.18);

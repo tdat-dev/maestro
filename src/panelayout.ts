@@ -41,7 +41,9 @@ export function applyLayout(ws: Workspace): void {
   for (const [id, p] of ws.panes) {
     let t = ws.layout.get(id);
     if (!t) {
-      const slot = nextSlot([...ws.layout.values()], { w: 540, h: 384, gap: 12 }, area);
+      // gap 0: a freshly spawned pane lands flush against its neighbours, the
+      // same continuous surface Tidy produces.
+      const slot = nextSlot([...ws.layout.values()], { w: 540, h: 384, gap: 0 }, area);
       t = { x: slot.x, y: slot.y, w: 540, h: 384 };
       ws.layout.set(id, t);
     }

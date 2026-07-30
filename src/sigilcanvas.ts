@@ -50,11 +50,15 @@ interface SigilPref {
   intensity: number;
 }
 const DEFAULT_PREF: SigilPref = { on: true, intensity: 0.8 };
-const prefKey = (ws: Workspace) => `maestro.sigil.${ws.dir ?? ws.id}`;
+// App-wide, like the wallpaper it is drawn on: everything in Settings →
+// Appearance describes what Maestro looks like, not what a project contains.
+// `maestro.sigil.<dir|id>` is what the per-workspace era wrote — read as a
+// fallback so an existing choice survives, and cleared on the next write.
+const KEY = "maestro.sigil";
+const LEGACY_KEY = `${KEY}.`;
 
-export function sigilPref(ws: Workspace): SigilPref {
-  const raw = localStorage.getItem(prefKey(ws));
-  if (!raw) return DEFAULT_PREF;
+function parsePref(raw: string | null): SigilPref | null {
+  if (!raw) return null;
   try {
     const o = JSON.parse(raw) as Partial<SigilPref>;
     return {
@@ -62,13 +66,30 @@ export function sigilPref(ws: Workspace): SigilPref {
       intensity: typeof o.intensity === "number" ? Math.min(1, Math.max(0, o.intensity)) : DEFAULT_PREF.intensity,
     };
   } catch {
-    return DEFAULT_PREF;
+    return null;
   }
 }
 
-function writePref(ws: Workspace, pref: SigilPref): void {
+export function sigilPref(): SigilPref {
+  const mine = parsePref(localStorage.getItem(KEY));
+  if (mine) return mine;
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k?.startsWith(LEGACY_KEY)) {
+      const old = parsePref(localStorage.getItem(k));
+      if (old) return old;
+    }
+  }
+  return DEFAULT_PREF;
+}
+
+function writePref(pref: SigilPref): void {
   try {
-    localStorage.setItem(prefKey(ws), JSON.stringify(pref));
+    localStorage.setItem(KEY, JSON.stringify(pref));
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(LEGACY_KEY)) localStorage.removeItem(k);
+    }
   } catch {
     /* quota — the setting just won't survive a restart */
   }
@@ -214,8 +235,8 @@ function drawSigil(ws: Workspace, t: number): void {
   if (!ctx) return;
 
   const g = sigilGeometry({ width: w, height: h }, agents);
-  const tone = paneTone(ws);
-  const a0 = sigilAlpha(sigilPref(ws).intensity);
+  const tone = paneTone();
+  const a0 = sigilAlpha(sigilPref().intensity);
   const ink = (pen: Pen, weight: number) => strokeOf(tone, pen, a0 * weight);
 
   ctx.lineCap = "butt";
@@ -391,7 +412,7 @@ function modeFor(ws: Workspace | null): { ws: Workspace | null; mode: TickMode }
     }
   }
   const mode = tickMode({
-    enabled: sigilPref(ws).on,
+    enabled: sigilPref().on,
     visible: document.visibilityState !== "hidden",
     wsActive: !ws.gridEl.hidden,
     canvasMode: ws.gridEl.classList.contains("canvas"),
@@ -457,12 +478,12 @@ export function initSigil(): void {
 
   const toggle = document.getElementById("sigilOn") as HTMLInputElement | null;
   toggle?.addEventListener("change", () => {
-    if (activeWs) writePref(activeWs, { ...sigilPref(activeWs), on: toggle.checked });
+    writePref({ ...sigilPref(), on: toggle.checked });
   });
 
   const range = document.getElementById("sigilIntensity") as HTMLInputElement | null;
   range?.addEventListener("input", () => {
-    if (activeWs) writePref(activeWs, { ...sigilPref(activeWs), intensity: Number(range.value) / 100 });
+    writePref({ ...sigilPref(), intensity: Number(range.value) / 100 });
     markSigil();
   });
 
@@ -473,9 +494,9 @@ export function initSigil(): void {
   refreshSigil();
 }
 
-/** Reflect the active workspace's sigil preference in the Appearance controls. */
+/** Reflect the saved sigil preference in the Appearance controls. */
 export function markSigil(): void {
-  const pref = activeWs ? sigilPref(activeWs) : DEFAULT_PREF;
+  const pref = sigilPref();
   const toggle = document.getElementById("sigilOn") as HTMLInputElement | null;
   if (toggle) toggle.checked = pref.on;
   const range = document.getElementById("sigilIntensity") as HTMLInputElement | null;

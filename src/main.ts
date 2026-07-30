@@ -237,7 +237,7 @@ configureSession({ createWorkspace, createAgent });
 configureScheduler({ closeSettings, loadTemplates, launchPreset });
 configurePane({ errMsg, updateCount, showWorkspace, wirePaneSearch });
 configureWorkspace({ createAgent, removeAgent, updateCount, showWorkspace, showView, syncResumeAll, setFileTreeRoot: (dir) => fileTree?.setRoot(dir), applyBackground });
-configureBackground({ getActiveWs: () => activeWs, toast: paneToast, onLookChange: retheme });
+configureBackground({ toast: paneToast, onLookChange: retheme });
 configureZoomUi({ getActiveWs: () => activeWs, applyZoom: (ws, z) => void applyZoom(ws, z), note: topNote });
 configureSpawnMenu({ spawnCrew, isPresetAvailable, refreshCliAvailability });
 configureBridges({ activateWorkspace, clearAttention, setStatus, updateCount, stopRecording });

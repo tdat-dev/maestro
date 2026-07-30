@@ -31,7 +31,7 @@ import { getZoom, setZoom, paneFont, autoFitRows } from "./zoom";
 /** Re-theme every live pane in `ws` — called when the background, the tone, or
  *  the opacity changes, since all three decide the same palette. */
 export function retheme(ws: Workspace): void {
-  const look = paneLook(ws);
+  const look = paneLook();
   for (const pane of ws.panes.values()) pane.term.setLook(look);
 }
 
@@ -208,7 +208,7 @@ export function createAgent(
     {
       openLink: (url) => void openExternal(url).catch(() => {}),
       fontSize: paneFont(ws),
-      look: paneLook(ws),
+      look: paneLook(),
     },
   );
   // Keep a tiled pane readable: an agent CLI spends ~7 rows on its prompt box

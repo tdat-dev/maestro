@@ -112,6 +112,24 @@
    stay equal to the top padding — any taller and it eats the first row. */
 .term-host .xterm{height:100%;padding:8px 12px}
 .term-host .xterm-viewport{overflow-y:auto}
+/* Kill the opaque plate xterm's OWN stylesheet puts on this element:
+   `.xterm .xterm-viewport{background-color:#000}`, commented there as "required
+   on OS X so the scroll bar appears fully opaque". xterm 6 moved the themed
+   background to .xterm-scrollable-element (it carries our inline
+   rgba(11,13,18,0) correctly) but left this rule behind, so it is now dead
+   black painted ABOVE .pane — it swallowed the wallpaper whole and a
+   see-through pane screenshotted as #000000. Invisible until P1: against the
+   old opaque #0b0d12 palette, pure black is 3% off and nobody could tell.
+
+   The extra `.xterm` in the selector is load-bearing, not decorative.
+   `.term-host .xterm-viewport` ties xterm's own `.xterm .xterm-viewport` on
+   specificity (0,2,0), and xterm.css loses on source order only in dev: it
+   arrives as a JS-injected <style> from terminal.ts, i.e. AFTER the <link> in
+   index.html. Matching (0,3,0) wins outright, in dev and in a bundled build.
+
+   The plate belongs to .pane (var(--pane-plate), set by background.ts). No
+   layer inside the terminal may paint one of its own. */
+.term-host .xterm .xterm-viewport{background-color:transparent}
 
 /* ---------- maximize / focus one pane ---------- */
 .grid.has-max .pane{display:none}

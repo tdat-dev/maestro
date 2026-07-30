@@ -118,4 +118,20 @@ describe("terminal host layout (addon-fit contract)", () => {
     expect(host).toMatch(/mask-image:/);
     expect(host).not.toMatch(/mask-image:[^;]*\d+%/);
   });
+
+  // See-through panes are the whole point of the canvas wallpaper, and xterm
+  // ships a rule that quietly defeats them. A screenshot of a "glass" pane came
+  // back #000000 — not the plate, not the image, dead black — because
+  // .xterm-viewport paints over .pane's background.
+  it("neutralises xterm's opaque viewport plate", () => {
+    // Guard the premise too: if a future xterm drops the rule, this fails and
+    // tells us the override became dead weight, instead of silently rotting.
+    const vendor = readFileSync("node_modules/@xterm/xterm/css/xterm.css", "utf8");
+    expect(vendor).toMatch(/\.xterm\s+\.xterm-viewport\s*\{[^}]*background-color:\s*#000/);
+    // The winning selector must carry the extra `.xterm`. Without it the two
+    // rules tie at (0,2,0) and xterm.css takes it on source order — it is
+    // injected by terminal.ts's JS import, after index.html's <link>. That tie
+    // is exactly how the fix shipped once and changed nothing on screen.
+    expect(rule(".term-host .xterm .xterm-viewport")).toMatch(/background-color:\s*transparent/);
+  });
 });

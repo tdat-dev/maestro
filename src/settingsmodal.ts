@@ -11,6 +11,7 @@ import {
   getTermFontSize,
   setTermFontSize,
 } from "./settings";
+import { paneFont } from "./zoom";
 import { checkForUpdates } from "./updater";
 import { getVersion } from "@tauri-apps/api/app";
 import { workspaces } from "./appstate";
@@ -34,9 +35,13 @@ function applyTermFontSize(n: number) {
   const clamped = Math.min(TERM_FONT_MAX, Math.max(TERM_FONT_MIN, n));
   setTermFontSize(clamped);
   syncFontLabel();
-  // Live-apply to every running pane across all workspaces.
-  for (const w of workspaces.values())
-    for (const pane of w.panes.values()) pane.term.setFontSize(clamped);
+  // Live-apply to every running pane across all workspaces — through each
+  // workspace's own zoom, or a zoomed canvas would snap back to 100% the moment
+  // someone nudged this stepper.
+  for (const w of workspaces.values()) {
+    const font = paneFont(w);
+    for (const pane of w.panes.values()) pane.term.setFontSize(font);
+  }
 }
 
 /** Highlight a settings section's nav item and scroll it into view. Sections

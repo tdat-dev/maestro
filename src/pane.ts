@@ -18,7 +18,6 @@ import {
   recordStop,
 } from "./ipc";
 import { branchName } from "./worktree";
-import { getTermFontSize } from "./settings";
 import { launchSpec } from "./crew";
 import { type Pane, type Workspace, type AgentSpec } from "./panetypes";
 import { layoutGrid, wirePaneDrag, wirePaneRename, toggleMax } from "./panelayout";
@@ -27,12 +26,32 @@ import { openReplays, REC_DIR_REL } from "./replay";
 import { workspaces, newId } from "./appstate";
 import { basename } from "./workspaces";
 import { paneLook } from "./background";
+import { getZoom, setZoom, paneFont, autoFitRows } from "./zoom";
 
 /** Re-theme every live pane in `ws` — called when the background, the tone, or
  *  the opacity changes, since all three decide the same palette. */
 export function retheme(ws: Workspace): void {
   const look = paneLook(ws);
   for (const pane of ws.panes.values()) pane.term.setLook(look);
+}
+
+/** Re-render every pane in `ws` at `next` zoom (or the saved one, when called
+ *  with nothing — e.g. after restoring a workspace). Returns the zoom applied.
+ *
+ *  Order matters: the auto-fit floor is set BEFORE the font, so the new size is
+ *  measured under the rule that will govern it rather than under the old one.
+ *  See autoFitRows for why zooming stands the floor down. */
+export function applyZoom(ws: Workspace, next?: number): number {
+  const zoom = next === undefined ? getZoom(ws) : setZoom(ws, next);
+  const rows = autoFitRows(PANE_MIN_ROWS, zoom);
+  const font = paneFont(ws);
+  for (const pane of ws.panes.values()) {
+    pane.term.setAutoFit(rows);
+    pane.term.setFontSize(font);
+    // setFontSize already refits and reports cols/rows through mountTerminal's
+    // onResize, which is the path that resizes the PTY — no second call needed.
+  }
+  return zoom;
 }
 
 let onErrMsg: (e: unknown) => string = (e) => String(e);
@@ -188,13 +207,14 @@ export function createAgent(
     },
     {
       openLink: (url) => void openExternal(url).catch(() => {}),
-      fontSize: getTermFontSize(),
+      fontSize: paneFont(ws),
       look: paneLook(ws),
     },
   );
   // Keep a tiled pane readable: an agent CLI spends ~7 rows on its prompt box
   // and status line, so anything under this floor shows no conversation at all.
-  term.setAutoFit(PANE_MIN_ROWS);
+  // Stands down once the user has zoomed — see autoFitRows.
+  term.setAutoFit(autoFitRows(PANE_MIN_ROWS, getZoom(ws)));
 
   // The persona name owns the title bar now; surface the terminal's own title
   // as a hover tooltip instead of overwriting the name.

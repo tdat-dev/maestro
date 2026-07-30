@@ -6,7 +6,7 @@
 
 import { tileToFit, nextSlot, serializeLayout } from "./canvas";
 import { resizePty } from "./ipc";
-import { getTermFontSize } from "./settings";
+import { paneFont } from "./zoom";
 import { type Pane, type Workspace } from "./panetypes";
 
 let onBcastChange: () => void = () => {};
@@ -90,7 +90,7 @@ export function focusPane(ws: Workspace, pane: Pane, ev?: MouseEvent): void {
   ws.gridEl.classList.add("has-focus");
   renderRail(ws, pane);
   requestAnimationFrame(() => {
-    pane.term.setFontSize(Math.min(20, getTermFontSize() + 2)); // bigger on the stage
+    pane.term.setFontSize(paneFont(ws, 2)); // bigger on the stage, still zoomed
     const s = pane.term.fit();
     if (pane.running) void resizePty(pane.id, s.cols, s.rows).catch(() => {});
     pane.term.focus();
@@ -106,7 +106,7 @@ export function exitFocus(ws: Workspace): void {
   }
   ws.gridEl.querySelector(".cloud-rail")?.remove();
   requestAnimationFrame(() => {
-    focused?.term.setFontSize(getTermFontSize()); // restore the settings font size
+    focused?.term.setFontSize(paneFont(ws)); // back to the tiled (zoomed) size
     for (const p of ws.panes.values()) {
       const s = p.term.fit();
       if (p.running) void resizePty(p.id, s.cols, s.rows).catch(() => {});

@@ -17,6 +17,7 @@ import { type Workspace, type AgentSpec } from "./panetypes";
 import { workspaces, activeWs } from "./appstate";
 import { basename } from "./workspaces";
 import { addRecent } from "./recents";
+import { DIRECTOR_LAWS } from "./laws";
 
 let onCreateAgent: (
   ws: Workspace,
@@ -41,7 +42,6 @@ let onConfirmModal: (opts: {
   Promise.resolve({ ok: false, dontAsk: false, value: "" });
 let onIsPresetAvailable: (program: string) => boolean = () => true;
 let onRefreshCliAvailability: () => void = () => {};
-let conductorLaws = "";
 
 export function configureSpawnModal(deps: {
   createAgent: (
@@ -61,7 +61,6 @@ export function configureSpawnModal(deps: {
   }) => Promise<{ ok: boolean; dontAsk: boolean; value: string }>;
   isPresetAvailable: (program: string) => boolean;
   refreshCliAvailability: () => void;
-  conductorLaws: string;
 }): void {
   onCreateAgent = deps.createAgent;
   onCreateWorkspace = deps.createWorkspace;
@@ -69,7 +68,6 @@ export function configureSpawnModal(deps: {
   onConfirmModal = deps.confirmModal;
   onIsPresetAvailable = deps.isPresetAvailable;
   onRefreshCliAvailability = deps.refreshCliAvailability;
-  conductorLaws = deps.conductorLaws;
 }
 
 const STORE_KEY = "maestro.crew";
@@ -211,19 +209,21 @@ export async function spawnCrew(
   // there is only one worker of that CLI.
   const conductorIdx = conductor ? 0 : -1;
   // Each pane gets a short persona name (Ana, Bob, …), unique in this workspace;
-  // the conductor keeps the "Conductor" label. Renameable from the title bar.
+  // the director keeps the "Director" label — which is also the name the fleet
+  // tools address it by, so it has to match what the header shows.
+  // Renameable from the title bar.
   const taken: string[] = [...ws.panes.values()].map((x) => x.spec.name);
   let conductorIsClaude = false;
 
   const boots = fleet.map((p: CliPreset, i) => {
     if (i === conductorIdx) {
       conductorIsClaude = p.badge === "claude";
-      taken.push("Conductor");
+      taken.push("Director");
       return onCreateAgent(ws, {
         program: p.program,
         args: effectiveArgs(p, skipPerms),
         cwd: dir,
-        name: "Conductor",
+        name: "Director",
         badge: p.badge,
         role: "conductor",
         ...onCliLook(p.badge, p.label),
@@ -246,13 +246,13 @@ export async function spawnCrew(
   // at once and spike the CPU (panes already appeared above as "queued…").
   await runLimited(boots, MAX_CONCURRENT_BOOT);
 
-  // A Claude conductor gets CONDUCTOR_LAWS via --append-system-prompt at launch.
-  // Other CLIs have no such flag, so prime the conductor by typing the same
+  // A Claude director gets DIRECTOR_LAWS via --append-system-prompt at launch.
+  // Other CLIs have no such flag, so prime the director by typing the same
   // instructions once it reaches its prompt.
   if (conductor && !conductorIsClaude) {
     window.setTimeout(() => {
-      const pane = [...ws.panes.values()].find((x) => x.spec.name === "Conductor");
-      if (pane && pane.running) void sendInput(pane.id, conductorLaws + "\r").catch(() => {});
+      const pane = [...ws.panes.values()].find((x) => x.spec.role === "conductor");
+      if (pane && pane.running) void sendInput(pane.id, DIRECTOR_LAWS + "\r").catch(() => {});
     }, 3500);
   }
 }

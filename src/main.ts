@@ -48,11 +48,6 @@ import { setFileOpener, setDiffOpener } from "./agentbridge";
 // No PTY output for this long while alive ⇒ the agent is idle (waiting at a prompt).
 const IDLE_MS = 1200;
 
-// The conductor role: orchestrate the fleet, do not implement. Single line, free
-// of cmd.exe metacharacters so it survives the cmd /c launch path.
-const CONDUCTOR_LAWS =
-  "You are the CONDUCTOR of a Maestro agent fleet, not a worker. Do NOT write code or do tasks yourself. Orchestrate through the maestro MCP tools. When the user gives you a goal: call board_get, break the goal into cards with card_add, then spawn worker agents with agent_spawn and hand each worker a specific card with fleet_send. Track progress with fleet_status and agent_output, read a worker screen when it looks stuck, move cards with card_move, and mark card_done when a worker reports finished. Keep every worker busy and the board current until the goal is complete. Spawn more workers if there is idle capacity and pending work.";
-
 // Per-CLI identity color for the monogram tile (brand-adjacent, distinct on dark).
 const CLI_COLORS: Record<string, string> = {
   claude: "#d97757",
@@ -231,7 +226,7 @@ configureReplay({ paneToast, errMsg, closeSettings });
 initReplay();
 configureDashboard({ errMsg });
 initDashboard();
-configureSpawnModal({ createAgent, createWorkspace, cliLook, confirmModal, isPresetAvailable, refreshCliAvailability, conductorLaws: CONDUCTOR_LAWS });
+configureSpawnModal({ createAgent, createWorkspace, cliLook, confirmModal, isPresetAvailable, refreshCliAvailability });
 configureWizard({ loadCrew, spawnCrew, loadTemplates, saveTemplates, templateSummary, confirmModal, renderCrew });
 configureSession({ createWorkspace, createAgent });
 configureScheduler({ closeSettings, loadTemplates, launchPreset });

@@ -26,6 +26,7 @@ import { openReplays, REC_DIR_REL } from "./replay";
 import { workspaces, newId } from "./appstate";
 import { basename } from "./workspaces";
 import { paneLook } from "./background";
+import { MAESTRO_LAWS, DIRECTOR_LAWS } from "./laws";
 import { getZoom, setZoom, paneFont, autoFitRows } from "./zoom";
 
 /** Re-theme every live pane in `ws` — called when the background, the tone, or
@@ -69,17 +70,6 @@ export function configurePane(deps: {
   onShowWorkspace = deps.showWorkspace;
   onWirePaneSearch = deps.wirePaneSearch;
 }
-
-// The board protocol every Maestro-spawned Claude agent is forced to follow
-// (injected via --append-system-prompt). One line, and free of cmd.exe
-// metacharacters (& | < > % ! ^ ( ) " ') so it survives the cmd /c launch path.
-const MAESTRO_LAWS =
-  "You are running inside Maestro, which gives this workspace a shared kanban board through the maestro MCP tools. For any non-trivial task you MUST plan on the board before implementing. First call board_get. Then for each deliverable call card_add in the Proposed list with a short title, a one-line desc, and the small concrete steps as the checklist array. Prefer few big cards over many tiny ones. Wait for the user to approve by moving cards to To do. While working, card_move your card to Doing when you start it and card_done with a one-line summary when it is finished. Keep card titles stable so the board can track them.";
-
-// The conductor role: orchestrate the fleet, do not implement. Single line, free
-// of cmd.exe metacharacters so it survives the cmd /c launch path.
-const CONDUCTOR_LAWS =
-  "You are the CONDUCTOR of a Maestro agent fleet, not a worker. Do NOT write code or do tasks yourself. Orchestrate through the maestro MCP tools. When the user gives you a goal: call board_get, break the goal into cards with card_add, then spawn worker agents with agent_spawn and hand each worker a specific card with fleet_send. Track progress with fleet_status and agent_output, read a worker screen when it looks stuck, move cards with card_move, and mark card_done when a worker reports finished. Keep every worker busy and the board current until the goal is complete. Spawn more workers if there is idle capacity and pending work.";
 
 const enc = new TextEncoder();
 
@@ -326,12 +316,12 @@ export function createAgent(
         cwd = spec.worktree;
       }
       // Enforce Maestro's protocol at the system-prompt level so a Claude agent
-      // MUST follow it (not a soft MCP hint, not a button). A conductor gets the
-      // orchestration prompt; every other Claude gets the plan-first worker one.
+      // MUST follow it (not a soft MCP hint, not a button). The director gets the
+      // dispatch prompt; every other Claude gets the plan-first worker one.
       // Only claude exposes --append-system-prompt; other CLIs still get the MCP
       // tools + server instructions. New array — never mutate spec.args, or a
       // restart would append the flag again and again.
-      const laws = spec.role === "conductor" ? CONDUCTOR_LAWS : MAESTRO_LAWS;
+      const laws = spec.role === "conductor" ? DIRECTOR_LAWS : MAESTRO_LAWS;
       const args =
         spec.badge === "claude" ? [...spec.args, "--append-system-prompt", laws] : spec.args;
       // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows

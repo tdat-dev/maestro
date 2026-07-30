@@ -15,6 +15,7 @@ let onSpawnCrew: (
   dir: string | null,
   skipPerms: boolean,
   mode: "new" | "current",
+  conductor?: boolean,
 ) => Promise<void> = async () => {};
 let onIsPresetAvailable: (program: string) => boolean = () => true;
 let onRefreshCliAvailability: () => void = () => {};
@@ -25,6 +26,7 @@ export function configureSpawnMenu(deps: {
     dir: string | null,
     skipPerms: boolean,
     mode: "new" | "current",
+    conductor?: boolean,
   ) => Promise<void>;
   isPresetAvailable: (program: string) => boolean;
   refreshCliAvailability: () => void;
@@ -73,8 +75,13 @@ const CSS = `
 .sm-perm{display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px 7px;border-radius:8px;cursor:pointer}
 .sm-perm:hover{background:var(--surface-2)}
 .sm-perm input{accent-color:var(--accent);width:14px;height:14px;flex:none;margin:0}
-.sm-perm .t{font-size:12px;color:var(--text-2)}
+.sm-perm .t{font-size:12px;line-height:1.45;color:var(--text-2)}
 .sm-perm .t b{color:var(--text);font-weight:600}
+/* Director row: disabled once this workspace already has one — two bosses is
+   not a mode, it's a bug. */
+.sm-perm.off{opacity:.45;cursor:default}
+.sm-perm.off:hover{background:none}
+.sm-dir .t b{color:var(--accent)}
 .sm-foot{display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding:0 4px}
 .sm-total{font-size:12px;color:var(--muted)}
 .sm-total b{color:var(--text);font-variant-numeric:tabular-nums}
@@ -96,6 +103,9 @@ function injectStyles(): void {
 // Per-preset spawn count for this open menu; zeroed out after every Spawn.
 const counts: Record<string, number> = {};
 let customCount = 0;
+// Director converts the first agent of this batch instead of adding one — so
+// ticking it alone (all counts 0) spawns exactly one Claude director.
+let director = false;
 
 let menuEl: HTMLElement;
 let crewEl: HTMLElement;
@@ -104,9 +114,18 @@ let customStepEl: HTMLElement;
 let totalEl: HTMLElement;
 let spawnBtnEl: HTMLButtonElement;
 let skipPermsEl: HTMLInputElement;
+let dirRowEl: HTMLElement;
+let dirEl: HTMLInputElement;
 
 function total(): number {
-  return Object.values(counts).reduce((s, n) => s + n, 0) + customCount;
+  const workers = Object.values(counts).reduce((s, n) => s + n, 0) + customCount;
+  return director && workers === 0 ? 1 : workers; // lone director
+}
+
+/** True once this workspace has a director — a second one would just fight it
+ *  for the same crew. */
+function hasDirector(): boolean {
+  return [...(activeWs?.panes.values() ?? [])].some((p) => p.spec.role === "conductor");
 }
 
 function renderCounts(): void {
@@ -158,8 +177,24 @@ function refreshAvailability(): void {
 function resetMenu(): void {
   for (const key of Object.keys(counts)) counts[key] = 0;
   customCount = 0;
+  director = false;
+  dirEl.checked = false;
   customInputEl.value = "";
   renderCounts();
+}
+
+/** Reflect whether a director can still be added to the active workspace. */
+function refreshDirectorRow(): void {
+  const taken = hasDirector();
+  if (taken) {
+    director = false;
+    dirEl.checked = false;
+  }
+  dirEl.disabled = taken;
+  dirRowEl.classList.toggle("off", taken);
+  dirRowEl.title = taken
+    ? "This workspace already has a Director"
+    : "Makes the first agent of this batch the Director instead of a worker. Tick it on its own to add a lone Director to the crew you already have.";
 }
 
 function closeMenu(): void {
@@ -170,9 +205,10 @@ async function doSpawn(): Promise<void> {
   if (total() === 0) return;
   const crewState: CrewState = { counts: { ...counts }, custom: customInputEl.value, customCount };
   const skipPerms = skipPermsEl.checked;
+  const asDirector = director;
   closeMenu();
   resetMenu();
-  await onSpawnCrew(crewState, activeWs?.dir ?? null, skipPerms, "current");
+  await onSpawnCrew(crewState, activeWs?.dir ?? null, skipPerms, "current", asDirector);
 }
 
 /** Build `#spawnMenu` and mount it beside `#cbAddAgent` (wrapping the button in
@@ -202,6 +238,10 @@ export function initSpawnMenu(): void {
         <button type="button" data-inc aria-label="One more">+</button>
       </div>
     </div>
+    <label class="sm-perm sm-dir">
+      <input type="checkbox">
+      <span class="t"><b>Director</b> · hands out the work</span>
+    </label>
     <label class="sm-perm" title="Boots each CLI with its own skip-approvals flag (claude --dangerously-skip-permissions, codex --yolo, …)">
       <input type="checkbox">
       <span class="t"><b>Skip permission prompts</b> · remembered</span>
@@ -216,7 +256,14 @@ export function initSpawnMenu(): void {
   customStepEl = menuEl.querySelector('.sm-step[data-cli="__custom"]') as HTMLElement;
   totalEl = menuEl.querySelector(".sm-total b") as HTMLElement;
   spawnBtnEl = menuEl.querySelector(".sm-spawn") as HTMLButtonElement;
-  skipPermsEl = menuEl.querySelector(".sm-perm input") as HTMLInputElement;
+  dirRowEl = menuEl.querySelector(".sm-dir") as HTMLElement;
+  dirEl = dirRowEl.querySelector("input") as HTMLInputElement;
+  skipPermsEl = menuEl.querySelector(".sm-perm:not(.sm-dir) input") as HTMLInputElement;
+
+  dirEl.addEventListener("change", () => {
+    director = dirEl.checked;
+    renderCounts(); // a lone director is still one agent to spawn
+  });
 
   // Shared with the spawn modal, so the mode chosen in either place is the one
   // the next agent boots in — wherever it was spawned from.
@@ -233,6 +280,7 @@ export function initSpawnMenu(): void {
   });
 
   spawnBtnEl.addEventListener("click", () => void doSpawn());
+  refreshDirectorRow();
 
   addBtn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -241,6 +289,7 @@ export function initSpawnMenu(): void {
     if (opening) {
       onRefreshCliAvailability();
       refreshAvailability();
+      refreshDirectorRow(); // the crew may have gained (or lost) a director
       skipPermsEl.checked = loadCrew().skipPerms; // the modal may have changed it
     }
   });

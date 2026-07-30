@@ -428,6 +428,9 @@ document.addEventListener("keydown", (e) => {
   } else if (k === "l") {
     e.preventDefault();
     dockToggle("fleet");
+  } else if (k === "m") {
+    e.preventDefault();
+    dockToggle("flow");
   }
 });
 

@@ -10,9 +10,10 @@ import { createKanban } from "./kanban";
 import { createPomodoro } from "./pomodoro";
 import { createDiffView } from "./diffview";
 import { createFleet } from "./fleet";
+import { createFlow } from "./flow";
 import type { DockContext } from "./dockstore";
 
-export type ToolId = "kanban" | "pomodoro" | "diff" | "fleet";
+export type ToolId = "kanban" | "pomodoro" | "diff" | "fleet" | "flow";
 
 interface ToolController {
   mount(body: HTMLElement, actions: HTMLElement): void;
@@ -27,9 +28,10 @@ const TITLES: Record<ToolId, string> = {
   pomodoro: "Pomodoro",
   diff: "Changes",
   fleet: "Fleet",
+  flow: "Flow",
 };
 
-const TOOL_IDS: ToolId[] = ["kanban", "pomodoro", "diff", "fleet"];
+const TOOL_IDS: ToolId[] = ["kanban", "pomodoro", "diff", "fleet", "flow"];
 
 let panel: HTMLElement | null = null;
 let titleEl: HTMLElement | null = null;
@@ -110,6 +112,7 @@ export function initDock() {
   tools.pomodoro = createPomodoro();
   tools.diff = createDiffView();
   tools.fleet = createFleet();
+  tools.flow = createFlow();
 
   TOOL_IDS.forEach((id) => {
     const body = document.createElement("div");
@@ -135,6 +138,9 @@ export function initDock() {
   // Live "needs you" count badge on the fleet rail button.
   const fleetBtn = railBtn("fleet");
   if (fleetBtn) tools.fleet.attachBadge?.(fleetBtn);
+  // Unread hand-off count on the flow rail button (only while it's closed).
+  const flowBtn = railBtn("flow");
+  if (flowBtn) tools.flow.attachBadge?.(flowBtn);
 
   panel.querySelector(".dp-close")?.addEventListener("click", dockClose);
 

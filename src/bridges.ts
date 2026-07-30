@@ -23,6 +23,7 @@ import { initFleetBridge } from "./fleetbridge";
 import { spawnForConductor } from "./spawnmodal";
 import { paneStatus } from "./fleet";
 import { showDelegation, showDelegationToast } from "./delegation";
+import { pushFlow } from "./flow";
 
 const wsHost = document.getElementById("workspaces") as HTMLElement;
 
@@ -263,6 +264,19 @@ export function initBridges(): void {
         targets.map((p) => p.spec.name),
         message,
       );
+      // The arc and the toast are gone in 2.6s; the Flow panel keeps the text.
+      const sender = from
+        ? [...ws.panes.values()].find(
+            (p) => p.spec.name.trim().toLowerCase() === from.trim().toLowerCase(),
+          )
+        : undefined;
+      pushFlow({
+        from,
+        to,
+        color: sender?.color,
+        text: message,
+        targets: targets.map((p) => ({ wsId: ws.id, paneId: p.id, name: p.spec.name })),
+      });
     },
     spawn: (dir, req) => void spawnForConductor(dir, req),
   });

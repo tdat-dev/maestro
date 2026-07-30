@@ -44,6 +44,7 @@
 .dock-panel[data-tool="kanban"]{width:min(820px,92vw)}
 .dock-panel[data-tool="pomodoro"]{width:360px}
 .dock-panel[data-tool="diff"]{width:min(600px,86vw)}
+.dock-panel[data-tool="flow"]{width:min(440px,84vw)}
 @keyframes dockSlide{from{transform:translateX(14px);opacity:0}to{transform:none;opacity:1}}
 @media (prefers-reduced-motion:reduce){.dock-panel.open{animation:none}}
 

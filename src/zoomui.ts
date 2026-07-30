@@ -27,11 +27,12 @@ function injectStyle(): void {
   if (document.getElementById(STYLE_ID)) return;
   const s = document.createElement("style");
   s.id = STYLE_ID;
-  // Sits to the left of .tidy-fab (right:16px) and borrows its glass pill look.
+  // Topbar chrome, sitting just before #btnTidy. It used to float over the
+  // canvas at right:104px/top:14px — directly on the top-right pane's own header
+  // buttons. Matching .tb-btn's 30px height keeps the row on one baseline.
   s.textContent = `
-#${PILL_ID}{position:absolute;right:104px;top:14px;z-index:5;display:none;align-items:center;gap:2px;
-  padding:3px 4px;border-radius:9px;background:rgba(16,20,26,.85);backdrop-filter:blur(10px);
-  border:1px solid var(--line-2)}
+#${PILL_ID}{display:none;align-items:center;gap:2px;height:30px;padding:0 3px;flex:none;
+  border-radius:8px;background:var(--surface-1);border:1px solid var(--line-strong)}
 #${PILL_ID}.on{display:inline-flex}
 #${PILL_ID} button{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;
   color:var(--muted);font-size:14px;line-height:1;background:none;border:0;transition:color .15s,background .15s}
@@ -77,7 +78,10 @@ function nudge(dir: 1 | -1, note = false): void {
 
 export function initZoomUi(): void {
   injectStyle();
+  // Two different anchors: the pill is chrome (topbar), Ctrl+wheel is a canvas
+  // gesture (.main). Neither is fatal on its own, so neither aborts the other.
   const main = document.querySelector(".main");
+  const right = document.querySelector(".tb-right");
   if (!main || document.getElementById(PILL_ID)) return;
 
   const host = document.createElement("div");
@@ -88,7 +92,10 @@ export function initZoomUi(): void {
     '<button type="button" data-z="out" aria-label="Zoom out" title="Zoom out — Ctrl+−">−</button>' +
     '<span class="z-n" data-z="reset" role="button" tabindex="0" title="Reset to 100% — Ctrl+0">100%</span>' +
     '<button type="button" data-z="in" aria-label="Zoom in" title="Zoom in — Ctrl++">+</button>';
-  main.appendChild(host);
+  const tidy = right?.querySelector("#btnTidy");
+  if (right && tidy) right.insertBefore(host, tidy);
+  else if (right) right.appendChild(host);
+  else main.appendChild(host); // no topbar (tests, stripped shell) — old home
 
   host.querySelector("[data-z='out']")?.addEventListener("click", () => nudge(-1));
   host.querySelector("[data-z='in']")?.addEventListener("click", () => nudge(1));

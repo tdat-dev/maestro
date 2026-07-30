@@ -121,7 +121,13 @@
         <span class="stat"><b id="agentCount">0</b> total</span>
       </div>
       <span class="clock" id="clock" data-tauri-drag-region hidden>--:--:--</span>
-      
+
+      <!-- Canvas controls. These used to float over the canvas top-right, which
+           is exactly where the top-right pane keeps its own header buttons — the
+           two overlapped and the pane lost. Chrome belongs in the chrome bar.
+           (src/zoomui.ts injects the zoom pill just before this button.) -->
+      <button class="tb-btn" id="btnTidy" title="Tidy — tile panes to fit (Ctrl+Shift+G)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Tidy</button>
+
       <span class="tb-div"></span>
       <button class="tb-pane" id="btnToggleCode" aria-label="Toggle code panel" title="Show / hide code panel  ·  Ctrl+Shift+E"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg></button>
     </div>
@@ -129,9 +135,9 @@
 
 
 
-  <main class="main" id="workspaces">
-    <button class="tidy-fab" id="btnTidy" title="Tidy — tile panes to fit (Ctrl+Shift+G)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Tidy</button>
-  </main>
+  <!-- Nothing floats in here on purpose: every pixel of the canvas belongs to
+       the panes. The canvas controls live in the topbar (.tb-right). -->
+  <main class="main" id="workspaces"></main>
 
   <!-- Code panel (right): lazy file tree + lightweight CodeMirror editor.
        Built by src/filetree.ts and src/editor.ts. -->

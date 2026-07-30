@@ -23,6 +23,21 @@
   -webkit-mask: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent);
   mask: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent);
 }
+/* The fleet sigil (sigilcanvas.ts). Above the wallpaper and the grid overlay,
+   below the panes — so it is only ever seen THROUGH a see-through pane, and
+   the flush tiling needs no gutter cut out for it. Never interactive. */
+.grid.canvas > canvas.sigil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+/* The focus stage covers the canvas and dims what's left; the sigil would only
+   show up as haze behind the scrim. (The draw loop stops in focus mode too —
+   this is the visual half of the same decision.) */
+.grid.canvas.has-focus > canvas.sigil {
+  display: none;
+}
 .grid.canvas .pane {
   position: absolute;
   z-index: 2;

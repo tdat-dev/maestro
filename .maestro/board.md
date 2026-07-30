@@ -1,6 +1,6 @@
 # Board
 
-## Proposed (7)
+## Proposed (4)
 
 - [ ] Login: Gate dashboard web (Rust)
   Bắt session cookie cho dashboard server; đóng lỗ hổng /api/send gõ lệnh vào agent không cần auth.
@@ -35,41 +35,12 @@
   - [ ] Topbar gọn (logo·tabs·live); command bar chrome; token/CSS dùng chung
   - [ ] i18n: chuyển toàn bộ UI sang tiếng Anh
   - [ ] Verify: mọi màn render đúng light? (dark-only) + screenshot review
-- [ ] Canvas P1: Terminal trong suốt — chỉ còn chữ trên nền
-  Bỏ nền đục #0b0d12 của xterm để ảnh nền workspace xuyên qua; auto đảo màu chữ theo độ sáng nền + cho chỉnh tay. Bẫy: WebGL không blend transparent → về #000, phải ép DOM renderer.
-  - [ ] terminal.ts: allowTransparency + theme.background trong suốt (thay '#0b0d12' ở dòng 129)
-  - [ ] KHÔNG attach WebglAddon cho pane trong suốt — tái dùng đường DOM renderer sẵn có (WEBGL_BUDGET / onContextLoss, terminal.ts:169-203); ghi comment lý do + đo lại perf 4 pane
-  - [ ] Nền do AI CLI tự vẽ (ANSI SGR): chọn A) knockout map màu nền tối → transparent, hay B) chấp nhận chỉ ăn với CLI dùng default-bg. Ghi rõ chọn gì, mất highlight nào
-  - [ ] Auto contrast: tính luminance nền (preset/màu/sample ảnh) → đảo TOÀN BỘ ANSI 16 giữa bảng chữ-tối và chữ-sáng, không chỉ foreground
-  - [ ] Manual override trong Settings: light / dark / auto, lưu per-workspace cạnh background spec
-  - [ ] Sàn dễ đọc trên ảnh rối: text-shadow hoặc scrim/backdrop-filter mỏng sau lớp chữ; đo contrast ratio (mục tiêu >=7:1, không dưới 4.5:1)
-  - [ ] Cursor, selection highlight, ring pane focus phải còn thấy ở cả 2 theme
-  - [ ] Slider opacity per-workspace trong Settings → Appearance (mặc định 0 = trong suốt hẳn)
-  - [ ] Test: logic chọn theme theo luminance; tsc + suite hiện có xanh
-  - [ ] Verify live: chụp claude VÀ opencode trên nền ảnh sáng + preset tối
-- [ ] Canvas P2: Pane dính liền nhau, gap = 0
-  Các cửa sổ AI sát nhau thành một mặt liền, không chừa khoảng hở. Hiện tileToFit dùng gap:12, margin:18, top/bottom:16 và bo góc 12px (giả định có gap).
-  - [ ] canvas.ts tileToFit: gap 12 → 0; cân lại margin/top/bottom (viền ngoài có thể giữ inset nhỏ, pane-với-pane phải liền)
-  - [ ] Ranh giới giữa 2 pane chỉ là seam 1px, không hở nền; không để khe màu nền ở góc nơi 4 pane giáp nhau
-  - [ ] canvas.css: sửa border-radius (dòng 29) — bo góc ngoài hoặc bỏ hẳn, góc trong vuông
-  - [ ] Vẫn kéo/resize/nhận diện được từng pane; pane đang focus phải nổi rõ khi không còn gap
-  - [ ] canvas.test.ts: cập nhật expectation cho tileToFit (sửa, không xoá test)
-  - [ ] Verify live: 2 / 4 / 6 pane, kiểm tra không lộ khe và không chồng lấn
-- [ ] Canvas P3: Zoom giữ 4 pane còn đọc được
-  Density zoom: Ctrl+scroll / Ctrl +,-,0 đổi cỡ chữ hiệu dụng và tile fit lại. Phải thắng auto-fit nudge (AUTO_FIT_DROP=4) chứ không đánh nhau với nó.
-  - [ ] Zoom control: Ctrl/Cmd + scroll, Ctrl +/-/0, và một nút thấy được trên canvas
-  - [ ] Lưu mức zoom per-workspace như layout
-  - [ ] Density zoom: đổi font size hiệu dụng rồi re-fit cols/rows — KHÔNG CSS-scale (chữ sẽ mờ)
-  - [ ] PTY resize bám theo mọi thay đổi: không cụt prompt, không loạn scrollback
-  - [ ] Thứ tự ưu tiên rõ trong code + comment: zoom (ý người dùng) thắng auto-fit shrinkToFit/AUTO_FIT_DROP — nhắc commit bb959d2 vì sao có cap
-  - [ ] Test: precedence zoom vs auto-fit; suite terminal/pane hiện có xanh
-  - [ ] Acceptance: 4 pane tile trên cửa sổ 1080p, zoom mặc định đọc thoải mái
 
 ## To do (0)
 
 _(empty)_
 
-## Doing (1)
+## Doing (2)
 
 - [ ] Login: Auth core (Rust)
   Kho credential nguồn-chân-lý trong Rust: 1 username + 1 password hash (argon2id), lưu auth.json trong app-config dir.
@@ -80,8 +51,27 @@ _(empty)_
   - [ ] Delay cố định khi verify sai (chống brute-force)
   - [ ] Đăng ký commands trong lib.rs invoke_handler
   - [ ] Unit test: setup, verify đúng/sai, change, reject setup khi đã có
+- [ ] Canvas P4: Fleet sigil — dấu ấn sống giữa các pane
+  Orrery — máy thiên văn: 3 vòng đồng tâm nét 1px, không glow/gradient. Vẽ bằng Canvas 2D ở z-index 1 (dưới pane, trên wallpaper) nên đọc xuyên qua terminal trong suốt, giữ nguyên tiling flush của P2. Mọi tham số sinh từ dữ liệu thật: góc theo rect pane, số cạnh lõi theo số agent, màu theo trạng thái.
+  - [ ] HÌNH DẠNG — vành ngoài: 60 vạch chia như thước đo, vạch chính dài hơn ở 4 hướng chính, ĐỨNG YÊN tuyệt đối
+  - [ ] HÌNH DẠNG — vành giữa: mỗi agent MỘT CUNG phủ đúng góc pane của nó chiếm (2 agent → 2 nửa vòng, 4 → 4 phần tư)
+  - [ ] HÌNH DẠNG — vành trong: vòng liền mảnh, thở ±2% bán kính, chu kỳ chậm
+  - [ ] HÌNH DẠNG — node: chấm trên vành giữa đúng hướng tâm pane. running=đặc+xung dọc nan hoa, idle=rỗng, stopped=rỗng xám, err=đặc+CUNG ĐÓ đỏ (không phải cả vòng)
+  - [ ] HÌNH DẠNG — nan hoa: chỉ vẽ cho agent đang tồn tại, không vẽ sẵn 8 hướng
+  - [ ] HÌNH DẠNG — lõi tâm: đa giác số cạnh = số agent (2→đoạn thẳng, 3→tam giác, 4→vuông, 6→lục giác), xoay ~1 vòng/2 phút
+  - [ ] KHÔNG: xoay cả sigil, không gradient/glow, không alpha vượt ngưỡng đọc chữ
+  - [ ] src/sigil.ts (thuần, không DOM): tâm + bán kính vòng theo khổ grid, góc/độ dài nhánh từ rect thật của từng pane, map trạng thái→alpha/màu/nhịp, hàm phase
+  - [ ] src/sigilcanvas.ts: <canvas> inset:0 trong .grid.canvas, z-index 1 (trên wallpaper z0, dưới pane z2), pointer-events:none, sizing theo devicePixelRatio + ResizeObserver
+  - [ ] CANVAS 2D, TUYỆT ĐỐI KHÔNG WebGL — WEBGL_BUDGET=0 tồn tại vì canvas WebGL làm treo compositor WebView2 15-20s và mất context khi idle (terminal.ts:96-105)
+  - [ ] Kỷ luật rAF: dừng hẳn khi document.hidden / workspace không active / không ở canvas mode; tick chậm khi idle; prefers-reduced-motion → vẽ tĩnh
+  - [ ] Nhánh bám rect pane thật từ canvas.ts nên 2/3/4/6 agent đều trỏ đúng; vẽ lại khi tidy/drag/resize
+  - [ ] Tone theo paneTone(ws) — wallpaper sáng thì sigil đảo sang nét tối, cùng quyết định với màu chữ
+  - [ ] Settings → Appearance: bật/tắt + slider cường độ, lưu theo workspace (maestro.sigil.<dir|id>) như paneLook
+  - [ ] Ngưỡng đọc được: chặn alpha để sigil không bao giờ tranh chữ terminal; kiểm trên pane đầy output
+  - [ ] src/sigil.test.ts: hình học cung/nan hoa từ rects, map trạng thái→visual, số cạnh lõi theo số agent, và luật lập lịch (idle/hidden → không animate)
+  - [ ] Verify live: 2/4/6 agent, chụp màn hình, đo CPU khi fleet idle
 
-## Done (7)
+## Done (10)
 
 - [x] Fix copy khi bôi đen trong pane Claude Code (OSC 52)
   Claude Code tự xử lý selection + copy qua escape OSC 52; xterm.js của Maestro không có handler nên clipboard không được ghi. Fix: đăng ký OSC 52 handler trong terminal.ts.
@@ -143,3 +133,32 @@ _(empty)_
   - [ ] terminal.ts: shrinkToFit + auto co font theo tile (target ~24 dòng, sàn 10px)
   - [ ] pane.ts: bật auto-fit cho mọi pane; focus/exit vẫn đổi base font
   - [ ] Test + tsc + build xanh
+- [x] Canvas P1: Terminal trong suốt — chỉ còn chữ trên nền
+  Bỏ nền đục #0b0d12 của xterm để ảnh nền workspace xuyên qua; auto đảo màu chữ theo độ sáng nền + cho chỉnh tay. Bẫy: WebGL không blend transparent → về #000, phải ép DOM renderer.
+  - [ ] terminal.ts: allowTransparency + theme.background trong suốt (thay '#0b0d12' ở dòng 129)
+  - [ ] KHÔNG attach WebglAddon cho pane trong suốt — tái dùng đường DOM renderer sẵn có (WEBGL_BUDGET / onContextLoss, terminal.ts:169-203); ghi comment lý do + đo lại perf 4 pane
+  - [ ] Nền do AI CLI tự vẽ (ANSI SGR): chọn A) knockout map màu nền tối → transparent, hay B) chấp nhận chỉ ăn với CLI dùng default-bg. Ghi rõ chọn gì, mất highlight nào
+  - [ ] Auto contrast: tính luminance nền (preset/màu/sample ảnh) → đảo TOÀN BỘ ANSI 16 giữa bảng chữ-tối và chữ-sáng, không chỉ foreground
+  - [ ] Manual override trong Settings: light / dark / auto, lưu per-workspace cạnh background spec
+  - [ ] Sàn dễ đọc trên ảnh rối: text-shadow hoặc scrim/backdrop-filter mỏng sau lớp chữ; đo contrast ratio (mục tiêu >=7:1, không dưới 4.5:1)
+  - [ ] Cursor, selection highlight, ring pane focus phải còn thấy ở cả 2 theme
+  - [ ] Slider opacity per-workspace trong Settings → Appearance (mặc định 0 = trong suốt hẳn)
+  - [ ] Test: logic chọn theme theo luminance; tsc + suite hiện có xanh
+  - [ ] Verify live: chụp claude VÀ opencode trên nền ảnh sáng + preset tối
+- [x] Canvas P2: Pane dính liền nhau, gap = 0
+  Các cửa sổ AI sát nhau thành một mặt liền, không chừa khoảng hở. Hiện tileToFit dùng gap:12, margin:18, top/bottom:16 và bo góc 12px (giả định có gap).
+  - [ ] canvas.ts tileToFit: gap 12 → 0; cân lại margin/top/bottom (viền ngoài có thể giữ inset nhỏ, pane-với-pane phải liền)
+  - [ ] Ranh giới giữa 2 pane chỉ là seam 1px, không hở nền; không để khe màu nền ở góc nơi 4 pane giáp nhau
+  - [ ] canvas.css: sửa border-radius (dòng 29) — bo góc ngoài hoặc bỏ hẳn, góc trong vuông
+  - [ ] Vẫn kéo/resize/nhận diện được từng pane; pane đang focus phải nổi rõ khi không còn gap
+  - [ ] canvas.test.ts: cập nhật expectation cho tileToFit (sửa, không xoá test)
+  - [ ] Verify live: 2 / 4 / 6 pane, kiểm tra không lộ khe và không chồng lấn
+- [x] Canvas P3: Zoom giữ 4 pane còn đọc được
+  Density zoom: Ctrl+scroll / Ctrl +,-,0 đổi cỡ chữ hiệu dụng và tile fit lại. Phải thắng auto-fit nudge (AUTO_FIT_DROP=4) chứ không đánh nhau với nó.
+  - [ ] Zoom control: Ctrl/Cmd + scroll, Ctrl +/-/0, và một nút thấy được trên canvas
+  - [ ] Lưu mức zoom per-workspace như layout
+  - [ ] Density zoom: đổi font size hiệu dụng rồi re-fit cols/rows — KHÔNG CSS-scale (chữ sẽ mờ)
+  - [ ] PTY resize bám theo mọi thay đổi: không cụt prompt, không loạn scrollback
+  - [ ] Thứ tự ưu tiên rõ trong code + comment: zoom (ý người dùng) thắng auto-fit shrinkToFit/AUTO_FIT_DROP — nhắc commit bb959d2 vì sao có cap
+  - [ ] Test: precedence zoom vs auto-fit; suite terminal/pane hiện có xanh
+  - [ ] Acceptance: 4 pane tile trên cửa sổ 1080p, zoom mặc định đọc thoải mái

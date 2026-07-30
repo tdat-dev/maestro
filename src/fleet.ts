@@ -12,8 +12,15 @@ export type FleetStatus = "needs" | "active" | "idle" | "stopped";
 const IDLE_MS = 1200;
 
 /** Classify one pane. `needs` (waiting on you) ranks above everything so it
- *  can't hide; then active (recent output) / idle (quiet) / stopped. */
-export function paneStatus(p: FleetPane, now: number): FleetStatus {
+ *  can't hide; then active (recent output) / idle (quiet) / stopped.
+ *
+ *  Takes only the three fields it reads, so a live `Pane` can be classified
+ *  without first being flattened into a FleetPane — the sigil needs the same
+ *  verdict the fleet monitor shows, and two copies of this rule would drift. */
+export function paneStatus<T extends Pick<FleetPane, "running" | "attention" | "lastOutputAt">>(
+  p: T,
+  now: number,
+): FleetStatus {
   if (!p.running) return "stopped";
   if (p.attention) return "needs";
   return now - p.lastOutputAt <= IDLE_MS ? "active" : "idle";

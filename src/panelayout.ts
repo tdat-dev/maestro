@@ -5,6 +5,7 @@
 // configurePaneLayout to avoid a circular import.
 
 import { tileToFit, nextSlot, serializeLayout } from "./canvas";
+import { refreshSigil } from "./sigilcanvas";
 import { resizePty } from "./ipc";
 import { paneFont } from "./zoom";
 import { type Pane, type Workspace } from "./panetypes";
@@ -54,6 +55,9 @@ export function applyLayout(ws: Workspace): void {
   }
   for (const id of [...ws.layout.keys()]) if (!ws.panes.has(id)) ws.layout.delete(id);
   saveLayout(ws);
+  // The sigil is a diagram of exactly this map — every spawn, kill, tidy and
+  // drag-release lands here, so this is the one place it needs re-reading.
+  refreshSigil();
 }
 
 /** Tidy: tile every pane to fill the screen (2→big side by side, 4→2×2, …). */
@@ -88,6 +92,7 @@ export function focusPane(ws: Workspace, pane: Pane, ev?: MouseEvent): void {
     pane.el.style.removeProperty("--oy");
   }
   ws.gridEl.classList.add("has-focus");
+  refreshSigil(); // the stage covers the canvas — stop drawing under it
   renderRail(ws, pane);
   requestAnimationFrame(() => {
     pane.term.setFontSize(paneFont(ws, 2)); // bigger on the stage, still zoomed
@@ -99,6 +104,7 @@ export function focusPane(ws: Workspace, pane: Pane, ev?: MouseEvent): void {
 export function exitFocus(ws: Workspace): void {
   if (!ws.gridEl.classList.contains("has-focus")) return;
   ws.gridEl.classList.remove("has-focus");
+  refreshSigil();
   const focused = [...ws.panes.values()].find((p) => p.el.classList.contains("focused"));
   for (const p of ws.panes.values()) {
     p.el.classList.remove("focused");

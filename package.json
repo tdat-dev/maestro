@@ -16,7 +16,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev -c src-tauri/tauri.dev.conf.json"
+    "pretauri:dev": "node tools/prune_build_cache.mjs",
+    "tauri:dev": "tauri dev -c src-tauri/tauri.dev.conf.json",
+    "prune": "node tools/prune_build_cache.mjs --days 0"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.4",

@@ -60,10 +60,19 @@ export function applyLayout(ws: Workspace): void {
   refreshSigil();
 }
 
+/** Tidy order: the director takes the first tile (top-left); everyone else keeps
+ *  the order they were spawned in. Position is prominence for free — a layout is
+ *  read from its top-left corner, so that is where the agent handing out the work
+ *  belongs. Stable, so re-tidying never shuffles the workers among themselves. */
+export function tidyOrder(panes: { id: string; role?: string }[]): string[] {
+  const director = panes.filter((p) => p.role === "conductor");
+  return [...director, ...panes.filter((p) => p.role !== "conductor")].map((p) => p.id);
+}
+
 /** Tidy: tile every pane to fill the screen (2→big side by side, 4→2×2, …). */
 export function tidyLayout(ws: Workspace): void {
   const area = { width: ws.gridEl.clientWidth, height: ws.gridEl.clientHeight };
-  const ids = [...ws.panes.keys()];
+  const ids = tidyOrder([...ws.panes.values()].map((p) => ({ id: p.id, role: p.spec.role })));
   const tiles = tileToFit(ids.length, area);
   ids.forEach((id, i) => ws.layout.set(id, tiles[i]));
   applyLayout(ws);
@@ -140,7 +149,10 @@ function renderRail(ws: Workspace, focused: Pane): void {
         const s = p.attention ? "attention" : p.running ? "running" : "idle";
         const nm = p.spec.name;
         const letter = (nm.trim()[0] ?? "?").toUpperCase();
-        return `<button class="rc" data-id="${p.id}" title="${nm}">
+        // Same mark the tiled pane wears (canvas.css): focusing someone else
+        // must not be the moment the director becomes hard to find.
+        const role = p.spec.role === "conductor" ? ` data-role="director"` : "";
+        return `<button class="rc"${role} data-id="${p.id}" title="${nm}">
         <span class="av" style="background:${p.color};--hue:${p.color}">${letter}<span class="s ${s}"></span></span>
         <span class="n">${nm}</span></button>`;
       })

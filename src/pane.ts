@@ -117,11 +117,19 @@ function buildPaneEl(
   _sub: string,
   badge: string,
   color: string,
+  role?: AgentSpec["role"],
 ): HTMLElement {
   const initial = name.trim().charAt(0).toUpperCase() || "◆";
   const el = document.createElement("section");
   el.className = "pane";
   el.dataset.id = id;
+  // The one pane that dispatches work has to be findable at a glance, so the
+  // role reaches CSS as a plain attribute. "director" rather than "conductor":
+  // the word on screen should be the one the person using this says out loud.
+  if (role === "conductor") el.dataset.role = "director";
+  // Word, not icon. A badge that only makes sense once someone explains it is
+  // decoration; the label is two syllables and needs no legend.
+  const roleChip = role === "conductor" ? `<span class="pb-role">Director</span>` : "";
   // Slim draggable title bar: status dot · editable name · CLI badge · controls.
   // Controls keep their data-* attributes so the existing wiring in createAgent
   // still binds. `[data-drag]` on the bar is the canvas move handle.
@@ -130,6 +138,7 @@ function buildPaneEl(
       <span class="pb-dot"></span>
       <span class="pb-av" style="background:${color}" aria-hidden="true">${initial}</span>
       <span class="pb-name pane-name">${name}</span>
+      ${roleChip}
       <span class="pb-cli">${badge}</span>
       <span class="pb-sp"></span>
       <div class="pb-ctrls ctrls">
@@ -187,7 +196,7 @@ export function createAgent(
   onShowWorkspace();
   const id = attach?.id ?? newId();
   const sub = spec.cwd ? basename(spec.cwd) : "";
-  const el = buildPaneEl(id, spec.name, sub, spec.badge, spec.color);
+  const el = buildPaneEl(id, spec.name, sub, spec.badge, spec.color, spec.role);
   ws.gridEl.insertBefore(el, ws.gridEl.lastElementChild); // before the spawn tile
 
   const host = el.querySelector<HTMLElement>("[data-host]")!;

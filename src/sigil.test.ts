@@ -310,6 +310,15 @@ describe("sigil stacking (canvas.css)", () => {
     expect(z(".grid.canvas > canvas.sigil")).toBeLessThan(z(".grid.canvas .pane"));
   });
 
+  // The sigil lives BEHIND a backdrop-filtered pane, so the glass blur is the
+  // ceiling on how sharp it can ever be: a stroke narrower than the blur radius
+  // arrives flattened. At 6px nothing thin survived at all.
+  it("keeps the glass blur narrow enough for a line behind it to stay a line", () => {
+    const px = Number(rule('.grid.canvas[data-glass="1"] .pane').match(/blur\(([\d.]+)px\)/)?.[1]);
+    expect(px).toBeGreaterThan(0); // still frosted — glyphs need the grain taken off
+    expect(px).toBeLessThanOrEqual(3);
+  });
+
   it("never eats a click meant for a pane", () => {
     expect(rule(".grid.canvas > canvas.sigil")).toMatch(/pointer-events:\s*none/);
   });

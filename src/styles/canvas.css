@@ -23,9 +23,11 @@
   -webkit-mask: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent);
   mask: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent);
 }
-/* The fleet sigil (sigilcanvas.ts). Above the wallpaper and the grid overlay,
-   below the panes — so it is only ever seen THROUGH a see-through pane, and
-   the flush tiling needs no gutter cut out for it. Never interactive. */
+/* The fleet sigil (sigilcanvas.ts). Above the wallpaper, BELOW every pane —
+   it is scenery seen through the glass, never an overlay on the text. It was
+   briefly moved on top to make it visible and that was the wrong trade: it
+   read as clutter across the terminals. The visibility problem belongs to the
+   glass blur below, not to the stacking order. Never interactive. */
 .grid.canvas > canvas.sigil {
   position: absolute;
   /* No `inset: 0` — sigilcanvas.ts parks this over the sigil's own centred
@@ -60,9 +62,16 @@
   animation: none;
 }
 /* Frosted glass: the wallpaper still reads through the pane, but softened
-   enough that glyphs keep their edges over a busy photo. */
+   enough that glyphs keep their edges over a busy photo.
+
+   2.5px, not the 6px this started at. A backdrop blur flattens EVERYTHING
+   behind the pane, and at 6px it was destroying the sigil outright — a 1.4px
+   stroke keeps under a tenth of its peak through a 6px blur, which is why the
+   sigil looked like fog no matter how much ink it was given. 2.5px still takes
+   the grain out of a photograph (the text-shadow below does the rest of the
+   legibility work) while leaving a line behind the glass still a line. */
 .grid.canvas[data-glass="1"] .pane {
-  backdrop-filter: blur(6px) saturate(115%);
+  backdrop-filter: blur(2.5px) saturate(115%);
 }
 /* Legibility floor — a tight halo in the opposite tone, so text survives the
    patch of image that happens to match its own colour. This reaches the DOM

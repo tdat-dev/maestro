@@ -3,6 +3,16 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
+import { paletteFor, backgroundAlpha, type TermPalette } from "./termtheme";
+import { createBgFilter } from "./ansibg";
+
+/** How a pane paints: which palette, and whether the CLI's own background
+ *  plate is stripped out of the byte stream on the way in. */
+export interface PaneLook {
+  theme: TermPalette;
+  /** See ansibg.ts — only meaningful once the pane is see-through. */
+  stripPlate: boolean;
+}
 
 export interface TerminalHandle {
   write(data: Uint8Array): void;
@@ -22,6 +32,10 @@ export interface TerminalHandle {
   /** Keep at least `rows` rows visible by shrinking the font (never below
    *  AUTO_FIT_MIN) when the pane is too short for the base size. 0 = off. */
   setAutoFit(rows: number): void;
+  /** Swap the palette and the plate-stripping mode live (background changed,
+   *  or the user moved the opacity slider). Cells already on screen keep the
+   *  plate they were drawn with until the CLI repaints them. */
+  setLook(look: PaneLook): void;
   /** Subscribe to result-count changes (current index is 1-based, 0 = none). */
   onSearchResults(cb: (current: number, total: number) => void): void;
   /** Subscribe to terminal title changes (OSC 0/1/2). */
@@ -110,8 +124,11 @@ export function mountTerminal(
   container: HTMLElement,
   onInput: (data: string) => void,
   onResize: (cols: number, rows: number) => void,
-  opts: { webgl?: boolean; openLink?: (url: string) => void; fontSize?: number } = {},
+  opts: { webgl?: boolean; openLink?: (url: string) => void; fontSize?: number; look?: PaneLook } = {},
 ): TerminalHandle {
+  // Default to the fully opaque palette Maestro shipped before see-through
+  // panes existed, so a caller that passes no look is unchanged.
+  let look: PaneLook = opts.look ?? { theme: paletteFor("light", 1), stripPlate: false };
   const term = new Terminal({
     convertEol: false, // ConPTY already emits \r\n
     cursorBlink: true,
@@ -122,32 +139,11 @@ export function mountTerminal(
     lineHeight: 1.2,
     letterSpacing: 0,
     scrollback: 5000, // generous history so search/scroll can reach older output
-    theme: {
-      // Not 'transparent': the WebGL renderer can't blend it and falls back to
-      // dead #000, splitting panes into black boxes. A near-black with the
-      // pane's own tint keeps every renderer consistent with the glass frame.
-      background: '#0b0d12',
-      foreground: '#e2e8f0', // slate-200
-      cursor: '#c6f135',     // maestro accent
-      cursorAccent: '#0a0c10',
-      selectionBackground: 'rgba(198, 241, 53, 0.3)',
-      black: '#1e293b',
-      red: '#ef4444',
-      green: '#22c55e',
-      yellow: '#eab308',
-      blue: '#3b82f6',
-      magenta: '#d946ef',
-      cyan: '#06b6d4',
-      white: '#f8fafc',
-      brightBlack: '#475569',
-      brightRed: '#f87171',
-      brightGreen: '#4ade80',
-      brightYellow: '#fde047',
-      brightBlue: '#60a5fa',
-      brightMagenta: '#e879f9',
-      brightCyan: '#22d3ee',
-      brightWhite: '#ffffff'
-    }
+    // Needed for any alpha < 1 in the theme background. Harmless when the
+    // palette is opaque, so it is unconditional rather than a second flag that
+    // could drift out of sync with the palette.
+    allowTransparency: true,
+    theme: look.theme,
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
@@ -168,8 +164,17 @@ export function mountTerminal(
 
   // GPU renderer, but only while under the context budget — past it we keep the
   // default DOM renderer so a big fleet doesn't thrash the GPU.
+  //
+  // A see-through pane never gets it: the WebGL renderer can't blend a
+  // transparent background and falls back to dead #000, which turns the pane
+  // into a black box over the wallpaper — the exact regression the old
+  // hard-coded '#0b0d12' was there to avoid. The DOM renderer is a supported
+  // path here (it is already what a fleet past WEBGL_BUDGET, or one that lost
+  // its context, runs on), so this trades GPU compositing for the effect.
   let usedWebgl = false;
-  if (opts.webgl !== false && liveWebgl < WEBGL_BUDGET) {
+  let webglAddon: { dispose(): void } | null = null;
+  const wantsWebgl = () => backgroundAlpha(look.theme) >= 1;
+  if (opts.webgl !== false && wantsWebgl() && liveWebgl < WEBGL_BUDGET) {
     usedWebgl = true;
     liveWebgl++;
     void (async () => {
@@ -185,11 +190,21 @@ export function mountTerminal(
           // than the GPU allows, which makes further losses more likely.
           console.warn("[maestro] webgl context lost → DOM renderer fallback");
           webgl.dispose();
+          webglAddon = null;
           if (usedWebgl) {
             usedWebgl = false;
             liveWebgl--;
           }
         });
+        // The import is async, so the look may have gone see-through while it
+        // was in flight — attaching now would black the pane out.
+        if (!wantsWebgl()) {
+          webgl.dispose();
+          usedWebgl = false;
+          liveWebgl--;
+          return;
+        }
+        webglAddon = webgl;
         term.loadAddon(webgl);
       } catch {
         // Couldn't create the GPU renderer — the DOM renderer (default) is fine,
@@ -289,8 +304,13 @@ export function mountTerminal(
   });
   ro.observe(container);
 
+  // One filter for the pane's lifetime: it carries an escape sequence split
+  // across chunks, so it must not be rebuilt when the look changes. It reads
+  // `look.stripPlate` itself so toggling can't strand a carried sequence.
+  const bgFilter = createBgFilter(() => look.stripPlate);
+
   return {
-    write: (data) => term.write(data),
+    write: (data) => term.write(bgFilter(data)),
     fit: () => {
       fitToBox();
       return { cols: term.cols, rows: term.rows };
@@ -321,6 +341,20 @@ export function mountTerminal(
       autoRows = Math.max(0, Math.round(rows));
       fitToBox();
       onResize(term.cols, term.rows);
+    },
+    setLook: (next) => {
+      look = next;
+      term.options.theme = next.theme;
+      // Going see-through with the GPU renderer attached paints the pane solid
+      // black, so drop it and let xterm fall back to the DOM renderer.
+      if (webglAddon && !wantsWebgl()) {
+        webglAddon.dispose();
+        webglAddon = null;
+        if (usedWebgl) {
+          usedWebgl = false;
+          liveWebgl--;
+        }
+      }
     },
     onSearchResults: (cb) =>
       search.onDidChangeResults((r) => {

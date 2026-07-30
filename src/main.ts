@@ -15,7 +15,7 @@ import { configureWizard, initWizard, openWizard, isPresetAvailable, refreshCliA
 import { closeSettings, initSettingsModal } from "./settingsmodal";
 import { configureSession, saveSession, restoreSession } from "./session";
 import { configureScheduler, initScheduler } from "./scheduler";
-import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setStatus, clearAttention, updateAttention } from "./pane";
+import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setStatus, clearAttention, updateAttention, retheme } from "./pane";
 import { configureWorkspace, initWorkspace, createWorkspace, activateWorkspace, bootDetached } from "./workspace";
 import { confirmModal } from "./confirmmodal";
 import { wirePaneSearch } from "./panesearch";
@@ -235,7 +235,7 @@ configureSession({ createWorkspace, createAgent });
 configureScheduler({ closeSettings, loadTemplates, launchPreset });
 configurePane({ errMsg, updateCount, showWorkspace, wirePaneSearch });
 configureWorkspace({ createAgent, removeAgent, updateCount, showWorkspace, showView, syncResumeAll, setFileTreeRoot: (dir) => fileTree?.setRoot(dir), applyBackground });
-configureBackground({ getActiveWs: () => activeWs, toast: paneToast });
+configureBackground({ getActiveWs: () => activeWs, toast: paneToast, onLookChange: retheme });
 configureSpawnMenu({ spawnCrew, isPresetAvailable, refreshCliAvailability });
 configureBridges({ activateWorkspace, clearAttention, setStatus, updateCount, stopRecording });
 initSpawnModal();

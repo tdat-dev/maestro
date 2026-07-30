@@ -26,6 +26,14 @@ import { saveSession } from "./session";
 import { openReplays, REC_DIR_REL } from "./replay";
 import { workspaces, newId } from "./appstate";
 import { basename } from "./workspaces";
+import { paneLook } from "./background";
+
+/** Re-theme every live pane in `ws` — called when the background, the tone, or
+ *  the opacity changes, since all three decide the same palette. */
+export function retheme(ws: Workspace): void {
+  const look = paneLook(ws);
+  for (const pane of ws.panes.values()) pane.term.setLook(look);
+}
 
 let onErrMsg: (e: unknown) => string = (e) => String(e);
 let onUpdateCount: () => void = () => {};
@@ -178,7 +186,11 @@ export function createAgent(
     (cols, rows) => {
       if (ws.panes.has(id)) void resizePty(id, cols, rows).catch(() => {});
     },
-    { openLink: (url) => void openExternal(url).catch(() => {}), fontSize: getTermFontSize() },
+    {
+      openLink: (url) => void openExternal(url).catch(() => {}),
+      fontSize: getTermFontSize(),
+      look: paneLook(ws),
+    },
   );
   // Keep a tiled pane readable: an agent CLI spends ~7 rows on its prompt box
   // and status line, so anything under this floor shows no conversation at all.

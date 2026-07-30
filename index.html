@@ -405,6 +405,14 @@
             </div>
           </div>
           <div class="srow">
+            <div class="sr-txt"><b>Text tone</b><span>Glyph colour for see-through panes. Auto follows the backdrop — black text on a light one.</span></div>
+            <div class="seg" id="setPaneTone" role="group" aria-label="Text tone"><button type="button" data-tone="auto">Auto</button><button type="button" data-tone="light">Light</button><button type="button" data-tone="dark">Dark</button></div>
+          </div>
+          <div class="srow">
+            <div class="sr-txt"><b>Pane opacity</b><span>How much plate sits behind the text. Glass shows the background straight through.</span></div>
+            <div class="set-range"><input type="range" id="paneOpacity" min="0" max="100" step="5" value="0" aria-label="Pane opacity"><span class="n" id="paneOpacityVal">Glass</span></div>
+          </div>
+          <div class="srow">
             <div class="sr-txt"><b>Terminal font size</b><span>Applies live to every running pane.</span></div>
             <div class="stepper" id="setFontStepper"><button type="button" data-dec aria-label="Smaller">−</button><span class="n" id="setFontN">15</span><button type="button" data-inc aria-label="Larger">+</button></div>
           </div>

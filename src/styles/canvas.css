@@ -28,7 +28,10 @@
    the flush tiling needs no gutter cut out for it. Never interactive. */
 .grid.canvas > canvas.sigil {
   position: absolute;
-  inset: 0;
+  /* No `inset: 0` — sigilcanvas.ts parks this over the sigil's own centred
+     square (sigilBox) and sets left/top/width/height in px. Stretching it to
+     the grid would quadruple the pixels cleared and composited every frame,
+     which is what smooth animation is being bought with. */
   z-index: 1;
   pointer-events: none;
 }

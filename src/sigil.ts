@@ -60,6 +60,25 @@ const R_CORE = 0.062;
 export const TICKS = 60;
 export const TICK_MAJOR_EVERY = 15;
 
+/** How far a major tick sticks out past rOuter, as a fraction of rOuter. */
+const TICK_REACH = 0.018 * 2.6;
+
+/**
+ * The square the whole drawing fits inside, centred on the area.
+ *
+ * The canvas is sized to THIS rather than to the grid, and that is a
+ * performance decision, not tidiness: the sigil reaches about 0.92 of the short
+ * edge, so on a 1936×1096 grid the box is ~900×900 against 1936×1096 — less
+ * than half the pixels to clear and composite every frame. That is most of what
+ * pays for animating smoothly instead of in steps.
+ */
+export function sigilBox(area: Area): { x: number; y: number; size: number } {
+  const edge = Math.min(area.width, area.height);
+  const reach = edge * R_OUTER * (1 + TICK_REACH) + 2; // +2 for the hairline itself
+  const size = Math.min(edge, Math.ceil(reach * 2));
+  return { x: Math.round((area.width - size) / 2), y: Math.round((area.height - size) / 2), size };
+}
+
 /** Gap left at each end of an agent's arc so two neighbouring arcs read as two
  *  arcs and not one unbroken ring. */
 const ARC_INSET = 0.035; // radians ≈ 2°
@@ -236,12 +255,16 @@ export function pulseAt(t: number, index: number): number {
  * background and starts being noise behind text you are trying to read.
  *
  * Set by measurement, not by taste: at 0.24 a 1px hairline over a bright
- * photographic wallpaper was invisible in a screenshot of the real app, and
- * the radial profile of the ring couldn't be told from the wallpaper's own
- * texture. 0.40 reads as a drawn line and still sits far below a glyph, which
- * carries both full-weight ink and its own legibility shadow.
+ * photographic wallpaper was invisible in a screenshot of the real app — the
+ * radial profile of the ring couldn't be told from the wallpaper's own texture.
+ * 0.40 was legible in a screenshot but still read as haze to the eye at arm's
+ * length. 0.55 draws a line you can follow, and is still well under a glyph,
+ * which carries full-weight ink plus its own legibility shadow.
+ *
+ * Alpha alone doesn't fix a hairline lost in a busy photo — the stroke widths
+ * in sigilcanvas.ts do half this work.
  */
-export const MAX_ALPHA = 0.4;
+export const MAX_ALPHA = 0.55;
 
 /** Map the Settings slider (0…1) onto an alpha that can never exceed the
  *  legibility ceiling, whatever gets passed in. */
@@ -251,7 +274,7 @@ export function sigilAlpha(intensity: number): number {
 
 /* ---------------- when it may animate ---------------- */
 
-export type TickMode = "off" | "static" | "slow" | "full";
+export type TickMode = "off" | "still" | "live";
 
 export interface TickEnv {
   /** The workspace's own on/off preference. */
@@ -270,30 +293,35 @@ export interface TickEnv {
    *  diagram, so the loop must not run at all — an empty workspace left open
    *  is the commonest way an idle animation quietly burns a battery. */
   agentCount: number;
-  /** Any agent is producing output — the only reason to run at full rate. */
-  anyActive: boolean;
+  /** Any agent is still running (working, waiting on you, or idle at a prompt).
+   *  A fleet where everything has stopped has nothing left to breathe for. */
+  anyAlive: boolean;
 }
 
 /**
- * How often (if at all) the sigil should redraw.
+ * How (if at all) the sigil should redraw.
  *
- * "off" means the animation loop is CANCELLED, not throttled: an unwatched
- * workspace, a hidden window, or a disabled sigil must cost exactly zero. This
- * matters more here than in most UI — Maestro leaves fleets parked for hours.
+ * Only two live states, and that is the whole point. An earlier version had a
+ * middle gear — a parked fleet redrew on a 250-500ms timer so it could breathe
+ * cheaply — and it looked broken: motion sampled at 2-4fps reads as a stutter,
+ * not as slowness. Anything that moves here now moves on rAF; anything that
+ * can't afford that doesn't move at all.
+ *
+ * "off" means the loop is CANCELLED, not throttled: an unwatched workspace, a
+ * hidden window, or a disabled sigil must cost exactly zero. That matters more
+ * here than in most UI — Maestro leaves fleets parked for hours.
  */
 export function tickMode(e: TickEnv): TickMode {
   if (!e.enabled || !e.visible || !e.wsActive || !e.canvasMode || e.focusMode) return "off";
   if (e.agentCount < 1) return "off";
-  if (e.reducedMotion) return "static";
-  return e.anyActive ? "full" : "slow";
+  if (e.reducedMotion || !e.anyAlive) return "still";
+  return "live";
 }
 
-/** Minimum ms between redraws per mode. "static" still redraws occasionally so
- *  a layout change lands; it just never animates.
+/** Minimum ms between redraws per mode.
  *
- *  "slow" is 500ms because that is what a parked fleet actually needs: the only
- *  things moving are the 6.2s breath and the 2-minute core turn, and 12 frames
- *  per breath is already smooth for a ±2% radius. Measured on the real app with
- *  16 panes open, halving the rate from 250ms took the parked cost from ~4.3%
- *  of a core to ~2%. */
-export const TICK_MS: Record<TickMode, number> = { off: Infinity, static: 1000, slow: 500, full: 33 };
+ *  "still" redraws every second only so a status change lands, and is handed a
+ *  frozen clock — successive frames are pixel-identical, so there is nothing to
+ *  stutter. "live" is capped at 30fps: enough for one travelling pulse, half
+ *  the work of vsync. */
+export const TICK_MS: Record<TickMode, number> = { off: Infinity, still: 1000, live: 33 };

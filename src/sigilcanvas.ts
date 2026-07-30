@@ -23,6 +23,7 @@ import { paneTone } from "./background";
 import { type Workspace } from "./panetypes";
 import {
   sigilGeometry,
+  sigilBox,
   inkFor,
   breathe,
   coreAngle,
@@ -48,7 +49,7 @@ interface SigilPref {
   /** 0…1 — scaled onto the alpha ceiling by sigil.ts, never used raw. */
   intensity: number;
 }
-const DEFAULT_PREF: SigilPref = { on: true, intensity: 0.6 };
+const DEFAULT_PREF: SigilPref = { on: true, intensity: 0.8 };
 const prefKey = (ws: Workspace) => `maestro.sigil.${ws.dir ?? ws.id}`;
 
 export function sigilPref(ws: Workspace): SigilPref {
@@ -93,20 +94,34 @@ function canvasFor(ws: Workspace): HTMLCanvasElement {
   return el;
 }
 
-/** Match the backing store to the element's CSS box × devicePixelRatio, so the
- *  hairlines stay hairlines on a scaled display instead of blurring to 2px. */
-function sizeCanvas(el: HTMLCanvasElement, w: number, h: number): CanvasRenderingContext2D | null {
-  const dpr = Math.min(3, window.devicePixelRatio || 1);
-  const bw = Math.max(1, Math.round(w * dpr));
-  const bh = Math.max(1, Math.round(h * dpr));
-  if (el.width !== bw || el.height !== bh) {
-    el.width = bw;
-    el.height = bh;
+const dprNow = () => Math.min(3, window.devicePixelRatio || 1);
+
+/**
+ * Park the canvas over the sigil's own square and hand back a context whose
+ * origin is the GRID's origin, not the canvas's.
+ *
+ * The offset lives in the transform so nothing downstream has to know the
+ * canvas moved: geometry stays in grid coordinates, which is the coordinate
+ * space the pane rects are already in.
+ */
+function sizeCanvas(
+  el: HTMLCanvasElement,
+  box: { x: number; y: number; size: number },
+): CanvasRenderingContext2D | null {
+  const dpr = dprNow();
+  const px = Math.max(1, Math.round(box.size * dpr));
+  if (el.width !== px || el.height !== px) {
+    el.width = px;
+    el.height = px;
   }
+  el.style.left = `${box.x}px`;
+  el.style.top = `${box.y}px`;
+  el.style.width = `${box.size}px`;
+  el.style.height = `${box.size}px`;
   const ctx = el.getContext("2d");
   if (!ctx) return null;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, w, h);
+  ctx.setTransform(dpr, 0, 0, dpr, -box.x * dpr, -box.y * dpr);
+  ctx.clearRect(box.x, box.y, box.size, box.size);
   return ctx;
 }
 
@@ -139,17 +154,64 @@ function agentsOf(ws: Workspace, now: number): SigilAgent[] {
   return out;
 }
 
+/* The still half of the drawing — the ruler, the arcs, the spokes and nodes —
+   only changes when the layout, the statuses, the tone or the intensity change,
+   which is to say almost never at 30fps. Re-stroking 60 ticks plus an arc, a
+   spoke and a node per agent on every frame was the other half of what made
+   smooth animation unaffordable; a blit of a cached bitmap is not. */
+interface StaticLayer {
+  key: string;
+  canvas: HTMLCanvasElement;
+}
+const layers = new WeakMap<Workspace, StaticLayer>();
+
+function layerKey(g: SigilGeom, box: { size: number }, tone: string, a0: number): string {
+  return [
+    box.size,
+    dprNow(),
+    tone,
+    a0.toFixed(3),
+    g.branches.map((b) => `${b.id}:${b.status}:${b.from.toFixed(3)}:${b.to.toFixed(3)}:${b.angle.toFixed(3)}`).join(","),
+  ].join("|");
+}
+
+function staticLayer(
+  ws: Workspace,
+  g: SigilGeom,
+  box: { x: number; y: number; size: number },
+  tone: "light" | "dark",
+  a0: number,
+  ink: (p: Pen, w: number) => string,
+): HTMLCanvasElement | null {
+  const key = layerKey(g, box, tone, a0);
+  const cached = layers.get(ws);
+  if (cached && cached.key === key) return cached.canvas;
+
+  const el = cached?.canvas ?? document.createElement("canvas");
+  const ctx = sizeCanvas(el, box);
+  if (!ctx) return null;
+  ctx.lineCap = "butt";
+  ctx.lineJoin = "round";
+  drawRuler(ctx, g, ink("base", 0.85));
+  drawArcs(ctx, g, ink);
+  drawSpokes(ctx, g, ink);
+  layers.set(ws, { key, canvas: el });
+  return el;
+}
+
 function drawSigil(ws: Workspace, t: number): void {
   const w = ws.gridEl.clientWidth;
   const h = ws.gridEl.clientHeight;
   if (w < 2 || h < 2) return;
-  const el = canvasFor(ws);
-  const ctx = sizeCanvas(el, w, h);
-  if (!ctx) return;
 
   const agents = agentsOf(ws, Date.now());
   // No agents, no fleet to diagram. The spawn tile owns an empty canvas.
   if (!agents.length) return;
+
+  const box = sigilBox({ width: w, height: h });
+  const el = canvasFor(ws);
+  const ctx = sizeCanvas(el, box);
+  if (!ctx) return;
 
   const g = sigilGeometry({ width: w, height: h }, agents);
   const tone = paneTone(ws);
@@ -159,18 +221,21 @@ function drawSigil(ws: Workspace, t: number): void {
   ctx.lineCap = "butt";
   ctx.lineJoin = "round";
 
-  drawRuler(ctx, g, ink("base", 0.65));
-  drawArcs(ctx, g, ink);
-  drawSpokes(ctx, g, t, ink);
-  drawInnerRing(ctx, g, t, ink("base", 0.5));
-  drawCore(ctx, g, t, ink("base", 0.9));
+  const still = staticLayer(ws, g, box, tone, a0, ink);
+  if (still) ctx.drawImage(still, box.x, box.y, box.size, box.size);
+
+  drawPulses(ctx, g, t, ink);
+  drawInnerRing(ctx, g, t, ink("base", 0.7));
+  drawCore(ctx, g, t, ink("base", 1));
 }
 
 /** Outer ring: a measuring rim, and the only part of the sigil that never
  *  moves. Everything else reads as live because this doesn't. */
 function drawRuler(ctx: CanvasRenderingContext2D, g: SigilGeom, stroke: string): void {
   ctx.strokeStyle = stroke;
-  ctx.lineWidth = 1;
+  // 1.4 rather than 1: over a photograph a true hairline is lost in the grain
+  // whatever its alpha, and raising alpha instead only makes a faint smudge.
+  ctx.lineWidth = 1.4;
   ctx.beginPath();
   ctx.arc(g.cx, g.cy, g.rOuter, 0, TAU);
   ctx.stroke();
@@ -197,57 +262,68 @@ function drawArcs(ctx: CanvasRenderingContext2D, g: SigilGeom, ink: (p: Pen, w: 
     if (b.to <= b.from) continue;
     const k = inkFor(b.status);
     ctx.strokeStyle = ink(k.pen, k.weight);
-    ctx.lineWidth = k.pen === "base" || k.pen === "stopped" ? 1 : 1.6;
+    ctx.lineWidth = k.pen === "base" || k.pen === "stopped" ? 1.4 : 2.2;
     ctx.beginPath();
     ctx.arc(g.cx, g.cy, g.rMid, b.from, b.to);
     ctx.stroke();
   }
 }
 
-/** Spokes and nodes: one per live agent, pointing at its pane's centre. Only
- *  agents that exist get a spoke — no pre-drawn compass arms. */
-function drawSpokes(ctx: CanvasRenderingContext2D, g: SigilGeom, t: number, ink: (p: Pen, w: number) => string): void {
-  const nodeR = Math.max(2.5, g.rMid * 0.018);
-  g.branches.forEach((b, i) => {
-    const k = inkFor(b.status);
-    const cos = Math.cos(b.angle);
-    const sin = Math.sin(b.angle);
-    const x0 = g.cx + cos * g.rCore;
-    const y0 = g.cy + sin * g.rCore;
-    const x1 = g.cx + cos * g.rMid;
-    const y1 = g.cy + sin * g.rMid;
+/** Where an agent's spoke starts and ends — shared by the still spoke and the
+ *  pulse that travels along it, so the two can never drift apart. */
+function spokeEnds(g: SigilGeom, angle: number) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x0: g.cx + cos * g.rCore,
+    y0: g.cy + sin * g.rCore,
+    x1: g.cx + cos * g.rMid,
+    y1: g.cy + sin * g.rMid,
+  };
+}
 
-    ctx.strokeStyle = ink(k.pen, k.weight * 0.55);
-    ctx.lineWidth = 1;
+/** Spokes and nodes: one per live agent, pointing at its pane's centre. Only
+ *  agents that exist get a spoke — no pre-drawn compass arms. Still: this goes
+ *  in the cached layer. */
+function drawSpokes(ctx: CanvasRenderingContext2D, g: SigilGeom, ink: (p: Pen, w: number) => string): void {
+  const nodeR = Math.max(3, g.rMid * 0.022);
+  for (const b of g.branches) {
+    const k = inkFor(b.status);
+    const { x0, y0, x1, y1 } = spokeEnds(g, b.angle);
+
+    ctx.strokeStyle = ink(k.pen, k.weight * 0.6);
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
     ctx.moveTo(x0, y0);
     ctx.lineTo(x1, y1);
     ctx.stroke();
 
-    // The pulse: a short bright segment running core → node. This is the only
-    // travelling motion in the sigil, and only a working agent gets one.
-    if (k.pulse) {
-      const p = pulseAt(t, i);
-      const tail = Math.max(0, p - 0.12);
-      const px0 = x0 + (x1 - x0) * tail;
-      const py0 = y0 + (y1 - y0) * tail;
-      const px1 = x0 + (x1 - x0) * p;
-      const py1 = y0 + (y1 - y0) * p;
-      ctx.strokeStyle = ink(k.pen, k.weight * 1.6);
-      ctx.lineWidth = 1.8;
-      ctx.beginPath();
-      ctx.moveTo(px0, py0);
-      ctx.lineTo(px1, py1);
-      ctx.stroke();
-    }
-
     ctx.strokeStyle = ink(k.pen, k.weight);
     ctx.fillStyle = ink(k.pen, k.weight);
-    ctx.lineWidth = 1.2;
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
     ctx.arc(x1, y1, nodeR, 0, TAU);
     if (k.filled) ctx.fill();
     else ctx.stroke();
+  }
+}
+
+/** The pulse: a short bright segment running core → node. The only travelling
+ *  motion in the sigil, and only a working agent gets one — so on a fleet
+ *  where nobody is producing output this draws nothing at all. */
+function drawPulses(ctx: CanvasRenderingContext2D, g: SigilGeom, t: number, ink: (p: Pen, w: number) => string): void {
+  g.branches.forEach((b, i) => {
+    const k = inkFor(b.status);
+    if (!k.pulse) return;
+    const { x0, y0, x1, y1 } = spokeEnds(g, b.angle);
+    const p = pulseAt(t, i);
+    const tail = Math.max(0, p - 0.12);
+    ctx.strokeStyle = ink(k.pen, Math.min(1.6, k.weight * 1.6));
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(x0 + (x1 - x0) * tail, y0 + (y1 - y0) * tail);
+    ctx.lineTo(x0 + (x1 - x0) * p, y0 + (y1 - y0) * p);
+    ctx.stroke();
   });
 }
 
@@ -255,7 +331,7 @@ function drawSpokes(ctx: CanvasRenderingContext2D, g: SigilGeom, t: number, ink:
  *  than watched. */
 function drawInnerRing(ctx: CanvasRenderingContext2D, g: SigilGeom, t: number, stroke: string): void {
   ctx.strokeStyle = stroke;
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1.4;
   ctx.beginPath();
   ctx.arc(g.cx, g.cy, g.rInner * breathe(t), 0, TAU);
   ctx.stroke();
@@ -269,7 +345,7 @@ function drawCore(ctx: CanvasRenderingContext2D, g: SigilGeom, t: number, stroke
   if (sides < 1) return;
   ctx.strokeStyle = stroke;
   ctx.fillStyle = stroke;
-  ctx.lineWidth = 1.2;
+  ctx.lineWidth = 1.8;
   const rot = coreAngle(t) - Math.PI / 2;
 
   if (sides === 1) {
@@ -294,11 +370,11 @@ function drawCore(ctx: CanvasRenderingContext2D, g: SigilGeom, t: number, stroke
 
 /* ---------------- the loop ---------------- */
 
-// Two schedulers, deliberately. A working fleet animates a pulse, so it rides
-// requestAnimationFrame (vsync-aligned, gated down to ~30fps). A parked fleet
-// only breathes, so it rides a 250ms timer and leaves rAF alone entirely —
-// otherwise Maestro would hold a 60Hz callback open all day to redraw a circle
-// that moved two pixels. Both are cancelled outright in "off".
+// One scheduler per mode, and only two modes that draw. "live" rides
+// requestAnimationFrame (vsync-aligned, gated to ~30fps) because everything
+// that moves must move smoothly or not at all. "still" rides a 1s timer purely
+// so a status change lands, and is handed a frozen clock, so those redraws are
+// pixel-identical and cannot be seen. Both are cancelled outright in "off".
 let raf = 0;
 let timer = 0;
 let lastDraw = -Infinity;
@@ -307,10 +383,10 @@ const reduced = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").ma
 function modeFor(ws: Workspace | null): { ws: Workspace | null; mode: TickMode } {
   if (!ws) return { ws: null, mode: "off" };
   const now = Date.now();
-  let anyActive = false;
+  let anyAlive = false;
   for (const p of ws.panes.values()) {
-    if (paneStatus(p, now) === "active") {
-      anyActive = true;
+    if (paneStatus(p, now) !== "stopped") {
+      anyAlive = true;
       break;
     }
   }
@@ -322,7 +398,7 @@ function modeFor(ws: Workspace | null): { ws: Workspace | null; mode: TickMode }
     focusMode: ws.gridEl.classList.contains("has-focus"),
     reducedMotion: reduced(),
     agentCount: ws.panes.size,
-    anyActive,
+    anyAlive,
   });
   return { ws, mode };
 }
@@ -341,9 +417,13 @@ function step(t: number): void {
   if (!ws || mode === "off") return; // nothing re-queued: the loop is stopped
   if (t - lastDraw >= TICK_MS[mode]) {
     lastDraw = t;
-    drawSigil(ws, t);
+    // "still" is handed a frozen clock on purpose. Its redraws exist to pick up
+    // a status change, not to animate; passing the real clock would sample the
+    // breathing and the core's turn once a second, which is exactly the
+    // stuttering-at-2fps look this mode was created to avoid.
+    drawSigil(ws, mode === "live" ? t : 0);
   }
-  if (mode === "full") raf = requestAnimationFrame(step);
+  if (mode === "live") raf = requestAnimationFrame(step);
   else timer = window.setTimeout(() => step(performance.now()), TICK_MS[mode]);
 }
 

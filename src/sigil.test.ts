@@ -9,6 +9,7 @@ import {
   coreAngle,
   pulseAt,
   sigilAlpha,
+  sigilBox,
   tickMode,
   MAX_ALPHA,
   TICK_MS,
@@ -191,9 +192,10 @@ describe("sigilAlpha", () => {
     expect(sigilAlpha(1)).toBe(MAX_ALPHA);
     expect(sigilAlpha(4)).toBe(MAX_ALPHA);
     expect(sigilAlpha(-1)).toBe(0);
-    // A hairline, never a wash. Half is the point where the sigil would start
-    // reading as a surface rather than as a line drawn behind one.
-    expect(MAX_ALPHA).toBeLessThan(0.5);
+    // A line drawn behind the text, never a wash over it. Two thirds is where a
+    // stroke stops reading as a background and starts competing with a glyph,
+    // which carries full-weight ink plus its own legibility shadow.
+    expect(MAX_ALPHA).toBeLessThan(0.66);
   });
 
   it("scales the slider linearly below it", () => {
@@ -202,7 +204,7 @@ describe("sigilAlpha", () => {
 });
 
 describe("tickMode", () => {
-  const live: TickEnv = {
+  const alive: TickEnv = {
     enabled: true,
     visible: true,
     wsActive: true,
@@ -210,38 +212,83 @@ describe("tickMode", () => {
     focusMode: false,
     reducedMotion: false,
     agentCount: 4,
-    anyActive: false,
+    anyAlive: true,
   };
 
-  it("runs slowly for a parked fleet and fully for a working one", () => {
-    expect(tickMode(live)).toBe("slow");
-    expect(tickMode({ ...live, anyActive: true })).toBe("full");
+  it("animates a fleet that is alive and freezes one that is not", () => {
+    expect(tickMode(alive)).toBe("live");
+    expect(tickMode({ ...alive, anyAlive: false })).toBe("still");
+  });
+
+  // There is deliberately no gear between these two. A middle rate — redrawing
+  // a few times a second to breathe cheaply — reads as a stutter rather than
+  // as slowness, which is the bug that made this a two-state enum.
+  it("offers no rate between frozen and smooth", () => {
+    const rates = new Set(Object.values(TICK_MS).filter((ms) => Number.isFinite(ms)));
+    for (const ms of rates) expect(ms <= 33 || ms >= 1000).toBe(true);
   });
 
   // Each of these is a way Maestro spends hours: a window behind another, a
   // tab you switched away from, an agent on the focus stage. None of them may
   // leave an animation running.
   it("stops dead — not throttles — whenever nobody can see it", () => {
-    expect(tickMode({ ...live, visible: false, anyActive: true })).toBe("off");
-    expect(tickMode({ ...live, wsActive: false, anyActive: true })).toBe("off");
-    expect(tickMode({ ...live, canvasMode: false, anyActive: true })).toBe("off");
-    expect(tickMode({ ...live, focusMode: true, anyActive: true })).toBe("off");
-    expect(tickMode({ ...live, enabled: false, anyActive: true })).toBe("off");
+    expect(tickMode({ ...alive, visible: false })).toBe("off");
+    expect(tickMode({ ...alive, wsActive: false })).toBe("off");
+    expect(tickMode({ ...alive, canvasMode: false })).toBe("off");
+    expect(tickMode({ ...alive, focusMode: true })).toBe("off");
+    expect(tickMode({ ...alive, enabled: false })).toBe("off");
+    expect(TICK_MS.off).toBe(Infinity);
   });
 
   it("stops on an empty workspace — there is no fleet to diagram", () => {
-    expect(tickMode({ ...live, agentCount: 0 })).toBe("off");
+    expect(tickMode({ ...alive, agentCount: 0 })).toBe("off");
   });
 
   it("honours prefers-reduced-motion by drawing, not animating", () => {
-    expect(tickMode({ ...live, reducedMotion: true, anyActive: true })).toBe("static");
-    // Static still redraws occasionally, or a tidy would leave a stale picture.
-    expect(TICK_MS.static).toBeGreaterThan(TICK_MS.slow);
-    expect(Number.isFinite(TICK_MS.static)).toBe(true);
+    expect(tickMode({ ...alive, reducedMotion: true })).toBe("still");
+    // Still redraws occasionally, or a tidy would leave a stale picture — but
+    // it is handed a frozen clock, so those frames are identical.
+    expect(Number.isFinite(TICK_MS.still)).toBe(true);
+    expect(TICK_MS.still).toBeGreaterThan(TICK_MS.live);
   });
 
   it("caps the working rate below vsync — 30fps is plenty for one pulse", () => {
-    expect(TICK_MS.full).toBeGreaterThanOrEqual(30);
+    expect(TICK_MS.live).toBeGreaterThanOrEqual(30);
+  });
+});
+
+describe("sigilBox", () => {
+  it("centres the box on the area", () => {
+    // Within a pixel: the position is rounded and the size ceil'd so the canvas
+    // lands on whole device pixels, which can leave the centre half a pixel off.
+    const b = sigilBox(AREA);
+    expect(Math.abs(b.x + b.size / 2 - AREA.width / 2)).toBeLessThanOrEqual(1);
+    expect(Math.abs(b.y + b.size / 2 - AREA.height / 2)).toBeLessThanOrEqual(1);
+  });
+
+  it("is much smaller than the grid — that is the whole point of it", () => {
+    // Sizing the canvas to the drawing rather than to the grid is what pays for
+    // animating on rAF instead of on a timer. If this ever creeps up to the
+    // full grid, the cost of a frame roughly doubles.
+    const b = sigilBox({ width: 1936, height: 1096 });
+    expect(b.size * b.size).toBeLessThan(1936 * 1096 * 0.5);
+  });
+
+  it("still contains the drawing, ticks and all", () => {
+    const g = sigilGeometry(AREA, tidied(4));
+    const b = sigilBox(AREA);
+    // The major ticks reach past rOuter; the box has to cover them or the ruler
+    // gets clipped at the canvas edge.
+    expect(b.size / 2).toBeGreaterThan(g.rOuter);
+  });
+
+  it("never spills past the short edge, however wide the window", () => {
+    for (const area of [{ width: 3000, height: 600 }, { width: 600, height: 3000 }, AREA]) {
+      const b = sigilBox(area);
+      expect(b.size).toBeLessThanOrEqual(Math.min(area.width, area.height));
+      expect(b.x).toBeGreaterThanOrEqual(0);
+      expect(b.y).toBeGreaterThanOrEqual(0);
+    }
   });
 });
 

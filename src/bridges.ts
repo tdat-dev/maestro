@@ -19,7 +19,7 @@ import {
   setPaneRevealer,
   type FleetPane,
 } from "./agentbridge";
-import { initFleetBridge } from "./fleetbridge";
+import { initFleetBridge, deliveryTargets } from "./fleetbridge";
 import { spawnForConductor } from "./spawnmodal";
 import { paneStatus } from "./fleet";
 import { showDelegation, showDelegationToast } from "./delegation";
@@ -254,9 +254,12 @@ export function initBridges(): void {
     deliver: (dir, from, to, message) => {
       const ws = [...workspaces.values()].find((w) => w.dir === dir);
       if (!ws) return;
-      const targets = to
-        ? [...ws.panes.values()].filter((p) => p.running && p.spec.name === to)
-        : [...ws.panes.values()].filter((p) => p.running);
+      const targets = deliveryTargets(
+        [...ws.panes.values()],
+        (p) => ({ name: p.spec.name, running: p.running }),
+        from,
+        to,
+      );
       for (const p of targets) void sendMessage(p.id, message).catch(() => {});
       showDelegation(ws, from, targets);
       showDelegationToast(

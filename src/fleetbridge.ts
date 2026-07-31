@@ -68,6 +68,31 @@ export function parseOutboxLine(line: string): OutboxLine | null {
   };
 }
 
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** Which agents one outbox line should reach.
+ *
+ *  A directed line ("to": "Bob") goes to the agent of that name — matched
+ *  loosely, since an agent types the name by hand into the MCP tool. A
+ *  broadcast ("to": null) goes to the whole running fleet EXCEPT the sender:
+ *  a Director that dispatches to everyone would otherwise dispatch to itself,
+ *  read its own order as a new instruction, and burn tokens in a loop.
+ *
+ *  Stopped agents are never targets — typing into a dead PTY goes nowhere. */
+export function deliveryTargets<T>(
+  panes: T[],
+  info: (p: T) => { name: string; running: boolean },
+  from: string | null,
+  to: string | null,
+): T[] {
+  return panes.filter((p) => {
+    const { name, running } = info(p);
+    if (!running) return false;
+    if (to) return sameName(name, to);
+    return !from || !sameName(name, from);
+  });
+}
+
 export interface SpawnLine {
   cli: string;
   task: string | null;

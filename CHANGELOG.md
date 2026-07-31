@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-07-31
+
+The canvas becomes a place agents talk to each other: a Director pane that
+dispatches work to the agents already open, and a Flow panel that keeps every
+hand-off readable instead of flashing it for 2.6 seconds.
+
+### Added
+
+- **Director agent** — spawn one from the **+Agent** menu. It reads the fleet
+  roster and hands tasks to the agents already open rather than spawning its
+  own crew, so you decide who is in the room.
+- **Flow panel** — every message that moves between agents is kept with its
+  sender, its targets and its full text, with an unread badge on the rail. The
+  delegation arc and toast are still there; they are now the notification, not
+  the record.
+- **Fleet sigil** — an orrery drawn under the panes that tracks the fleet.
+- **Wallpaper and sigil apply to all of Maestro**, not just the canvas.
+
+### Fixed
+
+- **A message handed to an agent is no longer swallowed by its composer.** The
+  whole message plus Enter was written to the terminal in a single write, which
+  Claude Code's TUI read as a paste: it kept only the tail of the text and
+  treated the trailing carriage return as a newline inside the composer, so the
+  message sat there unsent. Messages are now typed in chunks and Enter is sent
+  on its own once the composer has settled, one message at a time per agent.
+- **A broadcast no longer dispatches back to the sender.** A Director
+  broadcasting an order typed that order into its own pane, read it as a fresh
+  instruction, and answered its own dispatch.
+- **Tidy and the zoom pill** no longer sit on top of the canvas.
+
 ## [0.5.1] - 2026-07-23
 
 ### Fixed

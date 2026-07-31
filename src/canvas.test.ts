@@ -33,6 +33,27 @@ describe("tileToFit", () => {
     const tiles = tileToFit(3, area, { gap: 10, margin: 10, top: 10, bottom: 10 });
     expect(tiles[2].w).toBeGreaterThan(tiles[0].w + 1);
   });
+  it("leaves no seam by default — neighbours share an edge exactly", () => {
+    // The whole point of gap 0: a half-pixel of drift here is a visible slit of
+    // wallpaper between two panes. Odd sizes so the division never lands round.
+    for (const n of [2, 4, 6, 9]) {
+      const tiles = tileToFit(n, { width: 1001, height: 733 });
+      const { cols } = gridDimsFor(n);
+      for (let i = 0; i < n; i++) {
+        const right = i % cols !== cols - 1 && i + 1 < n;
+        if (right) expect(tiles[i].x + tiles[i].w, `n=${n} tile ${i} → ${i + 1}`).toBe(tiles[i + 1].x);
+        if (i + cols < n) expect(tiles[i].y + tiles[i].h, `n=${n} tile ${i} ↓`).toBe(tiles[i + cols].y);
+      }
+    }
+  });
+  it("keeps the cluster inside the canvas at the default margin", () => {
+    const tiles = tileToFit(4, area);
+    for (const t of tiles) {
+      expect(t.x).toBeGreaterThanOrEqual(10);
+      expect(t.x + t.w).toBeLessThanOrEqual(area.width - 10);
+      expect(t.y + t.h).toBeLessThanOrEqual(area.height - 10);
+    }
+  });
 });
 
 describe("nextSlot", () => {

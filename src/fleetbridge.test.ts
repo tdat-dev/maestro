@@ -8,7 +8,7 @@ vi.mock("./ipc", () => ({
   fsCreateFile: vi.fn(),
 }));
 
-import { serializeFleet, parseOutboxLine, parseSpawnLine } from "./fleetbridge";
+import { serializeFleet, parseOutboxLine, parseSpawnLine, deliveryTargets } from "./fleetbridge";
 
 describe("serializeFleet", () => {
   it("emits an {agents:[...]} roster tagged with the workspace name", () => {
@@ -45,6 +45,40 @@ describe("parseOutboxLine", () => {
     expect(parseOutboxLine("not json")).toBeNull();
     expect(parseOutboxLine('{"to":"x"}')).toBeNull();
     expect(parseOutboxLine('{"message":"   "}')).toBeNull();
+  });
+});
+
+describe("deliveryTargets", () => {
+  const info = (p: { name: string; running: boolean }) => p;
+  const fleet = [
+    { name: "Director", running: true },
+    { name: "Ana", running: true },
+    { name: "Bob", running: true },
+    { name: "Ghost", running: false },
+  ];
+
+  it("a broadcast reaches the fleet but never the sender", () => {
+    expect(deliveryTargets(fleet, info, "Director", null).map((p) => p.name)).toEqual(["Ana", "Bob"]);
+  });
+
+  it("matches the sender's own name loosely, so casing can't sneak it back in", () => {
+    expect(deliveryTargets(fleet, info, " director ", null).map((p) => p.name)).toEqual(["Ana", "Bob"]);
+  });
+
+  it("an unidentified sender broadcasts to everyone running", () => {
+    expect(deliveryTargets(fleet, info, null, null).map((p) => p.name)).toEqual([
+      "Director",
+      "Ana",
+      "Bob",
+    ]);
+  });
+
+  it("a directed message goes to that agent only, name matched loosely", () => {
+    expect(deliveryTargets(fleet, info, "Director", "ana").map((p) => p.name)).toEqual(["Ana"]);
+  });
+
+  it("never targets a stopped agent", () => {
+    expect(deliveryTargets(fleet, info, null, "Ghost")).toEqual([]);
   });
 });
 

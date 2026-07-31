@@ -5,8 +5,9 @@
 // configurePaneLayout to avoid a circular import.
 
 import { tileToFit, nextSlot, serializeLayout } from "./canvas";
+import { refreshSigil } from "./sigilcanvas";
 import { resizePty } from "./ipc";
-import { getTermFontSize } from "./settings";
+import { paneFont } from "./zoom";
 import { type Pane, type Workspace } from "./panetypes";
 
 let onBcastChange: () => void = () => {};
@@ -41,7 +42,9 @@ export function applyLayout(ws: Workspace): void {
   for (const [id, p] of ws.panes) {
     let t = ws.layout.get(id);
     if (!t) {
-      const slot = nextSlot([...ws.layout.values()], { w: 540, h: 384, gap: 12 }, area);
+      // gap 0: a freshly spawned pane lands flush against its neighbours, the
+      // same continuous surface Tidy produces.
+      const slot = nextSlot([...ws.layout.values()], { w: 540, h: 384, gap: 0 }, area);
       t = { x: slot.x, y: slot.y, w: 540, h: 384 };
       ws.layout.set(id, t);
     }
@@ -52,12 +55,24 @@ export function applyLayout(ws: Workspace): void {
   }
   for (const id of [...ws.layout.keys()]) if (!ws.panes.has(id)) ws.layout.delete(id);
   saveLayout(ws);
+  // The sigil is a diagram of exactly this map — every spawn, kill, tidy and
+  // drag-release lands here, so this is the one place it needs re-reading.
+  refreshSigil();
+}
+
+/** Tidy order: the director takes the first tile (top-left); everyone else keeps
+ *  the order they were spawned in. Position is prominence for free — a layout is
+ *  read from its top-left corner, so that is where the agent handing out the work
+ *  belongs. Stable, so re-tidying never shuffles the workers among themselves. */
+export function tidyOrder(panes: { id: string; role?: string }[]): string[] {
+  const director = panes.filter((p) => p.role === "conductor");
+  return [...director, ...panes.filter((p) => p.role !== "conductor")].map((p) => p.id);
 }
 
 /** Tidy: tile every pane to fill the screen (2→big side by side, 4→2×2, …). */
 export function tidyLayout(ws: Workspace): void {
   const area = { width: ws.gridEl.clientWidth, height: ws.gridEl.clientHeight };
-  const ids = [...ws.panes.keys()];
+  const ids = tidyOrder([...ws.panes.values()].map((p) => ({ id: p.id, role: p.spec.role })));
   const tiles = tileToFit(ids.length, area);
   ids.forEach((id, i) => ws.layout.set(id, tiles[i]));
   applyLayout(ws);
@@ -86,9 +101,10 @@ export function focusPane(ws: Workspace, pane: Pane, ev?: MouseEvent): void {
     pane.el.style.removeProperty("--oy");
   }
   ws.gridEl.classList.add("has-focus");
+  refreshSigil(); // the stage covers the canvas — stop drawing under it
   renderRail(ws, pane);
   requestAnimationFrame(() => {
-    pane.term.setFontSize(Math.min(20, getTermFontSize() + 2)); // bigger on the stage
+    pane.term.setFontSize(paneFont(ws, 2)); // bigger on the stage, still zoomed
     const s = pane.term.fit();
     if (pane.running) void resizePty(pane.id, s.cols, s.rows).catch(() => {});
     pane.term.focus();
@@ -97,6 +113,7 @@ export function focusPane(ws: Workspace, pane: Pane, ev?: MouseEvent): void {
 export function exitFocus(ws: Workspace): void {
   if (!ws.gridEl.classList.contains("has-focus")) return;
   ws.gridEl.classList.remove("has-focus");
+  refreshSigil();
   const focused = [...ws.panes.values()].find((p) => p.el.classList.contains("focused"));
   for (const p of ws.panes.values()) {
     p.el.classList.remove("focused");
@@ -104,7 +121,7 @@ export function exitFocus(ws: Workspace): void {
   }
   ws.gridEl.querySelector(".cloud-rail")?.remove();
   requestAnimationFrame(() => {
-    focused?.term.setFontSize(getTermFontSize()); // restore the settings font size
+    focused?.term.setFontSize(paneFont(ws)); // back to the tiled (zoomed) size
     for (const p of ws.panes.values()) {
       const s = p.term.fit();
       if (p.running) void resizePty(p.id, s.cols, s.rows).catch(() => {});
@@ -132,7 +149,10 @@ function renderRail(ws: Workspace, focused: Pane): void {
         const s = p.attention ? "attention" : p.running ? "running" : "idle";
         const nm = p.spec.name;
         const letter = (nm.trim()[0] ?? "?").toUpperCase();
-        return `<button class="rc" data-id="${p.id}" title="${nm}">
+        // Same mark the tiled pane wears (canvas.css): focusing someone else
+        // must not be the moment the director becomes hard to find.
+        const role = p.spec.role === "conductor" ? ` data-role="director"` : "";
+        return `<button class="rc"${role} data-id="${p.id}" title="${nm}">
         <span class="av" style="background:${p.color};--hue:${p.color}">${letter}<span class="s ${s}"></span></span>
         <span class="n">${nm}</span></button>`;
       })

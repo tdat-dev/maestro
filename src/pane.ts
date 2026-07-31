@@ -18,7 +18,6 @@ import {
   recordStop,
 } from "./ipc";
 import { branchName } from "./worktree";
-import { getTermFontSize } from "./settings";
 import { launchSpec } from "./crew";
 import { type Pane, type Workspace, type AgentSpec } from "./panetypes";
 import { layoutGrid, wirePaneDrag, wirePaneRename, toggleMax } from "./panelayout";
@@ -26,6 +25,35 @@ import { saveSession } from "./session";
 import { openReplays, REC_DIR_REL } from "./replay";
 import { workspaces, newId } from "./appstate";
 import { basename } from "./workspaces";
+import { paneLook } from "./background";
+import { MAESTRO_LAWS, DIRECTOR_LAWS } from "./laws";
+import { getZoom, setZoom, paneFont, autoFitRows } from "./zoom";
+
+/** Re-theme every live pane in `ws` — called when the background, the tone, or
+ *  the opacity changes, since all three decide the same palette. */
+export function retheme(ws: Workspace): void {
+  const look = paneLook();
+  for (const pane of ws.panes.values()) pane.term.setLook(look);
+}
+
+/** Re-render every pane in `ws` at `next` zoom (or the saved one, when called
+ *  with nothing — e.g. after restoring a workspace). Returns the zoom applied.
+ *
+ *  Order matters: the auto-fit floor is set BEFORE the font, so the new size is
+ *  measured under the rule that will govern it rather than under the old one.
+ *  See autoFitRows for why zooming stands the floor down. */
+export function applyZoom(ws: Workspace, next?: number): number {
+  const zoom = next === undefined ? getZoom(ws) : setZoom(ws, next);
+  const rows = autoFitRows(PANE_MIN_ROWS, zoom);
+  const font = paneFont(ws);
+  for (const pane of ws.panes.values()) {
+    pane.term.setAutoFit(rows);
+    pane.term.setFontSize(font);
+    // setFontSize already refits and reports cols/rows through mountTerminal's
+    // onResize, which is the path that resizes the PTY — no second call needed.
+  }
+  return zoom;
+}
 
 let onErrMsg: (e: unknown) => string = (e) => String(e);
 let onUpdateCount: () => void = () => {};
@@ -42,17 +70,6 @@ export function configurePane(deps: {
   onShowWorkspace = deps.showWorkspace;
   onWirePaneSearch = deps.wirePaneSearch;
 }
-
-// The board protocol every Maestro-spawned Claude agent is forced to follow
-// (injected via --append-system-prompt). One line, and free of cmd.exe
-// metacharacters (& | < > % ! ^ ( ) " ') so it survives the cmd /c launch path.
-const MAESTRO_LAWS =
-  "You are running inside Maestro, which gives this workspace a shared kanban board through the maestro MCP tools. For any non-trivial task you MUST plan on the board before implementing. First call board_get. Then for each deliverable call card_add in the Proposed list with a short title, a one-line desc, and the small concrete steps as the checklist array. Prefer few big cards over many tiny ones. Wait for the user to approve by moving cards to To do. While working, card_move your card to Doing when you start it and card_done with a one-line summary when it is finished. Keep card titles stable so the board can track them.";
-
-// The conductor role: orchestrate the fleet, do not implement. Single line, free
-// of cmd.exe metacharacters so it survives the cmd /c launch path.
-const CONDUCTOR_LAWS =
-  "You are the CONDUCTOR of a Maestro agent fleet, not a worker. Do NOT write code or do tasks yourself. Orchestrate through the maestro MCP tools. When the user gives you a goal: call board_get, break the goal into cards with card_add, then spawn worker agents with agent_spawn and hand each worker a specific card with fleet_send. Track progress with fleet_status and agent_output, read a worker screen when it looks stuck, move cards with card_move, and mark card_done when a worker reports finished. Keep every worker busy and the board current until the goal is complete. Spawn more workers if there is idle capacity and pending work.";
 
 const enc = new TextEncoder();
 
@@ -90,11 +107,19 @@ function buildPaneEl(
   _sub: string,
   badge: string,
   color: string,
+  role?: AgentSpec["role"],
 ): HTMLElement {
   const initial = name.trim().charAt(0).toUpperCase() || "◆";
   const el = document.createElement("section");
   el.className = "pane";
   el.dataset.id = id;
+  // The one pane that dispatches work has to be findable at a glance, so the
+  // role reaches CSS as a plain attribute. "director" rather than "conductor":
+  // the word on screen should be the one the person using this says out loud.
+  if (role === "conductor") el.dataset.role = "director";
+  // Word, not icon. A badge that only makes sense once someone explains it is
+  // decoration; the label is two syllables and needs no legend.
+  const roleChip = role === "conductor" ? `<span class="pb-role">Director</span>` : "";
   // Slim draggable title bar: status dot · editable name · CLI badge · controls.
   // Controls keep their data-* attributes so the existing wiring in createAgent
   // still binds. `[data-drag]` on the bar is the canvas move handle.
@@ -103,6 +128,7 @@ function buildPaneEl(
       <span class="pb-dot"></span>
       <span class="pb-av" style="background:${color}" aria-hidden="true">${initial}</span>
       <span class="pb-name pane-name">${name}</span>
+      ${roleChip}
       <span class="pb-cli">${badge}</span>
       <span class="pb-sp"></span>
       <div class="pb-ctrls ctrls">
@@ -160,7 +186,7 @@ export function createAgent(
   onShowWorkspace();
   const id = attach?.id ?? newId();
   const sub = spec.cwd ? basename(spec.cwd) : "";
-  const el = buildPaneEl(id, spec.name, sub, spec.badge, spec.color);
+  const el = buildPaneEl(id, spec.name, sub, spec.badge, spec.color, spec.role);
   ws.gridEl.insertBefore(el, ws.gridEl.lastElementChild); // before the spawn tile
 
   const host = el.querySelector<HTMLElement>("[data-host]")!;
@@ -178,11 +204,16 @@ export function createAgent(
     (cols, rows) => {
       if (ws.panes.has(id)) void resizePty(id, cols, rows).catch(() => {});
     },
-    { openLink: (url) => void openExternal(url).catch(() => {}), fontSize: getTermFontSize() },
+    {
+      openLink: (url) => void openExternal(url).catch(() => {}),
+      fontSize: paneFont(ws),
+      look: paneLook(),
+    },
   );
   // Keep a tiled pane readable: an agent CLI spends ~7 rows on its prompt box
   // and status line, so anything under this floor shows no conversation at all.
-  term.setAutoFit(PANE_MIN_ROWS);
+  // Stands down once the user has zoomed — see autoFitRows.
+  term.setAutoFit(autoFitRows(PANE_MIN_ROWS, getZoom(ws)));
 
   // The persona name owns the title bar now; surface the terminal's own title
   // as a hover tooltip instead of overwriting the name.
@@ -285,12 +316,12 @@ export function createAgent(
         cwd = spec.worktree;
       }
       // Enforce Maestro's protocol at the system-prompt level so a Claude agent
-      // MUST follow it (not a soft MCP hint, not a button). A conductor gets the
-      // orchestration prompt; every other Claude gets the plan-first worker one.
+      // MUST follow it (not a soft MCP hint, not a button). The director gets the
+      // dispatch prompt; every other Claude gets the plan-first worker one.
       // Only claude exposes --append-system-prompt; other CLIs still get the MCP
       // tools + server instructions. New array — never mutate spec.args, or a
       // restart would append the flag again and again.
-      const laws = spec.role === "conductor" ? CONDUCTOR_LAWS : MAESTRO_LAWS;
+      const laws = spec.role === "conductor" ? DIRECTOR_LAWS : MAESTRO_LAWS;
       const args =
         spec.badge === "claude" ? [...spec.args, "--append-system-prompt", laws] : spec.args;
       // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows

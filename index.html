@@ -121,7 +121,13 @@
         <span class="stat"><b id="agentCount">0</b> total</span>
       </div>
       <span class="clock" id="clock" data-tauri-drag-region hidden>--:--:--</span>
-      
+
+      <!-- Canvas controls. These used to float over the canvas top-right, which
+           is exactly where the top-right pane keeps its own header buttons — the
+           two overlapped and the pane lost. Chrome belongs in the chrome bar.
+           (src/zoomui.ts injects the zoom pill just before this button.) -->
+      <button class="tb-btn" id="btnTidy" title="Tidy — tile panes to fit (Ctrl+Shift+G)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Tidy</button>
+
       <span class="tb-div"></span>
       <button class="tb-pane" id="btnToggleCode" aria-label="Toggle code panel" title="Show / hide code panel  ·  Ctrl+Shift+E"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg></button>
     </div>
@@ -129,9 +135,9 @@
 
 
 
-  <main class="main" id="workspaces">
-    <button class="tidy-fab" id="btnTidy" title="Tidy — tile panes to fit (Ctrl+Shift+G)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Tidy</button>
-  </main>
+  <!-- Nothing floats in here on purpose: every pixel of the canvas belongs to
+       the panes. The canvas controls live in the topbar (.tb-right). -->
+  <main class="main" id="workspaces"></main>
 
   <!-- Code panel (right): lazy file tree + lightweight CodeMirror editor.
        Built by src/filetree.ts and src/editor.ts. -->
@@ -171,6 +177,9 @@
     </button>
     <button class="dr-btn" data-tool="fleet" id="drFleet" role="tab" aria-selected="false" title="Fleet — all agents (Ctrl+Shift+L)" aria-label="Fleet monitor">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3"/><circle cx="5" cy="17" r="2.5"/><circle cx="19" cy="17" r="2.5"/><path d="M12 10v3M12 13l-6 2M12 13l6 2"/></svg>
+    </button>
+    <button class="dr-btn" data-tool="flow" id="drFlow" role="tab" aria-selected="false" title="Flow — who sent what to whom (Ctrl+Shift+M)" aria-label="Message flow">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.7 7.1L3 21l1.9-6.3A8 8 0 1 1 21 12z"/><path d="M8.5 12h6.5M12.5 9.5 15 12l-2.5 2.5"/></svg>
     </button>
   </nav>
 
@@ -229,8 +238,8 @@
         <input type="checkbox" id="mConductor">
         <span class="pt-sw"></span>
         <span class="pt-text">
-          <b>Conductor mode <em>directs the crew</em></b>
-          <span>Makes the first agent a conductor (not an extra one): it plans the board, spawns &amp; assigns workers, and tracks progress instead of coding. Pick 0 workers to run just the conductor and let it build its own crew.</span>
+          <b>Director <em>hands out the work</em></b>
+          <span>Turns the first agent into the director instead of adding one. It plans the board and hands each card to an agent you already have open, spawning a new one only when everyone is busy. You can still type into any worker yourself — you outrank it.</span>
         </span>
       </label>
       <div class="crew-total">Total: <b id="crewTotal">0</b> agents</div>
@@ -403,6 +412,21 @@
               <label class="bg-opt bg-cust" title="Custom colour"><input type="color" id="bgColor" value="#0b0f14"><span>+</span></label>
               <label class="bg-opt bg-img" title="Image from disk"><input type="file" id="bgImg" accept="image/*"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 18 5-4 4 3 3-2 4 3"/></svg></label>
             </div>
+          </div>
+          <div class="srow">
+            <div class="sr-txt"><b>Text tone</b><span>Glyph colour for see-through panes. Auto follows the backdrop — black text on a light one.</span></div>
+            <div class="seg" id="setPaneTone" role="group" aria-label="Text tone"><button type="button" data-tone="auto">Auto</button><button type="button" data-tone="light">Light</button><button type="button" data-tone="dark">Dark</button></div>
+          </div>
+          <div class="srow">
+            <div class="sr-txt"><b>Pane opacity</b><span>How much plate sits behind the text. Glass shows the background straight through.</span></div>
+            <div class="set-range"><input type="range" id="paneOpacity" min="0" max="100" step="5" value="0" aria-label="Pane opacity"><span class="n" id="paneOpacityVal">Glass</span></div>
+          </div>
+          <div class="srow">
+            <label class="toggle"><input type="checkbox" id="sigilOn"><span class="tg"></span><span class="sr-txt"><b>Fleet sigil</b><span>An orrery drawn between the panes — one arc and one node per agent, live. Reads through see-through panes.</span></span></label>
+          </div>
+          <div class="srow">
+            <div class="sr-txt"><b>Sigil intensity</b><span>How strongly it draws. Capped well below the terminal text either way.</span></div>
+            <div class="set-range"><input type="range" id="sigilIntensity" min="0" max="100" step="5" value="80" aria-label="Sigil intensity"><span class="n" id="sigilIntensityVal">80%</span></div>
           </div>
           <div class="srow">
             <div class="sr-txt"><b>Terminal font size</b><span>Applies live to every running pane.</span></div>

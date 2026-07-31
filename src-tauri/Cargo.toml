@@ -1,6 +1,6 @@
 [package]
 name = "maestro"
-version = "0.5.2"
+version = "0.5.3"
 description = "Maestro multi-agent CLI orchestrator"
 authors = ["tdat-dev"]
 license = "MIT"
@@ -10,7 +10,12 @@ rust-version = "1.77.2"
 
 [lib]
 name = "maestro_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# rlib only. The Tauri template ships `["staticlib", "cdylib", "rlib"]` so the
+# same crate can be linked into an iOS or Android host; Maestro is Windows-only
+# (see the `windows` dependency below), so those two outputs were compiled every
+# build and linked by nobody — `maestro_lib.lib` alone was 1.0 GB of the debug
+# target. Add them back if this ever targets mobile.
+crate-type = ["rlib"]
 
 # Cargo always emits `maestro-dev.exe`, so a `tauri dev` build can never share an
 # image name with an installed production Maestro (`maestro.exe`) — anything that
@@ -61,3 +66,17 @@ windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_System_Threading",
 ] }
+
+# Debug info is what makes a debug build enormous: it is emitted into every
+# rlib and every .pdb, and then copied again into each incremental cache. The
+# split below keeps what is actually used day to day and drops the rest.
+[profile.dev]
+# Panics and backtraces still name file:line — that is what a crash report needs.
+# What is gone is variable inspection in a step debugger; if you ever need to
+# attach one, flip this to `true` for that session.
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+# Nobody steps into tokio or the `windows` crate. Their debug info was the single
+# largest slice of target/debug/deps.
+debug = false

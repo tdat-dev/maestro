@@ -6,6 +6,7 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open, confirm, message } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { typeInto, serialize } from "./typing";
 
 /** Open an http(s) link in the user's default browser. */
 export async function openExternal(url: string): Promise<void> {
@@ -49,6 +50,15 @@ export async function attachPty(
 
 export async function sendInput(agentId: string, data: string): Promise<void> {
   await invoke("pty_input", { agentId, data });
+}
+
+/** Hand a whole message to an agent: chunked, then Enter as its own keystroke.
+ *  Use this instead of `sendInput(id, text + "\r")` — see typing.ts for what a
+ *  single write does to Claude Code's composer. */
+export function sendMessage(agentId: string, text: string, submit = true): Promise<void> {
+  return serialize(agentId, () =>
+    typeInto((data) => sendInput(agentId, data), text, submit),
+  );
 }
 
 export async function resizePty(agentId: string, cols: number, rows: number): Promise<void> {

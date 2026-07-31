@@ -15,14 +15,16 @@ import { configureWizard, initWizard, openWizard, isPresetAvailable, refreshCliA
 import { closeSettings, initSettingsModal } from "./settingsmodal";
 import { configureSession, saveSession, restoreSession } from "./session";
 import { configureScheduler, initScheduler } from "./scheduler";
-import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setStatus, clearAttention, updateAttention } from "./pane";
+import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setStatus, clearAttention, updateAttention, retheme, applyZoom } from "./pane";
 import { configureWorkspace, initWorkspace, createWorkspace, activateWorkspace, bootDetached } from "./workspace";
 import { confirmModal } from "./confirmmodal";
 import { wirePaneSearch } from "./panesearch";
 import { initMascotView } from "./mascotview";
 import { initVoice } from "./voice";
 import { configureBackground, initBackground, applyBackground } from "./background";
+import { initSigil } from "./sigilcanvas";
 import { initTopbarChrome } from "./topbarchrome";
+import { configureZoomUi, initZoomUi } from "./zoomui";
 import { initHint, topNote } from "./hint";
 import { configureBridges, initBridges } from "./bridges";
 import { initQuitLife } from "./quitlife";
@@ -45,11 +47,6 @@ import { setFileOpener, setDiffOpener } from "./agentbridge";
 
 // No PTY output for this long while alive ⇒ the agent is idle (waiting at a prompt).
 const IDLE_MS = 1200;
-
-// The conductor role: orchestrate the fleet, do not implement. Single line, free
-// of cmd.exe metacharacters so it survives the cmd /c launch path.
-const CONDUCTOR_LAWS =
-  "You are the CONDUCTOR of a Maestro agent fleet, not a worker. Do NOT write code or do tasks yourself. Orchestrate through the maestro MCP tools. When the user gives you a goal: call board_get, break the goal into cards with card_add, then spawn worker agents with agent_spawn and hand each worker a specific card with fleet_send. Track progress with fleet_status and agent_output, read a worker screen when it looks stuck, move cards with card_move, and mark card_done when a worker reports finished. Keep every worker busy and the board current until the goal is complete. Spawn more workers if there is idle capacity and pending work.";
 
 // Per-CLI identity color for the monogram tile (brand-adjacent, distinct on dark).
 const CLI_COLORS: Record<string, string> = {
@@ -229,13 +226,14 @@ configureReplay({ paneToast, errMsg, closeSettings });
 initReplay();
 configureDashboard({ errMsg });
 initDashboard();
-configureSpawnModal({ createAgent, createWorkspace, cliLook, confirmModal, isPresetAvailable, refreshCliAvailability, conductorLaws: CONDUCTOR_LAWS });
+configureSpawnModal({ createAgent, createWorkspace, cliLook, confirmModal, isPresetAvailable, refreshCliAvailability });
 configureWizard({ loadCrew, spawnCrew, loadTemplates, saveTemplates, templateSummary, confirmModal, renderCrew });
 configureSession({ createWorkspace, createAgent });
 configureScheduler({ closeSettings, loadTemplates, launchPreset });
 configurePane({ errMsg, updateCount, showWorkspace, wirePaneSearch });
 configureWorkspace({ createAgent, removeAgent, updateCount, showWorkspace, showView, syncResumeAll, setFileTreeRoot: (dir) => fileTree?.setRoot(dir), applyBackground });
-configureBackground({ getActiveWs: () => activeWs, toast: paneToast });
+configureBackground({ toast: paneToast, onLookChange: retheme });
+configureZoomUi({ getActiveWs: () => activeWs, applyZoom: (ws, z) => void applyZoom(ws, z), note: topNote });
 configureSpawnMenu({ spawnCrew, isPresetAvailable, refreshCliAvailability });
 configureBridges({ activateWorkspace, clearAttention, setStatus, updateCount, stopRecording });
 initSpawnModal();
@@ -244,8 +242,10 @@ initSettingsModal();
 initScheduler();
 initWorkspace();
 initBackground();
+initSigil();
 initSpawnMenu();
 initTopbarChrome();
+initZoomUi();
 initHint();
 initMascotView();
 initBridges();
@@ -428,6 +428,9 @@ document.addEventListener("keydown", (e) => {
   } else if (k === "l") {
     e.preventDefault();
     dockToggle("fleet");
+  } else if (k === "m") {
+    e.preventDefault();
+    dockToggle("flow");
   }
 });
 

@@ -6,7 +6,7 @@
 // attention/status bookkeeping, recording stop) are injected via
 // configureBridges to avoid a circular import.
 
-import { sendInput, onDragDrop, onExit } from "./ipc";
+import { sendMessage, onDragDrop, onExit } from "./ipc";
 import { type Pane, type Workspace } from "./panetypes";
 import { workspaces, activeWs } from "./appstate";
 import {
@@ -19,10 +19,11 @@ import {
   setPaneRevealer,
   type FleetPane,
 } from "./agentbridge";
-import { initFleetBridge } from "./fleetbridge";
+import { initFleetBridge, deliveryTargets } from "./fleetbridge";
 import { spawnForConductor } from "./spawnmodal";
 import { paneStatus } from "./fleet";
 import { showDelegation, showDelegationToast } from "./delegation";
+import { pushFlow } from "./flow";
 
 const wsHost = document.getElementById("workspaces") as HTMLElement;
 
@@ -74,7 +75,7 @@ function setDropTarget(p: Pane | null, agent = false) {
 function dropPathsIntoPane(target: Pane, paths: string[]) {
   if (paths.length === 0) return;
   const text = paths.map((p) => (/\s/.test(p) ? `"${p}"` : p)).join(" ") + " ";
-  void sendInput(target.id, text).catch(() => {});
+  void sendMessage(target.id, text, false).catch(() => {});
   target.term.focus();
 }
 
@@ -137,7 +138,7 @@ export function initBridges(): void {
         : activeWs.panes.keys().next().value;
     const pane = id ? activeWs.panes.get(id) : undefined;
     if (!pane) return false;
-    void sendInput(pane.id, text + (submit ? "\r" : "")).catch(() => {});
+    void sendMessage(pane.id, text, submit).catch(() => {});
     pane.term.focus();
     return true;
   });
@@ -155,7 +156,7 @@ export function initBridges(): void {
       const target = paneAtClient(x, y) ?? dropTarget;
       setDropTarget(null);
       if (!target || !text) return null;
-      void sendInput(target.id, text).catch(() => {});
+      void sendMessage(target.id, text, false).catch(() => {});
       target.term.focus();
       return { id: target.id, name: target.spec.name, color: target.color, running: target.running };
     },
@@ -174,7 +175,7 @@ export function initBridges(): void {
   setAgentSenderById((id, text, submit) => {
     const pane = activeWs?.panes.get(id);
     if (!pane || !pane.running) return false;
-    void sendInput(pane.id, text + (submit ? "\r" : "")).catch(() => {});
+    void sendMessage(pane.id, text, submit).catch(() => {});
     pane.term.focus();
     return true;
   });
@@ -253,16 +254,32 @@ export function initBridges(): void {
     deliver: (dir, from, to, message) => {
       const ws = [...workspaces.values()].find((w) => w.dir === dir);
       if (!ws) return;
-      const targets = to
-        ? [...ws.panes.values()].filter((p) => p.running && p.spec.name === to)
-        : [...ws.panes.values()].filter((p) => p.running);
-      for (const p of targets) void sendInput(p.id, message + "\r").catch(() => {});
+      const targets = deliveryTargets(
+        [...ws.panes.values()],
+        (p) => ({ name: p.spec.name, running: p.running }),
+        from,
+        to,
+      );
+      for (const p of targets) void sendMessage(p.id, message).catch(() => {});
       showDelegation(ws, from, targets);
       showDelegationToast(
         from,
         targets.map((p) => p.spec.name),
         message,
       );
+      // The arc and the toast are gone in 2.6s; the Flow panel keeps the text.
+      const sender = from
+        ? [...ws.panes.values()].find(
+            (p) => p.spec.name.trim().toLowerCase() === from.trim().toLowerCase(),
+          )
+        : undefined;
+      pushFlow({
+        from,
+        to,
+        color: sender?.color,
+        text: message,
+        targets: targets.map((p) => ({ wsId: ws.id, paneId: p.id, name: p.spec.name })),
+      });
     },
     spawn: (dir, req) => void spawnForConductor(dir, req),
   });

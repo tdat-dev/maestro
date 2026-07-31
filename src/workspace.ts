@@ -19,6 +19,8 @@ import { saveSession } from "./session";
 import { workspaces, activeWs, setActiveWs, nextWsId } from "./appstate";
 import { nextWorkspaceName, pickNextActive } from "./workspaces";
 import { dockSetContext } from "./dock";
+import { syncZoomUi } from "./zoomui";
+import { refreshSigil, markSigil } from "./sigilcanvas";
 import { openModal } from "./spawnmodal";
 import { confirmModal } from "./confirmmodal";
 import {
@@ -151,6 +153,13 @@ export function activateWorkspace(ws: Workspace) {
   onSetFileTreeRoot(ws.dir);
   // Paint this workspace's saved canvas background.
   onApplyBackground(ws);
+  // Zoom is per-workspace too — show this one's level, not the last tab's.
+  // (The panes themselves already mount at paneFont(ws).)
+  syncZoomUi();
+  // The sigil is per-workspace as well: stop drawing the tab we just left and
+  // start on this one (or stay stopped, if this one has it off / has no agents).
+  markSigil();
+  refreshSigil();
 }
 
 

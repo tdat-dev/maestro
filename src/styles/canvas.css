@@ -23,16 +23,74 @@
   -webkit-mask: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent);
   mask: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent);
 }
+/* The fleet sigil (sigilcanvas.ts). Above the wallpaper, BELOW every pane —
+   it is scenery seen through the glass, never an overlay on the text. It was
+   briefly moved on top to make it visible and that was the wrong trade: it
+   read as clutter across the terminals. The visibility problem belongs to the
+   glass blur below, not to the stacking order. Never interactive. */
+.grid.canvas > canvas.sigil {
+  position: absolute;
+  /* No `inset: 0` — sigilcanvas.ts parks this over the sigil's own centred
+     square (sigilBox) and sets left/top/width/height in px. Stretching it to
+     the grid would quadruple the pixels cleared and composited every frame,
+     which is what smooth animation is being bought with. */
+  z-index: 1;
+  pointer-events: none;
+}
+/* The focus stage covers the canvas and dims what's left; the sigil would only
+   show up as haze behind the scrim. (The draw loop stops in focus mode too —
+   this is the visual half of the same decision.) */
+.grid.canvas.has-focus > canvas.sigil {
+  display: none;
+}
 .grid.canvas .pane {
   position: absolute;
   z-index: 2;
-  border-radius: 12px;
+  /* Square: tiled panes sit flush (canvas.ts tiles at gap 0), and a rounded
+     corner would cut four notches of wallpaper into every join. The focus
+     stage — the one pane that stands alone — takes its radius back below. */
+  border-radius: 0;
   overflow: hidden;
-  background: rgba(12, 14, 19, 0.62);
+  /* The plate behind the glyphs, handed down by background.ts so the frame and
+     the terminal agree. At the default "Glass" opacity it is fully transparent
+     and the wallpaper reads straight through the pane — the border, the title
+     bar and the text are all that remain. */
+  background: var(--pane-plate, rgba(12, 14, 19, 0.62));
   border: 1px solid var(--line-2);
   box-shadow: 0 22px 50px -22px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.03);
   transition: box-shadow 0.18s, border-color 0.18s, transform 0.12s;
   animation: none;
+}
+/* Frosted glass: the wallpaper still reads through the pane, but softened
+   enough that glyphs keep their edges over a busy photo.
+
+   2.5px, not the 6px this started at. A backdrop blur flattens EVERYTHING
+   behind the pane, and at 6px it was destroying the sigil outright — a 1.4px
+   stroke keeps under a tenth of its peak through a 6px blur, which is why the
+   sigil looked like fog no matter how much ink it was given. 2.5px still takes
+   the grain out of a photograph (the text-shadow below does the rest of the
+   legibility work) while leaving a line behind the glass still a line. */
+.grid.canvas[data-glass="1"] .pane {
+  backdrop-filter: blur(2.5px) saturate(115%);
+}
+/* Legibility floor — a tight halo in the opposite tone, so text survives the
+   patch of image that happens to match its own colour. This reaches the DOM
+   renderer only, which is exactly the one in use while a pane is see-through
+   (terminal.ts drops the WebGL addon then). */
+.grid.canvas[data-glass="1"] .term-host .xterm-rows {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.grid.canvas[data-glass="1"][data-tone="dark"] .term-host .xterm-rows {
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.75);
+}
+/* With no gap between panes a border-colour change is too quiet to say which
+   pane has the keyboard. Lift the one whose terminal is focused above its
+   neighbours so its ring draws over their edges. */
+.grid.canvas .pane:has(.xterm.focus) {
+  z-index: 4;
+  border-color: color-mix(in oklab, var(--accent) 45%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 30%, transparent),
+    0 26px 56px -24px rgba(0, 0, 0, 0.9);
 }
 .grid.canvas .pane:hover {
   border-color: rgba(255, 255, 255, 0.18);
@@ -62,7 +120,11 @@
   height: 32px;
   flex: none;
   padding: 0 7px 0 11px;
-  background: rgba(255, 255, 255, 0.025);
+  /* Its own plate, independent of the pane's: the dot, the name and the buttons
+     are chrome, and they have to stay readable and hittable over any wallpaper
+     even when the body below them is fully see-through. */
+  background: rgba(12, 14, 19, 0.55);
+  backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
   cursor: grab;
   user-select: none;
@@ -188,6 +250,72 @@
   opacity: 1;
 }
 
+/* ---------- the director (the pane that hands out the work) ----------
+   One agent in the fleet dispatches to the others, and spotting it has to be
+   instant — in a 3x3 tidy, in a screenshot, from across the desk. The weight is
+   bought with SOLID CHROME, not glow, gradient or motion: every other header
+   here is translucent glass carrying muted text, so a filled accent plate is
+   the loudest contrast the system already owns, and it costs one paint.
+
+   No animation on purpose. A pane that pulses forever sits in the corner of the
+   eye all day, and this is a room full of running terminals — the thing that
+   never stops moving stops being read. Nothing below changes a box's size or
+   position either: the flush gap-0 tiling survives untouched. */
+.grid.canvas .pane[data-role="director"] {
+  /* Replaces the hairline, does not add to it — no reflow, no seam. */
+  border-color: var(--accent);
+  /* Above its flush neighbours so the accent edge draws whole (2 = normal pane,
+     4 = the pane holding the keyboard, which still wins). */
+  z-index: 3;
+}
+.grid.canvas .pane[data-role="director"] .pane-bar {
+  background: var(--accent);
+  border-bottom-color: color-mix(in oklab, var(--accent-ink) 22%, transparent);
+  /* The plate is opaque now; blurring what it already hides is wasted GPU. */
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.grid.canvas .pane[data-role="director"] .pb-name,
+.grid.canvas .pane[data-role="director"] .pb-cli {
+  color: var(--accent-ink);
+}
+.grid.canvas .pane[data-role="director"] .pb-cli {
+  border-color: color-mix(in oklab, var(--accent-ink) 30%, transparent);
+}
+.grid.canvas .pane[data-role="director"] .pb-name[contenteditable] {
+  border-bottom-color: color-mix(in oklab, var(--accent-ink) 45%, transparent);
+}
+.grid.canvas .pane[data-role="director"] .pctrl {
+  color: color-mix(in oklab, var(--accent-ink) 70%, transparent);
+}
+.grid.canvas .pane[data-role="director"] .pctrl:hover {
+  background: rgba(0, 0, 0, 0.13);
+  color: var(--accent-ink);
+}
+.grid.canvas .pane[data-role="director"] .pctrl.danger:hover {
+  background: rgba(127, 29, 29, 0.22);
+}
+/* A status dot loses its edge on a plate this bright — ring it in the ink. */
+.grid.canvas .pane[data-role="director"] .pb-dot,
+.grid.canvas .pane[data-role="director"].run .pb-dot {
+  box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--accent-ink) 60%, transparent);
+}
+/* The role, spelled out. An icon nobody can decode without a legend is
+   decoration; this is one word and it answers the question by itself. */
+.grid.canvas .pb-role {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--accent-ink);
+  background: color-mix(in oklab, var(--accent-ink) 15%, transparent);
+  padding: 2px 6px;
+  border-radius: 5px;
+  flex: none;
+  white-space: nowrap;
+}
+
 /* focus: the focused pane fills a stage; others become a tiny avatar rail */
 .grid.canvas.has-focus .pane {
   display: none;
@@ -309,6 +437,20 @@
 .cloud-rail .rc .av .s.attention {
   background: #ffb84c;
   box-shadow: 0 0 7px #ffb84c;
+}
+/* The director in the rail: the same filled accent plate, so "accent = the one
+   who dispatches" holds in focus mode too. */
+.cloud-rail .rc[data-role="director"],
+.cloud-rail .rc[data-role="director"]:hover {
+  background: var(--accent);
+}
+.cloud-rail .rc[data-role="director"] .n {
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+.cloud-rail .rc[data-role="director"] .av {
+  /* the ring's outer stop is --bg elsewhere; on the plate it has to be the plate */
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 3px color-mix(in oklab, var(--accent-ink) 45%, transparent);
 }
 .cloud-rail .rc .n {
   font-size: 9.5px;

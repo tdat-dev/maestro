@@ -4,7 +4,7 @@
 // history. Split out of main.ts; the active workspace is read through an
 // injected getter so this module never imports back into main (no cycle).
 
-import { sendInput } from "./ipc";
+import { sendMessage } from "./ipc";
 import { activeMention, matchNames, splitMentions } from "./mention";
 import { type Pane, type Workspace } from "./panetypes";
 
@@ -86,7 +86,7 @@ function broadcast(): void {
       ? allRunning.filter((p) => p.spec.name.toLowerCase() === seg.name!.toLowerCase())
       : allRunning; // no @mention → the whole running fleet
     for (const p of targets) {
-      void sendInput(p.id, seg.body + "\r").catch(() => {});
+      void sendMessage(p.id, seg.body).catch(() => {});
       flashPane(p);
       sentAny = true;
     }

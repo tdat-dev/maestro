@@ -10,7 +10,7 @@
 // agent's PTY. Split out of main.ts; imports only leaf modules (no cycle).
 
 import { activeWs } from "./appstate";
-import { sendInput } from "./ipc";
+import { sendMessage } from "./ipc";
 import { showDelegationToast } from "./delegation";
 
 // Minimal shape of SpeechRecognition — enough surface for push-to-talk. Kept
@@ -238,7 +238,7 @@ function dispatchTasks(): void {
       /* corrupt — nothing to dispatch */
     }
     for (const t of tasks) {
-      for (const id of t.ids) void sendInput(id, t.body + "\r").catch(() => {});
+      for (const id of t.ids) void sendMessage(id, t.body).catch(() => {});
       if (t.name && t.ids.length) showDelegationToast("You", [t.name], t.body);
     }
   }

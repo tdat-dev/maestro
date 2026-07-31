@@ -3,7 +3,7 @@
 // main-side helpers are injected via configureSpawnModal to avoid a circular
 // import.
 
-import { pickFolder, sendInput } from "./ipc";
+import { pickFolder, sendMessage } from "./ipc";
 import {
   CLI_PRESETS,
   expandCrew,
@@ -252,7 +252,7 @@ export async function spawnCrew(
   if (conductor && !conductorIsClaude) {
     window.setTimeout(() => {
       const pane = [...ws.panes.values()].find((x) => x.spec.role === "conductor");
-      if (pane && pane.running) void sendInput(pane.id, DIRECTOR_LAWS + "\r").catch(() => {});
+      if (pane && pane.running) void sendMessage(pane.id, DIRECTOR_LAWS).catch(() => {});
     }, 3500);
   }
 }
@@ -296,7 +296,7 @@ export async function spawnForConductor(
     window.setTimeout(() => {
       for (const name of newNames) {
         const pane = [...ws.panes.values()].find((x) => x.spec.name === name);
-        if (pane && pane.running) void sendInput(pane.id, task + "\r").catch(() => {});
+        if (pane && pane.running) void sendMessage(pane.id, task).catch(() => {});
       }
     }, 3500);
   }

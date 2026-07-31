@@ -6,7 +6,7 @@
 // attention/status bookkeeping, recording stop) are injected via
 // configureBridges to avoid a circular import.
 
-import { sendInput, onDragDrop, onExit } from "./ipc";
+import { sendMessage, onDragDrop, onExit } from "./ipc";
 import { type Pane, type Workspace } from "./panetypes";
 import { workspaces, activeWs } from "./appstate";
 import {
@@ -75,7 +75,7 @@ function setDropTarget(p: Pane | null, agent = false) {
 function dropPathsIntoPane(target: Pane, paths: string[]) {
   if (paths.length === 0) return;
   const text = paths.map((p) => (/\s/.test(p) ? `"${p}"` : p)).join(" ") + " ";
-  void sendInput(target.id, text).catch(() => {});
+  void sendMessage(target.id, text, false).catch(() => {});
   target.term.focus();
 }
 
@@ -138,7 +138,7 @@ export function initBridges(): void {
         : activeWs.panes.keys().next().value;
     const pane = id ? activeWs.panes.get(id) : undefined;
     if (!pane) return false;
-    void sendInput(pane.id, text + (submit ? "\r" : "")).catch(() => {});
+    void sendMessage(pane.id, text, submit).catch(() => {});
     pane.term.focus();
     return true;
   });
@@ -156,7 +156,7 @@ export function initBridges(): void {
       const target = paneAtClient(x, y) ?? dropTarget;
       setDropTarget(null);
       if (!target || !text) return null;
-      void sendInput(target.id, text).catch(() => {});
+      void sendMessage(target.id, text, false).catch(() => {});
       target.term.focus();
       return { id: target.id, name: target.spec.name, color: target.color, running: target.running };
     },
@@ -175,7 +175,7 @@ export function initBridges(): void {
   setAgentSenderById((id, text, submit) => {
     const pane = activeWs?.panes.get(id);
     if (!pane || !pane.running) return false;
-    void sendInput(pane.id, text + (submit ? "\r" : "")).catch(() => {});
+    void sendMessage(pane.id, text, submit).catch(() => {});
     pane.term.focus();
     return true;
   });
@@ -257,7 +257,7 @@ export function initBridges(): void {
       const targets = to
         ? [...ws.panes.values()].filter((p) => p.running && p.spec.name === to)
         : [...ws.panes.values()].filter((p) => p.running);
-      for (const p of targets) void sendInput(p.id, message + "\r").catch(() => {});
+      for (const p of targets) void sendMessage(p.id, message).catch(() => {});
       showDelegation(ws, from, targets);
       showDelegationToast(
         from,

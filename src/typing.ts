@@ -87,7 +87,19 @@ export function composerText(screen: string): string {
     const t = lines[i].trim();
     if (t.length > 10 && /^[─—-]+$/.test(t)) rules.push(i);
   }
-  if (rules.length < 2) return "";
+  // Codex draws no box: the prompt is a bare `›` line near the bottom with the
+  // status footer under it. Read that line alone — the lines below it are not
+  // composer content. Only the bottom of the screen, so a transcript echo of an
+  // already-sent message higher up is never mistaken for the box.
+  if (rules.length < 2) {
+    const tail = lines.slice(-6);
+    for (let i = tail.length - 1; i >= 0; i -= 1) {
+      if (HINT_LINE.test(tail[i])) continue;
+      const m = tail[i].match(/^\s*[>›]\s?(.*)$/);
+      if (m) return m[1].replace(/\s+/g, " ").trim();
+    }
+    return "";
+  }
   const region = lines.slice(rules[rules.length - 2] + 1, rules[rules.length - 1]);
   const body: string[] = [];
   let seen = false;

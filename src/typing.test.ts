@@ -152,6 +152,31 @@ describe("composerText", () => {
   it("has nothing to read on a screen with no composer (a plain CLI)", () => {
     expect(composerText("$ npm test\nall good\n")).toBe("");
   });
+
+  it("reads a boxless prompt (Codex) and ignores the footer under it", () => {
+    const screen = [
+      "• Working (52s • esc to interrupt)",
+      "",
+      "› land the archive fix and report back",
+      "",
+      "  gpt-5.6-sol high · D:\\ByteWaker",
+    ].join("\n");
+    expect(composerText(screen)).toBe("land the archive fix and report back");
+  });
+
+  it("does not mistake an old transcript prompt for the boxless composer", () => {
+    const screen = [
+      "> a message sent ten minutes ago",
+      "● and the answer to it",
+      "",
+      "line",
+      "line",
+      "line",
+      "line",
+      "line",
+    ].join("\n");
+    expect(composerText(screen)).toBe("");
+  });
 });
 
 describe("stillHolding", () => {

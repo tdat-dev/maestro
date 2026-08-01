@@ -6,7 +6,7 @@
 // attention/status bookkeeping, recording stop) are injected via
 // configureBridges to avoid a circular import.
 
-import { sendMessage, onDragDrop, onExit } from "./ipc";
+import { sendMessage, setPaneScreenReader, onDragDrop, onExit } from "./ipc";
 import { type Pane, type Workspace } from "./panetypes";
 import { workspaces, activeWs } from "./appstate";
 import {
@@ -213,6 +213,16 @@ export function initBridges(): void {
     pane.term.focus();
     pane.el.scrollIntoView({ block: "nearest" });
     return true;
+  });
+
+  // Let a hand-off see the pane it typed into, so it can tell whether its Enter
+  // took. Panes live per workspace, and a message can go to a background one.
+  setPaneScreenReader((id) => {
+    for (const ws of workspaces.values()) {
+      const pane = ws.panes.get(id);
+      if (pane) return pane.term.snapshot(20);
+    }
+    return "";
   });
 
   // Fleet file-bridge: publish each workspace's roster to .maestro/fleet.json and

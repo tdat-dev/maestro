@@ -1,7 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { chunkText, typeInto, serialize, TYPE_CHUNK } from "./typing";
+import { chunkText, typeInto, serialize, composerText, stillHolding, TYPE_CHUNK } from "./typing";
 
 const noSleep = async (): Promise<void> => {};
+
+/** A Claude Code screen with `box` sitting in the composer. */
+const screenWith = (box: string): string =>
+  [
+    "● Reading the plan…",
+    "",
+    "────────────────────────────────────────",
+    `> ${box}`,
+    "────────────────────────────────────────",
+    "  ⏵⏵ bypass permissions on (shift+tab to cycle)",
+  ].join("\n");
 
 describe("chunkText", () => {
   it("keeps a short message in one piece", () => {
@@ -27,8 +38,8 @@ describe("chunkText", () => {
 describe("typeInto", () => {
   it("sends Enter as its own write, after the body", async () => {
     const sent: string[] = [];
-    await typeInto(async (d) => void sent.push(d), "do the thing", true, { sleep: noSleep });
-    expect(sent).toEqual(["do the thing", "\r"]);
+    await typeInto(async (d) => void sent.push(d), "do the thing carefully", true, { sleep: noSleep });
+    expect(sent).toEqual(["do the thing carefully", "\r"]);
   });
 
   it("omits Enter when not submitting", async () => {
@@ -46,6 +57,56 @@ describe("typeInto", () => {
     expect(sent.slice(0, -1).join("")).toBe(body);
   });
 
+  it("presses Enter again while the message is still in the composer", async () => {
+    const sent: string[] = [];
+    const screens = [screenWith("do the thing carefully"), screenWith("")];
+    const ok = await typeInto(async (d) => void sent.push(d), "do the thing carefully", true, {
+      sleep: noSleep,
+      screen: () => screens.shift() ?? screenWith(""),
+    });
+    expect(ok).toBe(true);
+    expect(sent).toEqual(["do the thing carefully", "\r", "\r"]); // one retry, then the box was clear
+  });
+
+  it("stops pressing Enter once the composer is empty", async () => {
+    const sent: string[] = [];
+    const ok = await typeInto(async (d) => void sent.push(d), "do the thing carefully", true, {
+      sleep: noSleep,
+      screen: () => screenWith(""),
+    });
+    expect(ok).toBe(true);
+    expect(sent).toEqual(["do the thing carefully", "\r"]);
+  });
+
+  it("never submits text that is not ours — a dimmed suggestion reads the same", async () => {
+    const sent: string[] = [];
+    await typeInto(async (d) => void sent.push(d), "do the thing carefully", true, {
+      sleep: noSleep,
+      screen: () => screenWith("sửa cái portal đi"), // history suggestion, not our text
+    });
+    expect(sent).toEqual(["do the thing carefully", "\r"]);
+  });
+
+  it("gives up after the last retry and says so", async () => {
+    const sent: string[] = [];
+    const ok = await typeInto(async (d) => void sent.push(d), "do the thing carefully", true, {
+      sleep: noSleep,
+      screen: () => screenWith("do the thing carefully"), // never clears
+      retryWaitsMs: [1, 2],
+    });
+    expect(ok).toBe(false);
+    expect(sent.filter((s) => s === "\r")).toHaveLength(3); // first Enter + two retries
+  });
+
+  it("verifies nothing when the caller cannot show the screen", async () => {
+    const sent: string[] = [];
+    const ok = await typeInto(async (d) => void sent.push(d), "do the thing carefully", true, {
+      sleep: noSleep,
+    });
+    expect(ok).toBe(true);
+    expect(sent).toEqual(["do the thing carefully", "\r"]);
+  });
+
   it("waits between chunks and longer before Enter", async () => {
     const waits: number[] = [];
     const sleep = async (ms: number): Promise<void> => void waits.push(ms);
@@ -56,6 +117,67 @@ describe("typeInto", () => {
       submitDelayMs: 200,
     });
     expect(waits).toEqual([5, 200]); // one gap between the two chunks, then settle
+  });
+});
+
+describe("composerText", () => {
+  it("reads what is in the box, ignoring the transcript above it", () => {
+    expect(composerText(screenWith("viết plan đi"))).toBe("viết plan đi");
+  });
+
+  it("is empty when the box is empty", () => {
+    expect(composerText(screenWith(""))).toBe("");
+  });
+
+  it("joins a wrapped message back together", () => {
+    const screen = [
+      "────────────────────────────────────────",
+      "> first half of the message",
+      "  second half of the message",
+      "────────────────────────────────────────",
+    ].join("\n");
+    expect(composerText(screen)).toBe("first half of the message second half of the message");
+  });
+
+  it("drops the hint line the TUI prints inside the box", () => {
+    const screen = [
+      "────────────────────────────────────────",
+      "> ",
+      "  Press up to edit queued messages",
+      "────────────────────────────────────────",
+    ].join("\n");
+    expect(composerText(screen)).toBe("");
+  });
+
+  it("has nothing to read on a screen with no composer (a plain CLI)", () => {
+    expect(composerText("$ npm test\nall good\n")).toBe("");
+  });
+});
+
+describe("stillHolding", () => {
+  it("recognises our own message wrapped across lines", () => {
+    const screen = [
+      "────────────────────────────────────────",
+      "> Director — the numbers are wrong because",
+      "  the window moved",
+      "────────────────────────────────────────",
+    ].join("\n");
+    expect(stillHolding("Director — the numbers are wrong because the window moved", screen)).toBe(
+      true,
+    );
+  });
+
+  it("recognises the tail of our message when the box has scrolled", () => {
+    const long = "A".repeat(400) + " and finally the last sentence.";
+    expect(stillHolding(long, screenWith("and finally the last sentence."))).toBe(true);
+  });
+
+  it("refuses text that is not ours", () => {
+    expect(stillHolding("send this now", screenWith("explain this codebase"))).toBe(false);
+  });
+
+  it("refuses a box too short to tell apart from a suggestion", () => {
+    expect(stillHolding("go ahead now", screenWith("go ahead"))).toBe(false);
   });
 });
 

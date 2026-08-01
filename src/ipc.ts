@@ -52,13 +52,30 @@ export async function sendInput(agentId: string, data: string): Promise<void> {
   await invoke("pty_input", { agentId, data });
 }
 
-/** Hand a whole message to an agent: chunked, then Enter as its own keystroke.
- *  Use this instead of `sendInput(id, text + "\r")` — see typing.ts for what a
- *  single write does to Claude Code's composer. */
+/** How to read an agent pane's on-screen text, so a hand-off can check that its
+ *  Enter actually took. Set once at startup by the layer that owns the panes;
+ *  without it `sendMessage` still works, it just can't verify. */
+let paneScreen: ((agentId: string) => string) | null = null;
+export function setPaneScreenReader(fn: (agentId: string) => string): void {
+  paneScreen = fn;
+}
+
+/** Hand a whole message to an agent: chunked, then Enter as its own keystroke,
+ *  then check the composer and press Enter again if the message is still
+ *  sitting in it. Use this instead of `sendInput(id, text + "\r")` — see
+ *  typing.ts for what a single write does to Claude Code's composer. */
 export function sendMessage(agentId: string, text: string, submit = true): Promise<void> {
-  return serialize(agentId, () =>
-    typeInto((data) => sendInput(agentId, data), text, submit),
-  );
+  const read = paneScreen;
+  return serialize(agentId, async () => {
+    const sent = await typeInto((data) => sendInput(agentId, data), text, submit, {
+      screen: read ? () => read(agentId) : undefined,
+    });
+    if (!sent) {
+      console.warn(
+        `[maestro] message to ${agentId} is still in the composer after retrying Enter — ${text.length} chars`,
+      );
+    }
+  });
 }
 
 export async function resizePty(agentId: string, cols: number, rows: number): Promise<void> {

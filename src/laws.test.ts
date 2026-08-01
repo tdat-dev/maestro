@@ -30,4 +30,15 @@ describe("agent laws", () => {
   it("leaves the worker taking orders from the person, not only the director", () => {
     expect(MAESTRO_LAWS).toMatch(/person always outranks the Director/);
   });
+
+  // The fleet talks to itself in English so a hand-off never needs translating;
+  // the person still gets answered in their own language. Both halves matter —
+  // an English-only rule with no second half turns the agents monolingual at
+  // the user too.
+  for (const [name, text] of Object.entries(LAWS)) {
+    it(`${name} sends fleet_send hand-offs in English and answers the person in theirs`, () => {
+      expect(text).toMatch(/fleet_send must be written in English/);
+      expect(text).toMatch(/language they used/);
+    });
+  }
 });

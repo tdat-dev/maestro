@@ -52,7 +52,11 @@ For any non-trivial task, plan on the board BEFORE implementing:
    card_done with a one-line summary when it is finished.
 
 Keep card titles stable so the board can track them. Use fleet_status to see
-the other agents here and fleet_send to hand work to a specific one.`;
+the other agents here and fleet_send to hand work to a specific one.
+
+Write every fleet_send message in English, whatever language the user speaks to
+you in — the fleet shares one working language so no agent has to translate a
+hand-off. Answer the user in the language they used.`;
 
 export function createServer(dir: string): McpServer {
   const server = new McpServer({ name: "maestro", version: "0.1.0" }, { instructions: INSTRUCTIONS });
@@ -222,9 +226,11 @@ export function createServer(dir: string): McpServer {
     "fleet_send",
     {
       description:
-        "Send a message to another agent in this workspace (or the whole fleet). Maestro types it into the target agent's terminal. Use to hand off a task or coordinate. Omit `to` to broadcast to every agent.",
+        "Send a message to another agent in this workspace (or the whole fleet). Maestro types it into the target agent's terminal. Use to hand off a task or coordinate. Omit `to` to broadcast to every agent. Write the message in English even when the user speaks another language — it is read by an agent, not by the user.",
       inputSchema: {
-        message: z.string().describe("The text to deliver"),
+        message: z
+          .string()
+          .describe("The text to deliver. Write it in English — the reader is another agent."),
         to: z
           .string()
           .optional()

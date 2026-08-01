@@ -7,6 +7,7 @@ import { workspaces } from "./appstate";
 import { paneStatus } from "./fleet";
 import {
   sendInput,
+  sendMessage,
   dashboardStart,
   dashboardStop,
   dashboardStatus,
@@ -103,19 +104,23 @@ export function initDashboard(): void {
   window.setInterval(pushDash, 1000);
   // A message OR a raw key from the dashboard page → deliver into the pane's PTY.
   // `keys` is a raw escape sequence sent as-is (arrows, Enter, Esc, ^C, Tab) so
-  // an interactive menu can be driven; `message` is text + Enter.
+  // an interactive menu can be driven; `message` is a hand-off, so it goes
+  // through sendMessage — chunked, with Enter as its own keystroke. Writing
+  // `message + "\r"` in one go is what leaves the text sitting unsent in Claude
+  // Code's composer (see typing.ts).
   void onDashboardSend((body) => {
     try {
       const o = JSON.parse(body) as { paneId?: unknown; message?: unknown; keys?: unknown };
       if (typeof o.paneId !== "string") return;
-      let data: string | null = null;
-      if (typeof o.keys === "string" && o.keys) data = o.keys;
-      else if (typeof o.message === "string" && o.message.trim()) data = o.message + "\r";
-      if (data === null) return;
+      const keys = typeof o.keys === "string" && o.keys ? o.keys : null;
+      const message =
+        !keys && typeof o.message === "string" && o.message.trim() ? o.message : null;
+      if (!keys && message === null) return;
       for (const ws of workspaces.values()) {
         const pane = ws.panes.get(o.paneId);
         if (pane && pane.running) {
-          void sendInput(pane.id, data).catch(() => {});
+          if (keys) void sendInput(pane.id, keys).catch(() => {});
+          else void sendMessage(pane.id, message as string).catch(() => {});
           window.setTimeout(pushDash, 150);
           window.setTimeout(pushDash, 450);
           return;

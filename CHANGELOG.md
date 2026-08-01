@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-08-01
+
+One working language for the fleet, and the last hand-off surface that still
+typed a message the way 0.5.3 stopped typing it everywhere else.
+
+### Changed
+
+- **Agents hand work to each other in English.** A `fleet_send` message is read
+  by an agent, not by you, so writing it in your language bought nothing and
+  cost a translation at both ends — in a mixed fleet where not every CLI reads
+  Vietnamese as well as it reads English. The rule now travels with the agent:
+  the spawn-time laws for both worker and Director, the MCP server
+  instructions, and the `fleet_send` tool description. You are still answered
+  in the language you used.
+
+### Fixed
+
+- **A message sent from the phone dashboard no longer sits unsent in the
+  composer.** The dashboard was the last sender still writing the whole message
+  and its Enter in a single write — the case 0.5.3 fixed for every other
+  hand-off. It now types in chunks and sends Enter on its own. Raw keys
+  (arrows, Esc, Ctrl+C) still go straight through, which is what they are for.
+
 ## [0.5.3] - 2026-07-31
 
 The canvas becomes a place agents talk to each other: a Director pane that

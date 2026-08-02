@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { chunkText, typeInto, serialize, composerText, stillHolding, TYPE_CHUNK } from "./typing";
+import {
+  chunkText,
+  typeInto,
+  serialize,
+  composerText,
+  stillHolding,
+  TYPE_CHUNK,
+  PASTE_START,
+  PASTE_END,
+} from "./typing";
 
 const noSleep = async (): Promise<void> => {};
 
@@ -105,6 +114,40 @@ describe("typeInto", () => {
     });
     expect(ok).toBe(true);
     expect(sent).toEqual(["do the thing carefully", "\r"]);
+  });
+
+  it("wraps the body in paste markers when the target asked for them", async () => {
+    const sent: string[] = [];
+    await typeInto(async (d) => void sent.push(d), "line one\nline two", true, {
+      sleep: noSleep,
+      bracketedPaste: true,
+    });
+    expect(sent).toEqual([PASTE_START, "line one\nline two", PASTE_END, "\r"]);
+  });
+
+  it("marks the whole body once, not every chunk", async () => {
+    const sent: string[] = [];
+    await typeInto(async (d) => void sent.push(d), "abcdef", true, {
+      sleep: noSleep,
+      chunk: 2,
+      bracketedPaste: true,
+    });
+    expect(sent).toEqual([PASTE_START, "ab", "cd", "ef", PASTE_END, "\r"]);
+  });
+
+  it("sends no markers to a program that never asked — they would be garbage", async () => {
+    const sent: string[] = [];
+    await typeInto(async (d) => void sent.push(d), "npm test", true, { sleep: noSleep });
+    expect(sent).toEqual(["npm test", "\r"]);
+  });
+
+  it("closes the paste block even when not submitting", async () => {
+    const sent: string[] = [];
+    await typeInto(async (d) => void sent.push(d), "a path/to/file ", false, {
+      sleep: noSleep,
+      bracketedPaste: true,
+    });
+    expect(sent).toEqual([PASTE_START, "a path/to/file ", PASTE_END]);
   });
 
   it("waits between chunks and longer before Enter", async () => {

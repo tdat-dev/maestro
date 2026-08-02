@@ -60,15 +60,26 @@ export function setPaneScreenReader(fn: (agentId: string) => string): void {
   paneScreen = fn;
 }
 
+/** Whether the program in a pane has bracketed paste on, so a hand-off can be
+ *  delivered as a marked block instead of a burst the program has to guess at.
+ *  Unset (or unknown pane) means "off" — the markers are only ever safe for a
+ *  program that asked for them. */
+let paneBracketedPaste: ((agentId: string) => boolean) | null = null;
+export function setPaneBracketedPasteReader(fn: (agentId: string) => boolean): void {
+  paneBracketedPaste = fn;
+}
+
 /** Hand a whole message to an agent: chunked, then Enter as its own keystroke,
  *  then check the composer and press Enter again if the message is still
  *  sitting in it. Use this instead of `sendInput(id, text + "\r")` — see
  *  typing.ts for what a single write does to Claude Code's composer. */
 export function sendMessage(agentId: string, text: string, submit = true): Promise<void> {
   const read = paneScreen;
+  const pasteMode = paneBracketedPaste;
   return serialize(agentId, async () => {
     const sent = await typeInto((data) => sendInput(agentId, data), text, submit, {
       screen: read ? () => read(agentId) : undefined,
+      bracketedPaste: pasteMode ? pasteMode(agentId) : false,
     });
     if (!sent) {
       console.warn(

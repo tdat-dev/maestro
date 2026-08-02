@@ -6,7 +6,13 @@
 // attention/status bookkeeping, recording stop) are injected via
 // configureBridges to avoid a circular import.
 
-import { sendMessage, setPaneScreenReader, onDragDrop, onExit } from "./ipc";
+import {
+  sendMessage,
+  setPaneScreenReader,
+  setPaneBracketedPasteReader,
+  onDragDrop,
+  onExit,
+} from "./ipc";
 import { type Pane, type Workspace } from "./panetypes";
 import { workspaces, activeWs } from "./appstate";
 import {
@@ -223,6 +229,15 @@ export function initBridges(): void {
       if (pane) return pane.term.snapshot(20);
     }
     return "";
+  });
+  // …and whether that pane asked for bracketed paste, so a long hand-off can be
+  // marked as one block instead of arriving as a burst it has to guess at.
+  setPaneBracketedPasteReader((id) => {
+    for (const ws of workspaces.values()) {
+      const pane = ws.panes.get(id);
+      if (pane) return pane.term.bracketedPaste();
+    }
+    return false;
   });
 
   // Fleet file-bridge: publish each workspace's roster to .maestro/fleet.json and

@@ -44,6 +44,11 @@ export interface TerminalHandle {
    *  de-duplicated by the emulator — not the raw byte stream). For the remote
    *  dashboard's read-only view. */
   snapshot(lines?: number): string;
+  /** Whether the program in this PTY has turned on bracketed paste (DECSET
+   *  2004). When it has, a long hand-off can be delivered the way a real paste
+   *  is — as one block it assembles itself instead of a burst it has to guess
+   *  at. Measured: 200-line message, 93 lines arrived without it, 200 with. */
+  bracketedPaste(): boolean;
 }
 
 /** Hard floor for auto-fit: below this the output is there but unreadable, so a
@@ -363,6 +368,13 @@ export function mountTerminal(
         else cb(r.resultIndex + 1, r.resultCount);
       }),
     onTitleChange: (cb) => term.onTitleChange(cb),
+    bracketedPaste: () => {
+      try {
+        return term.modes.bracketedPasteMode;
+      } catch {
+        return false; // older emulator build — treat as off and type plainly
+      }
+    },
     snapshot: (lines = 40) => {
       try {
         const buf = term.buffer.active;

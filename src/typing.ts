@@ -26,6 +26,16 @@
  * when the caller can show us the pane's screen, we look after pressing Enter
  * and press again while our own text is still sitting there.
  *
+ * Chunking alone also loses CONTENT, which no amount of re-pressing Enter can
+ * recover. Measured against a live Claude Code pane with a 200-line message:
+ * typed as chunks, 93 lines arrived — the rest vanished in whole runs of ~1-2KB,
+ * one of them spliced mid-word. The same message wrapped in bracketed-paste
+ * markers arrived complete, 200 of 200. The bytes are not lost on the way: a
+ * probe pane recording its own stdin got all 10,000 of them. It is the TUI
+ * guessing at where a paste begins and ends. So when the program has asked for
+ * bracketed paste, stop making it guess — mark the block the way a terminal
+ * does, and it assembles it itself.
+ *
  * The pure part takes its `send`/`sleep` injected so it tests without Tauri. */
 
 /** Code points per write. Small enough that ConPTY never has to swallow a
@@ -40,11 +50,21 @@ export const SUBMIT_DELAY_MS = 220;
  *  wait before each check. Growing, because a busy TUI redraws late. */
 export const RETRY_WAITS_MS = [400, 700, 1000];
 
+/** DECSET 2004 wrappers. A terminal puts these around real pasted text so the
+ *  program knows where the block starts and ends instead of inferring it from
+ *  timing. Only send them when the program asked for them. */
+export const PASTE_START = "\u001b[200~";
+export const PASTE_END = "\u001b[201~";
+
 export interface TypeOpts {
   chunk?: number;
   gapMs?: number;
   submitDelayMs?: number;
   sleep?: (ms: number) => Promise<void>;
+  /** Wrap the body in bracketed-paste markers. Only true when the target has
+   *  the mode on — to a program that didn't ask, the markers are just garbage
+   *  characters on its command line. */
+  bracketedPaste?: boolean;
   /** Current plain-text screen of the target pane. Given one, `typeInto` checks
    *  the composer after Enter and presses it again while the text it just typed
    *  is still sitting there. */
@@ -138,10 +158,12 @@ export async function typeInto(
   const gap = o.gapMs ?? TYPE_GAP_MS;
   const sleep = o.sleep ?? wait;
   const parts = chunkText(text, o.chunk ?? TYPE_CHUNK);
+  if (o.bracketedPaste) await send(PASTE_START);
   for (let i = 0; i < parts.length; i += 1) {
     if (i > 0 && gap > 0) await sleep(gap);
     await send(parts[i]);
   }
+  if (o.bracketedPaste) await send(PASTE_END);
   if (!submit) return true;
   const settle = o.submitDelayMs ?? SUBMIT_DELAY_MS;
   if (settle > 0) await sleep(settle);

@@ -149,6 +149,10 @@ export function mountTerminal(
     // palette is opaque, so it is unconditional rather than a second flag that
     // could drift out of sync with the palette.
     allowTransparency: true,
+    // The Unicode 11 addon registers a width provider through xterm's unicode
+    // API, which is gated behind allowProposedApi. Without this, loadAddon()
+    // throws on every mount and no terminal ever appears.
+    allowProposedApi: true,
     theme: look.theme,
   });
   const fit = new FitAddon();

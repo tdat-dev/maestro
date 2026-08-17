@@ -2,6 +2,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import "@xterm/xterm/css/xterm.css";
 import { paletteFor, backgroundAlpha, type TermPalette } from "./termtheme";
 import { createBgFilter } from "./ansibg";
@@ -154,6 +155,14 @@ export function mountTerminal(
   term.loadAddon(fit);
   const search = new SearchAddon();
   term.loadAddon(search);
+  // Modern CLIs (Claude Code, etc.) lay out their TUIs with Unicode 11 widths,
+  // where emoji are 2 cells wide. xterm defaults to the Unicode 6 table (emoji
+  // = 1 cell), so every glyph after an emoji lands one column off — on a
+  // see-through pane (DOM renderer, no opaque cell to repaint over) the stale
+  // glyphs survive as ghost fragments at the line start. Match the CLI's width
+  // model so columns line up. Must be active before the first write/fit.
+  term.loadAddon(new Unicode11Addon());
+  term.unicode.activeVersion = "11";
   // URLs in output become links, opened with Ctrl+Click only (like Windows
   // Terminal) so a plain click can't hijack focus or fire by accident.
   if (opts.openLink) {

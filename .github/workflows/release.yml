@@ -15,7 +15,20 @@ concurrency:
 jobs:
   release:
     name: Build & publish release
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest # Apple Silicon (arm64)
+            rust_target: aarch64-apple-darwin
+            args: "--target aarch64-apple-darwin"
+          - platform: macos-13 # Intel (x86_64)
+            rust_target: x86_64-apple-darwin
+            args: "--target x86_64-apple-darwin"
+          - platform: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+            args: ""
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
 
@@ -27,6 +40,8 @@ jobs:
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -49,3 +64,4 @@ jobs:
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
+          args: ${{ matrix.args }}

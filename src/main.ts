@@ -28,6 +28,7 @@ import { configureZoomUi, initZoomUi } from "./zoomui";
 import { initHint, topNote } from "./hint";
 import { configureBridges, initBridges } from "./bridges";
 import { initSwitcher } from "./switcher";
+import { initConsole } from "./console";
 import { initQuitLife } from "./quitlife";
 import { workspaces, activeWs } from "./appstate";
 import { basename } from "./workspaces";
@@ -251,6 +252,7 @@ initHint();
 initMascotView();
 initBridges();
 initSwitcher();
+initConsole();
 initQuitLife();
 tabAdd?.addEventListener("click", () => openWizard());
 

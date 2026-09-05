@@ -6,6 +6,8 @@
 
 import { sendMessage } from "./ipc";
 import { activeMention, matchNames, splitMentions } from "./mention";
+import { pushFlow } from "./flow";
+import { ME } from "./console";
 import { type Pane, type Workspace } from "./panetypes";
 
 let getWs: () => Workspace | null = () => null;
@@ -109,6 +111,7 @@ function broadcast(): void {
   // any mention (or a line with no mention) goes to the whole running fleet.
   const segs = splitMentions(originalText, names);
   const defaults = defaultTargets();
+  const wsId = getWs()?.id ?? "";
   let sentAny = false;
   for (const seg of segs) {
     if (!seg.body) continue;
@@ -119,6 +122,17 @@ function broadcast(): void {
       void sendMessage(p.id, seg.body).catch(() => {});
       flashPane(p);
       sentAny = true;
+    }
+    // Record it in the shared Flow buffer so it shows in the Fleet Console
+    // thread as a "You → …" bubble (right-aligned). One entry per segment.
+    if (targets.length) {
+      pushFlow({
+        from: ME,
+        to: seg.name ?? null,
+        targets: targets.map((p) => ({ wsId, paneId: p.id, name: p.spec.name })),
+        color: "#c6f135",
+        text: seg.body,
+      });
     }
   }
   if (!sentAny) return;

@@ -1,0 +1,190 @@
+/* Fleet Console — the composer grown into a conversation. The console owns the
+   bottom-center position now (the composer #bcast rides inside it, static); a
+   thread of bubbles slides up above it on focus / grip. Built by src/console.ts.
+   Reuses the app tokens; imported after broadcast.css so it wins the position. */
+
+.fleet-console {
+  position: absolute;
+  bottom: 16px;
+  left: calc((100vw - var(--code-w, 380px) - 48px) / 2);
+  transform: translateX(-50%);
+  z-index: 200;
+  width: min(620px, 52vw);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+/* the composer no longer positions itself — the console does */
+#fleetConsole #bcast.cmdbar {
+  position: static;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  z-index: auto;
+  width: 100%;
+}
+/* let the input breathe across the wider console */
+#fleetConsole .cb-field { width: auto; flex: 1; }
+
+/* ---------------- grip (closed state handle) ---------------- */
+.fc-grip {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: rgba(16, 20, 26, 0.9);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, transform 0.15s;
+}
+.fc-grip:hover { color: var(--text); border-color: rgba(255, 255, 255, 0.22); transform: translateY(-1px); }
+.fc-grip-lbl { letter-spacing: 0.02em; }
+.fc-grip-badge {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 10px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
+
+/* ---------------- thread (open state) ---------------- */
+.fc-thread {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(46vh, 460px);
+  background: color-mix(in oklab, var(--surface-1) 92%, transparent);
+  border: 1px solid var(--line-2);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 30px 70px -26px rgba(0, 0, 0, 0.85);
+  animation: fcRise 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes fcRise {
+  from { opacity: 0; transform: translateY(12px) scale(0.99); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fc-thread { animation: none; }
+}
+.fc-thread-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 10px 10px 14px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.fc-title { font-family: var(--display); font-weight: 700; font-size: 13px; color: var(--text); flex: none; }
+.fc-members { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; overflow: hidden; }
+.fc-mem {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 0 1.5px var(--surface-1);
+}
+.fc-mem.st-needs { box-shadow: 0 0 0 1.5px var(--surface-1), 0 0 0 3px color-mix(in oklab, var(--amber) 80%, transparent); }
+.fc-mem.st-active { box-shadow: 0 0 0 1.5px var(--surface-1), 0 0 0 3px color-mix(in oklab, var(--run) 55%, transparent); }
+.fc-mem.st-stopped { opacity: 0.5; }
+.fc-mem-more { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-left: 2px; }
+.fc-mem-needs {
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #241a00;
+  background: var(--amber);
+  border-radius: 6px;
+  padding: 2px 7px;
+  flex: none;
+}
+.fc-collapse {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--muted);
+}
+.fc-collapse:hover { color: var(--text); background: var(--surface-2); }
+
+.fc-log {
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+.fc-empty {
+  padding: 26px 20px 30px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* ---------------- bubbles ---------------- */
+.fcb { display: flex; gap: 9px; max-width: 100%; }
+.fcb.me { justify-content: flex-end; }
+.fcb-av {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: #0a0d07;
+  margin-top: 14px; /* drop past the meta line so it aligns with the bubble */
+}
+.fcb-col { display: flex; flex-direction: column; gap: 3px; min-width: 0; max-width: 80%; }
+.fcb.me .fcb-col { align-items: flex-end; }
+.fcb-meta { display: flex; align-items: baseline; gap: 5px; font-size: 10.5px; color: var(--muted); }
+.fcb-from { font-weight: 700; color: var(--text-2); }
+.fcb-arw { color: var(--muted-2); }
+.fcb-to { color: var(--muted); }
+.fcb-time { margin-left: 4px; font-family: var(--mono); font-size: 9.5px; color: var(--muted-2); }
+.fcb-body {
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 12px;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: pointer;
+}
+.fcb-body.full { -webkit-line-clamp: unset; }
+.fcb.them .fcb-body { border-top-left-radius: 4px; }
+.fcb.me .fcb-body {
+  border-top-right-radius: 4px;
+  color: var(--text);
+  background: color-mix(in oklab, var(--teal) 20%, var(--surface-2));
+  border-color: color-mix(in oklab, var(--teal) 28%, var(--line));
+}

@@ -18,10 +18,34 @@ const bcastInput = document.getElementById("bcastInput") as HTMLInputElement;
 const bcastSend = document.getElementById("bcastSend") as HTMLButtonElement;
 const bcastEmitter = document.getElementById("bcastEmitter");
 const bcastAc = document.getElementById("bcastAc") as HTMLElement;
+const bcastTarget = document.getElementById("bcastTarget") as HTMLButtonElement;
+const bcastTargetIc = document.getElementById("bcastTargetIc") as HTMLElement;
+const bcastTargetNm = document.getElementById("bcastTargetNm") as HTMLElement;
+const bcastTargetMenu = document.getElementById("bcastTargetMenu") as HTMLElement;
+
+// Who a no-@mention message goes to: null = the whole running fleet (broadcast),
+// or a specific pane id picked from the target chip. @mentions in the text still
+// override this per segment. Reset to Fleet when that agent is gone.
+let targetId: string | null = null;
+
+const BROADCAST_IC =
+  `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1a10 10 0 0 1 0-14.2M19.1 4.9a10 10 0 0 1 0 14.2M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>`;
 
 function activeRunning(): Pane[] {
   const ws = getWs();
   return ws ? [...ws.panes.values()].filter((p) => p.running) : [];
+}
+
+/** The pane the chip currently points at (null = Fleet, or gone). */
+function targetPane(): Pane | null {
+  if (!targetId) return null;
+  return activeAgents().find((p) => p.id === targetId) ?? null;
+}
+/** Who a no-@mention message reaches: the chosen agent (if alive) or the fleet. */
+function defaultTargets(): Pane[] {
+  const t = targetPane();
+  if (t) return t.running ? [t] : [];
+  return activeRunning();
 }
 // Every agent in the active workspace, running or idle. The @mention picker and
 // name-resolution use this (so a parked/finished agent still autocompletes and
@@ -32,10 +56,15 @@ function activeAgents(): Pane[] {
 }
 
 export function updateBcast(): void {
+  // The target chip may point at an agent that was just killed/renamed away —
+  // fall back to Fleet so the composer never addresses a ghost.
+  if (targetId && !targetPane()) targetId = null;
+  renderTargetChip();
+
   const allAgents = activeAgents();
-  // Default: the whole running fleet. An "@name …" line narrows it to that one
-  // (matched against every agent, so an idle name is recognised, not spammed).
-  let targets = activeRunning();
+  // Default: the chip's target (Fleet = whole running fleet). An "@name …" line
+  // narrows it to that one (matched against every agent, idle recognised too).
+  let targets = defaultTargets();
 
   const text = bcastInput?.value || "";
   const sorted = [...allAgents].sort((a, b) => b.spec.name.length - a.spec.name.length);
@@ -79,12 +108,13 @@ function broadcast(): void {
   // A line can name several agents: "@Ana run tests @Bob deploy". Text before
   // any mention (or a line with no mention) goes to the whole running fleet.
   const segs = splitMentions(originalText, names);
+  const defaults = defaultTargets();
   let sentAny = false;
   for (const seg of segs) {
     if (!seg.body) continue;
     const targets = seg.name
       ? allRunning.filter((p) => p.spec.name.toLowerCase() === seg.name!.toLowerCase())
-      : allRunning; // no @mention → the whole running fleet
+      : defaults; // no @mention → the chip's target (Fleet by default)
     for (const p of targets) {
       void sendMessage(p.id, seg.body).catch(() => {});
       flashPane(p);
@@ -158,6 +188,82 @@ function pickAc(name: string): void {
   updateBcast();
 }
 
+// --- target chip: pick who a plain (no-@mention) message goes to ---
+function renderTargetChip(): void {
+  if (!bcastTarget) return;
+  const t = targetPane();
+  if (t) {
+    bcastTarget.classList.add("targeted");
+    const letter = (t.spec.name.trim()[0] ?? "?").toUpperCase();
+    bcastTargetIc.innerHTML = `<span class="cb-target-av" style="background:${t.color}">${letter}</span>`;
+    bcastTargetNm.textContent = t.spec.name;
+    bcastInput.placeholder = `Message ${t.spec.name}…`;
+  } else {
+    bcastTarget.classList.remove("targeted");
+    bcastTargetIc.innerHTML = BROADCAST_IC;
+    bcastTargetNm.textContent = "Fleet";
+    bcastInput.placeholder = "Message the fleet…";
+  }
+}
+
+let targetMenuOpen = false;
+function closeTargetMenu(): void {
+  bcastTargetMenu.classList.add("hidden");
+  bcastTarget.setAttribute("aria-expanded", "false");
+  targetMenuOpen = false;
+}
+function setTarget(id: string | null): void {
+  targetId = id;
+  closeTargetMenu();
+  renderTargetChip();
+  updateBcast();
+  bcastInput.focus();
+}
+function openTargetMenu(): void {
+  const agents = activeAgents();
+  bcastTargetMenu.replaceChildren();
+  const head = document.createElement("div");
+  head.className = "cb-tm-h";
+  head.textContent = "Send to";
+  bcastTargetMenu.appendChild(head);
+
+  const fleet = document.createElement("button");
+  fleet.className = "cb-tm-item" + (targetId === null ? " sel" : "");
+  fleet.type = "button";
+  fleet.setAttribute("role", "option");
+  fleet.innerHTML =
+    `<span class="cb-tm-ic">${BROADCAST_IC}</span>` +
+    `<span class="cb-tm-nm">Everyone</span>` +
+    `<span class="cb-tm-sub">${activeRunning().length} running</span>`;
+  fleet.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    setTarget(null);
+  });
+  bcastTargetMenu.appendChild(fleet);
+
+  for (const p of agents) {
+    const letter = (p.spec.name.trim()[0] ?? "?").toUpperCase();
+    const status = p.running ? (p.attention ? "needs you" : "running") : "stopped";
+    const btn = document.createElement("button");
+    btn.className = "cb-tm-item" + (targetId === p.id ? " sel" : "");
+    btn.type = "button";
+    btn.setAttribute("role", "option");
+    btn.innerHTML =
+      `<span class="cb-tm-av" style="background:${p.color}">${letter}</span>` +
+      `<span class="cb-tm-nm">${p.spec.name}</span>` +
+      `<span class="cb-tm-sub st-${p.running ? (p.attention ? "needs" : "run") : "stop"}">${status}</span>`;
+    btn.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      setTarget(p.id);
+    });
+    bcastTargetMenu.appendChild(btn);
+  }
+
+  bcastTargetMenu.classList.remove("hidden");
+  bcastTarget.setAttribute("aria-expanded", "true");
+  targetMenuOpen = true;
+}
+
 /** Focus + select the broadcast input (Ctrl+Shift+B). */
 export function focusBroadcast(): void {
   bcastInput.focus();
@@ -195,4 +301,23 @@ export function initBroadcast(): void {
   });
   bcastSend.addEventListener("click", broadcast);
   bcastInput.addEventListener("blur", () => window.setTimeout(closeAc, 120));
+
+  // Target chip: open the picker, close on outside click / Escape.
+  renderTargetChip();
+  bcastTarget.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (targetMenuOpen) closeTargetMenu();
+    else openTargetMenu();
+  });
+  document.addEventListener("click", (e) => {
+    if (!targetMenuOpen) return;
+    const t = e.target as Node;
+    if (!bcastTargetMenu.contains(t) && !bcastTarget.contains(t)) closeTargetMenu();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && targetMenuOpen) {
+      closeTargetMenu();
+      bcastInput.focus();
+    }
+  });
 }

@@ -26,6 +26,38 @@
 .cb-field:focus-within{border-color:color-mix(in oklab,var(--teal) 50%,var(--line-2));
   box-shadow:0 0 0 3px color-mix(in oklab,var(--teal) 12%,transparent)}
 .cb-gt{font-family:var(--mono);color:var(--accent);font-size:14px;line-height:1;flex:none}
+
+/* target chip — who a plain message goes to (Fleet by default, or one agent).
+   Replaces the cryptic "@name to target one" hint with a real, clickable pick. */
+.cb-target{flex:none;display:flex;align-items:center;gap:5px;height:26px;padding:0 7px 0 6px;margin-left:-4px;
+  border-radius:8px;border:1px solid transparent;background:var(--surface-2);color:var(--text-2);
+  font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap;max-width:158px;
+  transition:background .15s,border-color .15s}
+.cb-target:hover{background:var(--surface-3);border-color:var(--line-2)}
+.cb-target[aria-expanded="true"]{border-color:color-mix(in oklab,var(--teal) 45%,var(--line-2))}
+.cb-target.targeted{background:color-mix(in oklab,var(--teal) 16%,var(--surface-2));color:var(--text)}
+.cb-target-ic{display:grid;place-items:center;color:var(--accent)}
+.cb-target-av{width:16px;height:16px;border-radius:5px;display:grid;place-items:center;font-size:9px;font-weight:800;color:#0a0d07}
+.cb-target-nm{overflow:hidden;text-overflow:ellipsis}
+.cb-target-caret{color:var(--muted);flex:none}
+
+/* target picker popover (shares the @mention popover's motion) */
+.cb-target-menu{position:absolute;left:0;bottom:calc(100% + 8px);width:236px;max-height:min(320px,52vh);overflow-y:auto;
+  background:var(--surface-1);border:1px solid var(--line-2);border-radius:12px;padding:6px;
+  box-shadow:0 24px 50px -18px rgba(0,0,0,.85);z-index:210}
+.cb-target-menu.hidden{display:none}
+.cb-target-menu:not(.hidden){animation:bcastAcPop .14s ease}
+.cb-tm-h{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding:5px 8px}
+.cb-tm-item{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:8px 10px;border-radius:8px;
+  font-size:13px;color:var(--text);background:none;border:0;cursor:pointer}
+.cb-tm-item:hover,.cb-tm-item.sel{background:var(--surface-2)}
+.cb-tm-ic{display:grid;place-items:center;width:22px;height:22px;color:var(--accent);flex:none}
+.cb-tm-av{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;font-size:11px;font-weight:800;color:#0a0d07;flex:none}
+.cb-tm-nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cb-tm-sub{margin-left:auto;font-size:10px;color:var(--muted);font-family:var(--mono);flex:none}
+.cb-tm-sub.st-run{color:var(--run)}
+.cb-tm-sub.st-needs{color:var(--amber)}
+.cb-tm-sub.st-stop{color:var(--muted-2)}
 .binput{flex:1;min-width:0;background:transparent;border:0;color:var(--text);font-family:var(--mono);
   font-size:12.5px;outline:none;caret-color:var(--accent);letter-spacing:.01em}
 .binput::placeholder{color:var(--muted)}

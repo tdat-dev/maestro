@@ -186,11 +186,16 @@
   <div class="cmdbar" id="bcast">
     <button class="cb-ico" id="cbSettings" type="button" title="Settings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     <div class="cb-field">
-      <span class="cb-gt">&#8250;</span>
+      <button class="cb-target" id="bcastTarget" type="button" title="Choose who this message goes to" aria-haspopup="listbox" aria-expanded="false">
+        <span class="cb-target-ic" id="bcastTargetIc"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1a10 10 0 0 1 0-14.2M19.1 4.9a10 10 0 0 1 0 14.2M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg></span>
+        <span class="cb-target-nm" id="bcastTargetNm">Fleet</span>
+        <svg class="cb-target-caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
       <span class="bcast-emitter" id="bcastEmitter" title="Broadcast" hidden><span class="be-core"></span></span>
-      <input class="binput" id="bcastInput" placeholder="Message the fleet…  @name to target one" spellcheck="false" autocapitalize="off" autocomplete="off">
+      <input class="binput" id="bcastInput" placeholder="Message the fleet…" spellcheck="false" autocapitalize="off" autocomplete="off">
       <button class="bsend" id="bcastSend" type="button" disabled title="Send · Enter"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg></button>
       <div class="bcast-ac hidden" id="bcastAc" role="listbox" aria-label="Mention agent"></div>
+      <div class="cb-target-menu hidden" id="bcastTargetMenu" role="listbox" aria-label="Message target"></div>
     </div>
     <button class="cb-add" id="cbAddAgent" type="button" title="Spawn agent"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Agent<svg class="cb-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
   </div>

@@ -16,6 +16,44 @@
   gap: 8px;
 }
 
+/* ---------------- composer actions ("+") menu ----------------
+   The one component that gathers what used to be loose pills (spawn, settings)
+   plus clear-conversation. Sits at the composer's left; menu floats above it. */
+.cb-actions { position: relative; flex: none; display: flex; }
+.cb-actions-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10px);
+  width: 210px;
+  padding: 6px;
+  background: var(--surface-1);
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  box-shadow: 0 24px 50px -18px rgba(0, 0, 0, 0.85);
+  z-index: 210;
+}
+.cb-actions-menu.hidden { display: none; }
+.cb-actions-menu:not(.hidden) { animation: bcastAcPop 0.14s ease; }
+.cb-am-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.cb-am-item:hover { background: var(--surface-2); }
+.cb-am-item svg { color: var(--muted); flex: none; }
+.cb-am-item:hover svg { color: var(--text); }
+.cb-am-item[data-act="clear"]:hover { color: var(--err); }
+.cb-am-item[data-act="clear"]:hover svg { color: var(--err); }
+
 /* the composer no longer positions itself — the console does */
 #fleetConsole #bcast.cmdbar {
   position: static;

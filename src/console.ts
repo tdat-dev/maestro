@@ -152,6 +152,12 @@ export function closeConsole(): void {
   setOpen(false);
 }
 
+/** Empty the on-screen thread (the flow buffer is cleared by the caller). */
+export function clearConsole(): void {
+  el.log?.replaceChildren();
+  if (el.empty) el.empty.hidden = false;
+}
+
 /** Wire the console once at startup. Safe no-op if the markup isn't present. */
 export function initConsole(): void {
   el = {

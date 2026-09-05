@@ -12,7 +12,7 @@ import { configureDashboard, initDashboard } from "./dashboard";
 import { configureSpawnModal, initSpawnModal, openModal, spawnCrew, loadCrew, renderCrew, loadTemplates, saveTemplates, templateSummary } from "./spawnmodal";
 import { configureSpawnMenu, initSpawnMenu } from "./spawnmenu";
 import { configureWizard, initWizard, openWizard, isPresetAvailable, refreshCliAvailability, launchPreset } from "./wizard_ui";
-import { closeSettings, initSettingsModal } from "./settingsmodal";
+import { closeSettings, initSettingsModal, openSettings } from "./settingsmodal";
 import { configureSession, saveSession, restoreSession } from "./session";
 import { configureScheduler, initScheduler } from "./scheduler";
 import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setStatus, clearAttention, updateAttention, retheme, applyZoom } from "./pane";
@@ -28,7 +28,9 @@ import { configureZoomUi, initZoomUi } from "./zoomui";
 import { initHint, topNote } from "./hint";
 import { configureBridges, initBridges } from "./bridges";
 import { initSwitcher } from "./switcher";
-import { initConsole } from "./console";
+import { initConsole, clearConsole } from "./console";
+import { initComposerActions } from "./composeractions";
+import { clearFlow } from "./flow";
 import { initQuitLife } from "./quitlife";
 import { workspaces, activeWs } from "./appstate";
 import { basename } from "./workspaces";
@@ -253,6 +255,14 @@ initMascotView();
 initBridges();
 initSwitcher();
 initConsole();
+initComposerActions({
+  onSpawn: () => openModal("current"),
+  onSettings: openSettings,
+  onClear: () => {
+    clearFlow();
+    clearConsole();
+  },
+});
 initQuitLife();
 tabAdd?.addEventListener("click", () => openWizard());
 

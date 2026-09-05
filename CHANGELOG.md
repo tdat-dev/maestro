@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-09-05
+
+The command bar turned into a place you can actually read the conversation, and
+the loose buttons around it collected into one.
+
+### Added
+
+- **The Fleet Console.** Focusing the bottom bar (or tapping its grip) slides a
+  thread up out of it: what you broadcast and what the Director handed to which
+  agent, as chat bubbles — yours on the right, agents' on the left with their
+  avatar — over a live members strip that flags who needs you. Click a bubble to
+  jump to that agent; a badge counts what arrived while it was closed. Built on
+  the hand-off log that was already being kept, so it costs nothing when shut.
+
+- **One "+" for the composer's actions.** The floating gear and the +Agent pill
+  are gone; a single button at the left opens one menu — New agents, Settings,
+  Clear conversation.
+
+### Changed
+
+- **The composer is one bar now, not a row of pills.** A single glass surface
+  with the focus ring around the whole thing, every control a quiet ghost on it
+  and Send the one accent disc; the target chip sits inside it. The thread,
+  grip, bubbles and members strip were restyled to match — a tighter dark
+  system that keeps the canvas-first identity.
+
 ## [0.5.8] - 2026-09-05
 
 Finding the right agent — and telling it apart from the other nine — when the

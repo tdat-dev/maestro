@@ -462,6 +462,97 @@
   white-space: nowrap;
 }
 
+/* ---------- focus-stage identity ----------
+   When a pane fills the stage it must SHOUT whose it is (the whole point of
+   opening it large): a bigger avatar that carries a live status ring, the name
+   at reading size, and a muted subtitle naming the workspace + where it works.
+   Nothing here changes the tiled bar — it's all scoped to .pane.focused. */
+.grid.canvas.has-focus .pane.focused .pb-av {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  font-size: 15px;
+}
+/* live status ring on the stage avatar — colour follows the classes setStatus /
+   attention already toggle, so it stays truthful without a render loop. The word
+   in .pb-where + the ring keep status off colour-alone. */
+.grid.canvas.has-focus .pane.focused.run .pb-av {
+  box-shadow: 0 0 0 2px var(--surface-0), 0 0 0 4px color-mix(in oklab, var(--run) 65%, transparent);
+}
+.grid.canvas.has-focus .pane.focused.attention .pb-av {
+  box-shadow: 0 0 0 2px var(--surface-0), 0 0 0 4px color-mix(in oklab, var(--amber) 78%, transparent);
+}
+.grid.canvas.has-focus .pane.focused .pb-name {
+  font-size: 15px;
+  max-width: 280px;
+}
+.pb-where { display: none; }
+.grid.canvas.has-focus .pane.focused .pb-where {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+  padding-left: 2px;
+}
+.grid.canvas .pane[data-role="director"] .pb-where {
+  color: color-mix(in oklab, var(--accent-ink) 78%, transparent);
+}
+
+/* ---------- rail head + fleet-switcher entry ---------- */
+.rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  padding: 2px 0 2px;
+}
+.rail-needs {
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--amber);
+  color: #241a00;
+  font-size: 9.5px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
+/* an agent waiting on you gets an amber ring in the rail too, not just a dot */
+.cloud-rail .rc:has(.s.attention) .av {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px color-mix(in oklab, var(--amber) 80%, transparent);
+}
+.rail-all {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  padding: 9px 2px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.14s, color 0.14s;
+}
+.rail-all:hover {
+  background: var(--surface-1);
+  color: var(--text);
+}
+.rail-all-k {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
 /* scrollbars: slim, hidden until the area is scrolled or hovered */
 * {
   scrollbar-width: thin;

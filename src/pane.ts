@@ -130,6 +130,7 @@ function buildPaneEl(
       <span class="pb-name pane-name">${name}</span>
       ${roleChip}
       <span class="pb-cli">${badge}</span>
+      <span class="pb-where" data-where></span>
       <span class="pb-sp"></span>
       <div class="pb-ctrls ctrls">
         <div class="pb-more">

@@ -8,6 +8,9 @@ import { tileToFit, nextSlot, serializeLayout } from "./canvas";
 import { refreshSigil } from "./sigilcanvas";
 import { resizePty } from "./ipc";
 import { paneFont } from "./zoom";
+import { paneStatus, type FleetStatus } from "./fleet";
+import { openSwitcher } from "./switcher";
+import { basename } from "./workspaces";
 import { type Pane, type Workspace } from "./panetypes";
 
 let onBcastChange: () => void = () => {};
@@ -90,6 +93,11 @@ export function tidyLayout(ws: Workspace): void {
 export function focusPane(ws: Workspace, pane: Pane, ev?: MouseEvent): void {
   for (const p of ws.panes.values()) p.el.classList.toggle("focused", p === pane);
   pane.el.style.setProperty("--stg", pane.color); // tints the stage's hue ring
+  // Identity subtitle on the stage header: workspace · where it works. Only
+  // shown while focused (CSS), so the tiled bar stays slim.
+  const where = pane.spec.branch || (pane.spec.cwd ? basename(pane.spec.cwd) : "");
+  const whereEl = pane.el.querySelector<HTMLElement>("[data-where]");
+  if (whereEl) whereEl.textContent = where ? `${ws.name} · ${where}` : ws.name;
   pane.el.querySelector("[data-max]")?.setAttribute("aria-label", "Back to canvas");
   // Grow the zoom out of the click point (the mockup's --ox/--oy), else centre.
   if (ev) {
@@ -133,6 +141,10 @@ export function toggleMax(ws: Workspace, pane: Pane, ev?: MouseEvent): void {
   else focusPane(ws, pane, ev);
 }
 // The other panes as a tiny avatar column down the right edge of the stage.
+// Sorted by status so an agent waiting on you floats to the top where it can't
+// be missed, and topped by a count + a ⌘K entry into the full fleet switcher —
+// the discoverable way in for a fleet too big for a thin rail.
+const RAIL_RANK: Record<FleetStatus, number> = { needs: 0, active: 1, idle: 2, stopped: 3 };
 function renderRail(ws: Workspace, focused: Pane): void {
   let rail = ws.gridEl.querySelector<HTMLElement>(".cloud-rail");
   if (!rail) {
@@ -140,29 +152,44 @@ function renderRail(ws: Workspace, focused: Pane): void {
     rail.className = "cloud-rail";
     ws.gridEl.appendChild(rail);
   }
-  const others = [...ws.panes.values()].filter((p) => p !== focused);
-  const label = others.length ? `<span class="rail-lbl">Others</span>` : "";
+  const now = Date.now();
+  const others = [...ws.panes.values()]
+    .filter((p) => p !== focused)
+    .sort((a, b) => RAIL_RANK[paneStatus(a, now)] - RAIL_RANK[paneStatus(b, now)] || a.spec.name.localeCompare(b.spec.name));
+  const needs = others.filter((p) => paneStatus(p, now) === "needs").length;
+  const head = others.length
+    ? `<div class="rail-head"><span class="rail-lbl">Others · ${others.length}</span>` +
+      (needs ? `<span class="rail-needs" title="${needs} waiting on you">${needs}</span>` : "") +
+      `</div>`
+    : "";
   rail.innerHTML =
-    label +
+    head +
     others
       .map((p) => {
-        const s = p.attention ? "attention" : p.running ? "running" : "idle";
+        // Status word drives both the ring colour and a screen-reader label, so
+        // the state never rides on colour alone.
+        const st = paneStatus(p, now); // needs | active | idle | stopped
+        const s = st === "needs" ? "attention" : st === "active" ? "running" : st;
         const nm = p.spec.name;
         const letter = (nm.trim()[0] ?? "?").toUpperCase();
         // Same mark the tiled pane wears (canvas.css): focusing someone else
         // must not be the moment the director becomes hard to find.
         const role = p.spec.role === "conductor" ? ` data-role="director"` : "";
-        return `<button class="rc"${role} data-id="${p.id}" title="${nm}">
+        return `<button class="rc"${role} data-id="${p.id}" title="${nm} — ${st}" aria-label="${nm}, ${st}">
         <span class="av" style="background:${p.color};--hue:${p.color}">${letter}<span class="s ${s}"></span></span>
         <span class="n">${nm}</span></button>`;
       })
-      .join("");
+      .join("") +
+    `<button class="rail-all" title="Open the fleet switcher (Ctrl+K)" aria-label="Open fleet switcher">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <span class="rail-all-k">⌘K</span></button>`;
   rail.querySelectorAll<HTMLElement>(".rc").forEach((rc) =>
     rc.addEventListener("click", () => {
       const p = rc.dataset.id ? ws.panes.get(rc.dataset.id) : undefined;
       if (p) focusPane(ws, p);
     }),
   );
+  rail.querySelector<HTMLElement>(".rail-all")?.addEventListener("click", () => openSwitcher());
 }
 
 // Free-position a pane by dragging its title bar (Pointer Events — WebView2

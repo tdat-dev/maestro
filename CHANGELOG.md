@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-09-05
+
+Finding the right agent — and telling it apart from the other nine — when the
+canvas is full. Three pieces of the same problem: knowing which agent you're
+looking at, and saying who a message is for.
+
+### Added
+
+- **A fleet switcher (Ctrl+K).** One shortcut opens a palette of every agent in
+  every workspace, grouped by whether it needs you, is running, or is idle, each
+  row carrying its name, CLI, folder or branch, and a plain-word status (never
+  colour alone). Type to filter by name, CLI, workspace or folder; move with the
+  arrows; press Enter or Ctrl+1–9 to jump straight there. The agent you're
+  looking at is marked "On stage".
+
+- **A target chip on the command bar.** The cryptic "@name to target one" hint is
+  now a real chip: it shows Fleet by default, or the one agent you picked, and
+  opens a list of everyone with their live status. A plain message goes where the
+  chip points; an @mention in the text still overrides it per line.
+
+### Changed
+
+- **A pane opened large now says whose it is.** The focused stage carries a
+  bigger avatar with a live status ring, the name at reading size, and a
+  workspace · branch subtitle. The "Others" rail beside it is sorted so an agent
+  waiting on you rises to the top, counts the fleet, and has its own way into the
+  Ctrl+K switcher.
+
+### Fixed
+
+- **Jumping to an agent while another is on stage now works.** Revealing a pane
+  in focus mode swaps the stage to it instead of focusing a hidden terminal that
+  never comes forward — the message-flow and fleet views gain the same fix.
+
+## [0.5.5] - 2026-08-02
+
+Hand-offs between agents were arriving late, glued together, or with pieces
+missing. Watching a real fleet for an afternoon turned up two separate faults
+behind it, both in the last inch of the delivery — the part that types into
+another agent's terminal.
+
+### Fixed
+
+- **A hand-off no longer sits in the target's composer waiting for someone to
+  press Enter.** Any message past one chunk arrives as a burst, and the Enter
+  that follows lands while the TUI is still assembling it, so it reads as a
+  newline in the text rather than a keypress. The message then waits — until
+  the next short message's Enter submits both glued together, in the wrong
+  order. Maestro now looks at the composer after pressing Enter and presses
+  again while the message it just typed is still sitting there. It only ever
+  re-presses for text that matches what it typed: the screen it reads has no
+  colour, so a dimmed history suggestion in an empty box looks exactly like
+  typed text, and submitting that would put words in your mouth. Works for
+  Claude Code's ruled input box and for boxless prompts like Codex.
+
+- **A long hand-off arrives whole.** Chunked typing was not only losing the
+  Enter, it was losing content. Measured against a live pane with a 200-line,
+  10k-character message: 93 lines arrived, the rest gone in whole runs of one
+  to two kilobytes, with one surviving line spliced mid-word. The bytes are not
+  lost in transit — a probe recording its own stdin received all 10,000 of
+  them — it is the TUI inferring where a paste begins and ends from timing
+  alone. Maestro now marks the block the way a terminal does for a real paste,
+  and only for a program that asked for that mode, so a plain shell still gets
+  plain text. Same message, same pane: 200 of 200 lines.
+
 ## [0.5.4] - 2026-08-01
 
 One working language for the fleet, and the last hand-off surface that still

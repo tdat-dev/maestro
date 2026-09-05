@@ -1,0 +1,226 @@
+/* Fleet switcher (⌘K) — a command palette to jump to any agent across every
+   workspace. Reuses the app tokens (Geist, --accent, glass surfaces). Built by
+   src/switcher.ts. Rides the shared .backdrop (display/swallow), re-aligned to
+   the top like a command palette. */
+
+.sw-back {
+  align-items: flex-start;
+  justify-content: center;
+  padding: 11vh 16px 16px;
+  background: rgba(6, 9, 13, 0.58);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  z-index: 340; /* above the .backdrop modals (300) and the command bar (200) */
+}
+
+.sw-panel {
+  width: min(640px, 94vw);
+  max-height: min(72vh, 620px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--surface-1) 92%, transparent);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  box-shadow: 0 32px 90px -24px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(0, 0, 0, 0.4);
+  animation: swPop 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes swPop {
+  from { opacity: 0; transform: translateY(-8px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sw-panel { animation: none; }
+}
+
+/* search row */
+.sw-search {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 14px 14px 13px;
+  border-bottom: 1px solid var(--line);
+}
+.sw-search-i { color: var(--muted); }
+.sw-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  letter-spacing: 0.005em;
+  caret-color: var(--accent);
+}
+.sw-input::placeholder { color: var(--muted); }
+
+.sw-kbd {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  padding: 2px 6px;
+  line-height: 1.2;
+}
+.sw-esc { flex: none; }
+
+/* list */
+.sw-list {
+  overflow-y: auto;
+  padding: 6px;
+  min-height: 0;
+}
+.sw-group {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--muted-2);
+  padding: 10px 10px 5px;
+}
+.sw-group:first-child { padding-top: 4px; }
+
+.sw-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px transparent;
+}
+.sw-row.cur {
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 42%, transparent);
+}
+
+.sw-av {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: #0a0d07;
+  flex: none;
+}
+.sw-av .sw-s {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--surface-1);
+}
+.sw-row.cur .sw-av .sw-s { border-color: var(--surface-2); }
+.sw-s.st-needs { background: var(--amber); }
+.sw-s.st-active { background: var(--run); }
+.sw-s.st-idle { background: var(--idle); }
+.sw-s.st-stopped { background: var(--muted-2); }
+
+.sw-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sw-top { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.sw-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sw-badge {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface-3);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+.sw-role {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent-ink);
+  background: color-mix(in oklab, var(--accent) 78%, transparent);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+.sw-stage {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 5px;
+  padding: 2px 7px;
+}
+.sw-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+  min-width: 0;
+}
+.sw-ws { flex: none; }
+.sw-dotsep { color: var(--muted-2); }
+.sw-where {
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sw-status {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.sw-status.st-needs { color: var(--amber); }
+.sw-status.st-active { color: var(--run); }
+.sw-status.st-stopped { color: var(--muted-2); }
+
+.sw-empty {
+  padding: 34px 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* footer hint bar */
+.sw-foot {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-0);
+}
+.sw-hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted-2);
+}
+.sw-foot-r { margin-left: auto; }
+.sw-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}

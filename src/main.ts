@@ -27,6 +27,7 @@ import { initTopbarChrome } from "./topbarchrome";
 import { configureZoomUi, initZoomUi } from "./zoomui";
 import { initHint, topNote } from "./hint";
 import { configureBridges, initBridges } from "./bridges";
+import { initSwitcher } from "./switcher";
 import { initQuitLife } from "./quitlife";
 import { workspaces, activeWs } from "./appstate";
 import { basename } from "./workspaces";
@@ -249,6 +250,7 @@ initZoomUi();
 initHint();
 initMascotView();
 initBridges();
+initSwitcher();
 initQuitLife();
 tabAdd?.addEventListener("click", () => openWizard());
 
@@ -356,6 +358,7 @@ initIdleAnimationPause(repaintAfterResume);
 //   Ctrl+Shift+T        open the new-workspace wizard
 //   Ctrl+Shift+F        toggle the find bar of the focused pane
 //   Ctrl+Shift+B        focus the broadcast input
+//   Ctrl+K              open the fleet switcher (jump to any agent) — see switcher.ts
 
 /** Cycle the active workspace tab by ±1 (wraps). Only meaningful in app view. */
 function cycleWorkspace(dir: 1 | -1) {

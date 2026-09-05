@@ -15,6 +15,7 @@ import {
 } from "./ipc";
 import { type Pane, type Workspace } from "./panetypes";
 import { workspaces, activeWs } from "./appstate";
+import { focusPane } from "./panelayout";
 import {
   setAgentSender,
   setPaneTargeting,
@@ -208,6 +209,13 @@ export function initBridges(): void {
           attention: p.attention,
           spawnedAt: p.spawnedAt,
           lastOutputAt: p.lastOutputAt,
+          badge: p.spec.badge,
+          role: p.spec.role,
+          cwd: p.spec.cwd,
+          branch: p.spec.branch,
+          // "on stage" = the pane filling the focus stage of the ACTIVE canvas,
+          // i.e. the agent the person is looking at right now.
+          onStage: ws === activeWs && p.el.classList.contains("focused"),
         });
     return out;
   });
@@ -216,8 +224,14 @@ export function initBridges(): void {
     const pane = ws?.panes.get(paneId);
     if (!ws || !pane) return false;
     if (ws !== activeWs) activateWorkspace(ws);
-    pane.term.focus();
-    pane.el.scrollIntoView({ block: "nearest" });
+    // On a canvas in focus mode the other panes are display:none, so focusing a
+    // hidden terminal does nothing visible — swap the stage to this pane instead.
+    if (ws.gridEl.classList.contains("has-focus")) {
+      focusPane(ws, pane);
+    } else {
+      pane.term.focus();
+      pane.el.scrollIntoView({ block: "nearest" });
+    }
     return true;
   });
 

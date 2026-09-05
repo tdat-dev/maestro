@@ -69,6 +69,13 @@ export interface FleetPane {
   attention: boolean; // agent went quiet after output → probably waiting on you
   spawnedAt: number | null;
   lastOutputAt: number;
+  // Extra identity the ⌘K switcher shows (optional so the fleet monitor, which
+  // reads only the fields above, keeps compiling against the same snapshot).
+  badge?: string; // CLI kind (claude / codex / powershell …)
+  role?: "conductor"; // the director gets a distinct chip
+  cwd?: string | null; // working directory (folder the agent runs in)
+  branch?: string; // git branch when the agent is isolated in a worktree
+  onStage?: boolean; // this pane is the one currently focused on its canvas (you-are-here)
 }
 
 let fleetSnapshot: (() => FleetPane[]) | null = null;

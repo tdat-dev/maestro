@@ -109,7 +109,7 @@ describe("inbox DOM", () => {
   beforeEach(() => {
     document.body.className = "";
     document.body.innerHTML = `<div id="app"><header class="topbar"><div class="tb-center"></div></header></div>
-      <input type="checkbox" id="setInboxUi">`;
+`;
     localStorage.clear();
     state.tasks = []; state.answered = []; state.texts = []; state.focused = []; state.listeners = []; state.reviewed = [];
     panes = ["a", "e"].map((id) => ({
@@ -132,17 +132,10 @@ describe("inbox DOM", () => {
     setInbox(false);
   });
 
-  it("is on for a fresh install, and remembers turning it off", () => {
-    setInbox(false);
-    localStorage.clear();
+  it("mounts at startup", () => {
     initInbox();
     expect(document.body.classList.contains("inbox-ui")).toBe(true);
-    const toggle = document.getElementById("setInboxUi") as HTMLInputElement;
-    expect(toggle.checked).toBe(true);
-    toggle.checked = false; toggle.dispatchEvent(new Event("change"));
-    expect(document.querySelector(".inbox-queue")).toBeNull();
-    expect(document.body.classList.contains("inbox-ui")).toBe(false);
-    expect(localStorage.getItem("maestro.inboxUi")).toBe("0");
+    expect(document.querySelector(".inbox-queue")).not.toBeNull();
   });
 
   it("puts the agent that needs you on the stage and answers it with a button", async () => {
@@ -261,7 +254,7 @@ describe("inbox DOM", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, cancelable: true }));
     const labels = [...document.querySelectorAll(".pal-it .pal-t")].map((t) => t.firstChild!.textContent);
     expect(labels.slice(0, 3)).toEqual(["Ana", "Eli", "New agent"]);
-    expect(labels).toContain("Back to the classic interface");
+    expect(labels).toContain("Pomodoro timer");
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, cancelable: true }));
     expect(document.querySelector(".inbox-pal")).toBeNull();
   });

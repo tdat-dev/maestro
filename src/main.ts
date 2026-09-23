@@ -245,7 +245,7 @@ configureBridges({ activateWorkspace, clearAttention, setStatus, updateCount, st
 initSpawnModal();
 initWizard();
 initSettingsModal();
-initInbox(); // new interface preview; no-op unless turned on in Settings
+initInbox(); // the Agent Inbox interface
 initScheduler();
 initWorkspace();
 initBackground();

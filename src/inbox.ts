@@ -20,7 +20,6 @@ import { openPalette, closePalette, paletteOpen, type PaletteItem } from "./inbo
 import { createHistoryDrawer } from "./inboxhistory";
 import { mountStart, renderStart, unmountStart } from "./inboxstart";
 import { dockToggle } from "./dock";
-import { getInboxUi, setInboxUi } from "./settings";
 import { allTasks, answerOption, answerText, onTasksChange, type Task } from "./tasks";
 import type { AskOption } from "./askparse";
 import type { TaskState } from "./taskstate";
@@ -655,7 +654,9 @@ export function paletteItems(): PaletteItem[] {
     act("Board", () => dockToggle("kanban")),
     act("Files", () => document.getElementById("btnToggleCode")?.click(), "Ctrl+Shift+E"),
     act("Settings", () => openSettings()),
-    act("Back to the classic interface", () => setInbox(false)),
+    act("Pomodoro timer", () => dockToggle("pomodoro")),
+    act("Flow", () => dockToggle("flow")),
+    act("Fleet", () => dockToggle("fleet")),
   ];
 }
 
@@ -814,18 +815,13 @@ function unmount(): void {
   answered.clear(); hidden.clear();
 }
 
-/** Turn the new interface on or off, and remember the choice. */
+/** Mount or take down the interface. The app mounts it once at startup
+ *  (initInbox); tests use this to start each case clean. */
 export function setInbox(on: boolean): void {
-  setInboxUi(on);
   if (on) mount(); else unmount();
 }
 
-/** Wire the Settings toggle and restore the saved choice. Call once at startup. */
+/** Mount the interface. Call once at startup. */
 export function initInbox(): void {
-  const toggle = document.getElementById("setInboxUi") as HTMLInputElement | null;
-  if (toggle) {
-    toggle.checked = getInboxUi();
-    toggle.addEventListener("change", () => setInbox(toggle.checked));
-  }
-  if (getInboxUi()) mount();
+  mount();
 }

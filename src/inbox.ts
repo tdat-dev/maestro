@@ -334,7 +334,14 @@ function pinCurrent(): void {
 /** Make sure something is on the stage: the first task that needs you in the
  *  shown project, else its first pane. */
 function ensureStage(): void {
-  if (!activeWs || stagePane()) return;
+  if (!activeWs) return;
+  const cur = stagePane();
+  // A pane can come back from Split (or another project) still marked as the
+  // stage while its grid never became one; without this it shows as a canvas tile.
+  if (cur) {
+    if (!activeWs.gridEl.classList.contains("has-focus") && activeWs.panes.has(cur.id)) focusPane(activeWs, cur);
+    return;
+  }
   const inWs = allTasks().filter((t) => t.wsId === activeWs!.id);
   const first = inWs[0] ? activeWs.panes.get(inWs[0].paneId) : activeWs.panes.values().next().value;
   if (first) focusPane(activeWs, first);

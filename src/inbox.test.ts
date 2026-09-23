@@ -30,6 +30,7 @@ vi.mock("./panelayout", () => ({
   focusPane: (_ws: unknown, pane: { id: string; el: HTMLElement }) => {
     document.querySelectorAll(".focused").forEach((e) => e.classList.remove("focused"));
     pane.el.classList.add("focused");
+    pane.el.parentElement?.classList.add("has-focus");
     state.focused.push(pane.id);
   },
 }));
@@ -136,6 +137,15 @@ describe("inbox DOM", () => {
     initInbox();
     expect(document.body.classList.contains("inbox-ui")).toBe(true);
     expect(document.querySelector(".inbox-queue")).not.toBeNull();
+  });
+
+  it("turns a pane still marked as the stage back into the stage when its grid lost it", () => {
+    state.tasks = [task("a", "Ana", "working"), task("e", "Eli", "working")];
+    // What a pane handed back from Split looks like: marked focused, grid not a stage.
+    panes[1].el.classList.add("focused");
+    setInbox(true);
+    expect(panes[1].el.parentElement!.classList.contains("has-focus")).toBe(true);
+    expect(state.focused).toContain("e");
   });
 
   it("puts the agent that needs you on the stage and answers it with a button", async () => {

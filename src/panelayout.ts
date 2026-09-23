@@ -98,6 +98,8 @@ export function exitFocus(ws: Workspace): void {
   });
 }
 export function toggleMax(ws: Workspace, pane: Pane, ev?: MouseEvent): void {
+  // The inbox has no canvas to go back to: the stage always holds one agent.
+  if (document.body.classList.contains("inbox-ui")) { if (!pane.el.classList.contains("focused")) focusPane(ws, pane, ev); return; }
   if (pane.el.classList.contains("focused")) exitFocus(ws);
   else focusPane(ws, pane, ev);
 }

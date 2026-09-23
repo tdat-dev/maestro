@@ -235,7 +235,7 @@ export function mountStart(): void {
   el.setAttribute("aria-label", "Start");
   const now = new Date();
   el.innerHTML = `<div class="st-in">
-    <div class="st-brand"><i><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><linearGradient id="stGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c6f135"/><stop offset=".5" stop-color="#27b9a3"/><stop offset="1" stop-color="#0f7a3e"/></linearGradient></defs><path d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5" stroke="url(#stGrad)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="miter"/></svg></i>Maestro</div>
+    <div class="st-brand"><i><svg class="m-logo" viewBox="2.6 5 18.8 15.8" fill="none" aria-hidden="true"><defs><linearGradient id="stGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c6f135"/><stop offset=".5" stop-color="#27b9a3"/><stop offset="1" stop-color="#0f7a3e"/></linearGradient></defs><path d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5" stroke="url(#stGrad)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="miter"/></svg></i>Maestro</div>
     <h1>${greeting(now.getHours())}.</h1>
     <p class="st-status" aria-live="polite"></p>
     ${composerHTML()}

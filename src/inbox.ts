@@ -43,7 +43,7 @@ export function headline(list: Task[]): { lead: string; rest: string } {
   const n = (s: TaskState) => list.filter((t) => t.status.state === s).length;
   const needs = n("needs"), review = n("review"), working = n("working");
   const are = (k: number) => (k === 1 ? "is" : "are");
-  if (!list.length) return { lead: "No agents yet.", rest: " Start one from + or New agents." };
+  if (!list.length) return { lead: "No agents yet.", rest: " Start one with New agent." };
   const lead = needs ? `${needs} agent${needs === 1 ? " needs" : "s need"} you.` : "Nothing needs you.";
   return { lead, rest: ` ${review} ${are(review)} ready to review, ${working} ${are(working)} working.` };
 }

@@ -21,6 +21,8 @@ import { createHistoryDrawer } from "./inboxhistory";
 import { mountStart, renderStart, unmountStart } from "./inboxstart";
 import { getPref } from "./prefs";
 import { dockToggle } from "./dock";
+import { activateWorkspace, removeWorkspace, renameWorkspace } from "./workspace";
+import { confirmModal } from "./confirmmodal";
 import { allTasks, answerOption, answerText, onTasksChange, type Task } from "./tasks";
 import type { AskOption } from "./askparse";
 import type { TaskState } from "./taskstate";
@@ -650,6 +652,15 @@ export function paletteItems(): PaletteItem[] {
     };
   });
   const act = (label: string, run: () => void, keys?: string): PaletteItem => ({ group: "Actions", label, run, keys });
+  const ws = activeWs;
+  const projects: PaletteItem[] = [...workspaces.values()].filter((w) => w !== ws).map((w) => ({
+    group: "Projects", label: w.name, sub: `${w.panes.size} agent${w.panes.size === 1 ? "" : "s"}${w.dir ? ` · ${w.dir}` : ""}`,
+    run: () => activateWorkspace(w),
+  }));
+  const here: PaletteItem[] = ws ? [
+    { group: "Projects", label: `Rename ${ws.name}`, run: () => void confirmModal({ title: "Rename project", message: "What should this project be called?", okLabel: "Rename", input: { value: ws.name } }).then((r) => { if (r.ok) { renameWorkspace(ws, r.value); render(); } }) },
+    { group: "Projects", label: `Close ${ws.name}`, sub: "Stops its agents", run: () => void removeWorkspace(ws) },
+  ] : [];
   return [
     ...agents,
     act("New agent", () => openNewAgent()),
@@ -663,6 +674,8 @@ export function paletteItems(): PaletteItem[] {
     act("Pomodoro timer", () => dockToggle("pomodoro")),
     act("Flow", () => dockToggle("flow")),
     act("Fleet", () => dockToggle("fleet")),
+    ...projects,
+    ...here,
   ];
 }
 

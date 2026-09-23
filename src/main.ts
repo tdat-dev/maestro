@@ -80,7 +80,6 @@ const isDetachedWindow = DETACH_KEY !== null;
 
 const homeEl = document.getElementById("home") as HTMLElement;
 const appEl = document.getElementById("app") as HTMLElement;
-const tabAdd = document.getElementById("railAdd") as HTMLElement;
 
 // Code panel (right): file tree + editor, wired up in the startup block.
 let fileTree: FileTreeApi | null = null;
@@ -180,9 +179,6 @@ function updateCount() {
     const run = [...w.panes.values()].filter((p) => p.running).length;
     totalRun += run;
     total += w.panes.size;
-    const c = w.tabEl.querySelector<HTMLElement>(".tcount");
-    if (c) c.textContent = w.panes.size ? String(w.panes.size) : "";
-    w.tabEl.classList.toggle("live", run > 0);
   }
   syncResumeAll(); // parked/exited count may have changed
   // Keep the tray tooltip in sync so a hidden window still shows it's alive.
@@ -231,7 +227,6 @@ initHint();
 initMascotView();
 initBridges();
 initQuitLife();
-tabAdd?.addEventListener("click", () => openWizard());
 
 document.getElementById("btnHome")?.addEventListener("click", goHome);
 document.getElementById("homeResume")?.addEventListener("click", resumeWorkspace);

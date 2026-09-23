@@ -35,7 +35,7 @@ function pane(id: string, name: string, over: Partial<Pane> & { screen?: string;
 }
 
 function workspace(panes: Pane[]): Workspace {
-  return { id: "ws-1", name: "maestro", dir: "D:\\p", repoRoot: "D:\\p", isolated: true, gridEl: {} as HTMLElement, tabEl: {} as HTMLElement, panes: new Map(panes.map((p) => [p.id, p])), layout: new Map() };
+  return { id: "ws-1", name: "maestro", dir: "D:\\p", repoRoot: "D:\\p", isolated: true, gridEl: {} as HTMLElement, panes: new Map(panes.map((p) => [p.id, p])), layout: new Map() };
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));

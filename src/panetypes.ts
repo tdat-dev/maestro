@@ -46,7 +46,6 @@ export interface Workspace {
   repoRoot: string | null; // git repo root when isolated; else null
   isolated: boolean; // create a worktree per agent
   gridEl: HTMLElement;
-  tabEl: HTMLElement;
   panes: Map<string, Pane>;
   layout: Map<string, Tile>; // canvas position + size per pane id
 }

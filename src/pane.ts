@@ -373,7 +373,6 @@ export async function removeAgent(ws: Workspace, id: string) {
   ws.panes.delete(id);
   layoutGrid(ws);
   onUpdateCount();
-  refreshAttnTabs(); // the removed pane may have been the tab's only alert
   saveSession();
 }
 
@@ -478,7 +477,6 @@ export function clearAttention(pane: Pane) {
   pane.el.querySelector(".pb-dot")?.classList.remove("work");
   // Let the next tick re-derive the run/idle status; set a sane default now.
   setStatus(pane, pane.running ? "running" : "idle", pane.running ? "run" : "");
-  refreshAttnTabs();
 }
 
 /** Raise a pane's attention flag (pill + tab + optional OS notification). */
@@ -488,21 +486,12 @@ function setAttention(pane: Pane, ws: Workspace) {
   pane.el.classList.add("attention");
   pane.el.querySelector(".pb-dot")?.classList.add("work");
   setStatus(pane, "needs you", "wait");
-  refreshAttnTabs();
   // Notify only while the window is unattended, once per flag.
   if (!pane.attentionNotified && getPref("notifyNeeds") && (document.hidden || !document.hasFocus())) {
     pane.attentionNotified = true;
     // Say what it wants when the screen shows it ("Ana wants to run npm test").
     const line = taskOf(pane.id)?.status.state === "needs" ? taskLine(pane.id) : null;
     void notify(line ?? `${pane.spec.name} needs you`, ws.name).catch(() => {});
-  }
-}
-
-/** Tab dot turns amber when any of its panes is asking for attention. */
-function refreshAttnTabs() {
-  for (const w of workspaces.values()) {
-    const want = [...w.panes.values()].some((p) => p.attention);
-    w.tabEl.classList.toggle("attn", want);
   }
 }
 

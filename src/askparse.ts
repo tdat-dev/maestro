@@ -86,6 +86,48 @@ function lastOptionBlock(lines: string[]): { start: number; end: number; opts: {
   return { start: found[0].i, end, opts: found.map(({ n, label }) => ({ n, label })) };
 }
 
+const UP = "\x1b[A";
+const DOWN = "\x1b[B";
+const CURSOR = /^[❯›>▸]\s+(.+)$/;
+
+/** A menu you move through with the arrow keys and no numbers, like Claude's
+ *  "Yes, I trust this folder" screen: the lines right above a selector hint,
+ *  one of them marked with the cursor. Each option's key walks the cursor to it
+ *  and presses Enter. */
+function arrowMenu(lines: string[]): Ask | null {
+  // The hint must be the last thing on screen; anything below it means the
+  // agent has moved on and the menu is history.
+  let hint = lines.length - 1;
+  while (hint >= 0 && !lines[hint].trim()) hint--;
+  if (hint < 0 || !SELECTOR_HINT.test(lines[hint])) return null;
+  let end = hint - 1;
+  while (end >= 0 && !lines[end].trim()) end--;
+  let start = end;
+  while (start > 0 && lines[start - 1].trim()) start--;
+  const rows = lines.slice(start, end + 1);
+  const cursor = rows.findIndex((l) => CURSOR.test(l));
+  if (rows.length < 2 || rows.length > 8 || cursor < 0 || rows.filter((l) => CURSOR.test(l)).length > 1) return null;
+  if (rows.some((l) => l.length > 90)) return null;
+  const options: AskOption[] = rows.map((l, i) => {
+    const label = stripShortcut(l.replace(CURSOR, "$1").trim());
+    const step = i - cursor;
+    return {
+      n: i + 1,
+      label,
+      key: (step < 0 ? UP : DOWN).repeat(Math.abs(step)) + "\r",
+      deny: /^no\b/i.test(label) || undefined,
+    };
+  });
+  // The question: the nearest line above that asks something, cut at the "?".
+  let prompt = "";
+  for (let i = start - 1; i >= Math.max(0, start - 14); i--) {
+    const q = lines[i].match(/^(.*?\?)(\s|$)/);
+    if (q) { prompt = q[1].trim(); break; }
+  }
+  if (!prompt) prompt = lines.slice(0, start).reverse().find((l) => l.trim())?.trim() ?? "";
+  return { kind: "question", prompt, options };
+}
+
 /**
  * What the agent is asking right now, or null when there is nothing to answer.
  * `screen` is the visible text, newest line last.
@@ -93,7 +135,7 @@ function lastOptionBlock(lines: string[]): { start: number; end: number; opts: {
 export function parseAsk(screen: string): Ask | null {
   const lines = screen.split(/\r?\n/).map(clean);
   const block = lastOptionBlock(lines);
-  if (!block) return null;
+  if (!block) return arrowMenu(lines);
 
   // Everything after the options must be selector chrome, not new conversation:
   // if the agent kept talking below the list, the list is prose, not a prompt.

@@ -199,4 +199,34 @@ describe("parseAsk: nothing to answer", () => {
     const moved = CLAUDE_BASH_UNBOXED + "\n● Ran git push\n  ⎿  Everything up-to-date\n";
     expect(parseAsk(moved)).toBeNull();
   });
+
+  it("reads an arrow-key menu with no numbers, like Claude's trust screen", () => {
+    const screen = [
+      " Accessing workspace:",
+      "",
+      " C:\\Users\\tvmar",
+      "",
+      " Quick safety check: Is this a project you created or one you trust? (Like your own code, a",
+      " well-known open source project, or work from your team).",
+      "",
+      " Security guide",
+      "",
+      " ❯ No, exit",
+      "   Yes, I trust this folder",
+      "",
+      " Enter to confirm · Esc to cancel",
+      "", "", "", "", "", "", "", "", "", "",
+    ].join("\n");
+    const a = parseAsk(screen)!;
+    expect(a.kind).toBe("question");
+    expect(a.prompt).toBe("Quick safety check: Is this a project you created or one you trust?");
+    expect(a.options.map((o) => [o.label, o.key, !!o.deny])).toEqual([
+      ["No, exit", "\r", true],
+      ["Yes, I trust this folder", "\x1b[B\r", false],
+    ]);
+  });
+
+  it("does not read a menu once the agent has moved on below it", () => {
+    expect(parseAsk(" ❯ No, exit\n   Yes\n\n Enter to confirm · Esc to cancel\n\n > next thing")).toBeNull();
+  });
 });

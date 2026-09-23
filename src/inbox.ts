@@ -294,7 +294,8 @@ function renderHead(list: Task[]): void {
 /** The state pill in the stage header ("Needs you", "Ready to review", …). */
 function renderStagePill(list: Task[], pane: Pane | undefined): void {
   for (const ws of workspaces.values()) for (const p of ws.panes.values()) {
-    const t = p === pane ? list.find((x) => x.paneId === p.id) : undefined;
+    const onScreen = p === pane || p.el.classList.contains("split-pin");
+    const t = onScreen ? list.find((x) => x.paneId === p.id) : undefined;
     let pill = p.el.querySelector<HTMLElement>(".ib-pill");
     if (!t) { pill?.remove(); continue; }
     if (!pill) {

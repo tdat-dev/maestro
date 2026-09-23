@@ -94,13 +94,13 @@ function showView() {
   }
   syncResume();
 }
-/** Sync the "Back to workspace" affordance shown on Home when tabs are alive. */
+/** Sync the "Back to your agents" pill shown on the start screen while projects are open. */
 function syncResume() {
   const bar = document.getElementById("homeResume");
   if (!bar) return;
   bar.hidden = workspaces.size === 0;
   const c = document.getElementById("homeResumeCount");
-  if (c) c.textContent = workspaces.size ? `${workspaces.size} workspace${workspaces.size > 1 ? "s" : ""}` : "";
+  if (c) c.textContent = workspaces.size ? `${workspaces.size} project${workspaces.size > 1 ? "s" : ""}` : "";
 }
 /** Show the "Resume all" topbar button when the active workspace has any parked
  *  (stopped) or exited pane, with a live count — so the whole fleet can be booted

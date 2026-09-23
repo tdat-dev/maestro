@@ -729,3 +729,8 @@ body.inbox-ui .set-shell .sbtn:hover { background: rgba(255, 255, 255, 0.14); }
 .im-btn.quiet { background: transparent; color: var(--ib-ink-3); }
 .im-btn.quiet:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.06); }
 .im-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* the pill back to your agents, on the start screen */
+body.inbox-ui .home-resume { border: 0; border-radius: 999px; background: var(--ib-raise); box-shadow: var(--ib-float); color: var(--ib-ink); backdrop-filter: none; font-family: var(--sans); }
+body.inbox-ui .home-resume:hover { background: #1d1e23; color: var(--ib-ink); }
+body.inbox-ui .home-resume .hr-count { color: var(--ib-ink-3); }

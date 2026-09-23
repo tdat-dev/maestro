@@ -15,6 +15,7 @@ import { paneFont } from "./zoom";
 import { checkForUpdates } from "./updater";
 import { getVersion } from "@tauri-apps/api/app";
 import { workspaces } from "./appstate";
+import { initPrefsView, syncPrefsView } from "./prefsview";
 
 /* ---------------- settings modal ---------------- */
 const settingsModal = document.getElementById("settingsModal") as HTMLElement | null;
@@ -62,8 +63,9 @@ function navToSection(sec: string, scroll = true): void {
 export function openSettings() {
   if (setHideTray) setHideTray.checked = getHideToTray();
   syncFontLabel();
+  syncPrefsView();
   document.getElementById("setContent")?.scrollTo(0, 0);
-  navToSection("appearance", false); // land on the first section
+  navToSection("agents", false); // land on the first section
   settingsModal?.classList.add("open");
 }
 export function closeSettings() {
@@ -73,6 +75,7 @@ export function closeSettings() {
 /** Wire the settings modal's open/close controls, the Updates row, the
  *  hide-to-tray toggle, and the font-size stepper. Call once at startup. */
 export function initSettingsModal(): void {
+  initPrefsView();
   // Show the running version in the Settings "Updates" row.
   void getVersion()
     .then((v) => { if (setVersion) setVersion.textContent = `Maestro · v${v}`; })
@@ -106,7 +109,7 @@ export function initSettingsModal(): void {
   });
 
   settingsModal?.querySelectorAll<HTMLElement>(".sn[data-sec]").forEach((btn) => {
-    btn.addEventListener("click", () => navToSection(btn.dataset.sec ?? "appearance"));
+    btn.addEventListener("click", () => navToSection(btn.dataset.sec ?? "agents"));
   });
 
   document.getElementById("btnSettingsHome")?.addEventListener("click", openSettings);

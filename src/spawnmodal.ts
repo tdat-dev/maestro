@@ -3,7 +3,8 @@
 // main-side helpers are injected via configureSpawnModal to avoid a circular
 // import.
 
-import { pickFolder, sendMessage } from "./ipc";
+import { gitRepoRoot, pickFolder, sendMessage } from "./ipc";
+import { getPref } from "./prefs";
 import {
   CLI_PRESETS,
   taskTitle,
@@ -274,6 +275,7 @@ export async function spawnForConductor(
     : { counts: {}, custom: req.cli, customCount: req.count };
   const fleet = expandCrew(state);
   if (!fleet.length) return;
+  await prepareIsolation(ws);
   const newNames: string[] = [];
   const boots = fleet.map((p) => {
     const base = p.shell && dir ? basename(dir) : p.label;
@@ -300,8 +302,22 @@ export async function spawnForConductor(
         const pane = [...ws.panes.values()].find((x) => x.spec.name === name);
         if (pane && pane.running) void sendMessage(pane.id, task).catch(() => {});
       }
-    }, 3500);
+    }, jobDelayMs());
   }
+}
+
+/** Settings → Agents: give every agent its own worktree when the project is a
+ *  git repo. Looked up once per project; the pane boot does the rest. */
+export async function prepareIsolation(ws: Workspace): Promise<void> {
+  if (!getPref("worktree")) { ws.isolated = false; return; }
+  if (!ws.dir) return;
+  if (!ws.repoRoot) ws.repoRoot = await gitRepoRoot(ws.dir).catch(() => null);
+  ws.isolated = !!ws.repoRoot;
+}
+
+/** Settings → Agents: how long a new CLI gets to reach its prompt. */
+function jobDelayMs(): number {
+  return getPref("jobDelay") * 1000;
 }
 
 /** True when a preset's program is installed (resolves on PATH). */
@@ -323,12 +339,15 @@ export async function spawnAgents(
   const preset = CLI_PRESETS.find((p) => p.id === presetId);
   if (!preset || count < 1) return [];
   saveSkipPerms(skipPerms);
+  await prepareIsolation(ws);
   const taken: string[] = [...ws.panes.values()].map((x) => x.spec.name);
   const names: string[] = [];
   const title = taskTitle(task);
   const raceId = count > 1 ? `race-${Date.now().toString(36)}` : null;
+  // Settings → Agents: the first agent of an empty project can be its Director.
+  const director = getPref("directorFirst") && ws.panes.size === 0 && count === 1;
   const boots = Array.from({ length: count }, (_, i) => {
-    const name = nameForNewPane(preset.badge, taken);
+    const name = director ? "Director" : nameForNewPane(preset.badge, taken);
     taken.push(name);
     names.push(name);
     return onCreateAgent(ws, {
@@ -337,7 +356,7 @@ export async function spawnAgents(
       cwd: ws.dir,
       name,
       badge: preset.badge,
-      role: preset.role,
+      role: director ? "conductor" : preset.role,
       title,
       race: raceId ? { id: raceId, n: i + 1, of: count } : undefined,
       ...onCliLook(preset.badge, preset.label),
@@ -351,7 +370,7 @@ export async function spawnAgents(
         const pane = [...ws.panes.values()].find((x) => x.spec.name === name);
         if (pane && pane.running) void sendMessage(pane.id, task).catch(() => {});
       }
-    }, 3500);
+    }, jobDelayMs());
   }
   return names;
 }

@@ -44,6 +44,7 @@ vi.mock("./dock", () => ({ dockToggle: () => {} }));
 import { workspaces, setActiveWs } from "./appstate";
 import { groupTasks, headline, rowLine, lineCounts, ago, togglePin, splitTiles, fillPins, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
 import type { Workspace, Pane } from "./panetypes";
+import { setPref } from "./prefs";
 
 const RUN_ASK: Ask = {
   kind: "run", prompt: "Do you want to proceed?", detail: "npm run build",
@@ -309,6 +310,25 @@ describe("inbox DOM", () => {
     (cols[1].querySelector("[data-review]") as HTMLButtonElement).click();
     expect(document.querySelector(".cmp-back")).toBeNull();
     expect(state.reviewed).toEqual(["D:/wt/e"]);
+  });
+
+  it("starts a prompt as a small chip when Settings says so", () => {
+    setPref("askCard", false);
+    state.tasks = [task("a", "Ana", "needs")];
+    setInbox(true);
+    expect(document.querySelector(".inbox-ask .ia-chip")!.textContent).toContain("Ana is waiting on you");
+    (document.querySelector(".ia-chip") as HTMLButtonElement).click();
+    expect(document.querySelector(".ia-code")!.textContent).toBe("npm run build");
+  });
+
+  it("brings up an agent that starts needing you when Settings says so and the stage is quiet", () => {
+    setPref("jumpToNeeds", true);
+    state.tasks = [task("a", "Ana", "idle"), task("e", "Eli", "working")];
+    setInbox(true);
+    expect(state.focused[state.focused.length - 1]).toBe("a");
+    state.tasks = [task("e", "Eli", "needs"), task("a", "Ana", "idle")];
+    state.listeners.forEach((cb) => (cb as (l: Task[]) => void)(state.tasks));
+    expect(state.focused[state.focused.length - 1]).toBe("e");
   });
 
   it("does not wipe what you are typing when the tick re-renders", () => {

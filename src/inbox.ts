@@ -19,6 +19,7 @@ import { openNewAgent } from "./inboxnew";
 import { openPalette, closePalette, paletteOpen, type PaletteItem } from "./inboxpalette";
 import { createHistoryDrawer } from "./inboxhistory";
 import { mountStart, renderStart, unmountStart } from "./inboxstart";
+import { getPref } from "./prefs";
 import { dockToggle } from "./dock";
 import { allTasks, answerOption, answerText, onTasksChange, type Task } from "./tasks";
 import type { AskOption } from "./askparse";
@@ -97,10 +98,10 @@ export const MAX_SPLIT = 4;
 
 /** Pin or unpin an agent for Split. A fifth pin pushes out the oldest one,
  *  never `keep` (the agent on the stage). */
-export function togglePin(pins: string[], id: string, keep?: string): string[] {
+export function togglePin(pins: string[], id: string, keep?: string, max: number = MAX_SPLIT): string[] {
   if (pins.includes(id)) return pins.filter((x) => x !== id);
   const next = [...pins, id];
-  while (next.length > MAX_SPLIT) {
+  while (next.length > max) {
     const i = next.findIndex((x) => x !== keep && x !== id);
     next.splice(i < 0 ? 0 : i, 1);
   }
@@ -136,6 +137,8 @@ let offTasks: (() => void) | null = null;
 const hidden = new Set<string>();
 /** Prompts already answered from a button, until the screen moves on. */
 const answered = new Set<string>();
+/** Questions already tucked away once because Settings says to start tucked. */
+const autoTucked = new Set<string>();
 /** Split: pinned agents shown side by side as real terminals. Only the pins in
  *  the shown project can be on screen, since each project has its own canvas. */
 let splitOn = false;
@@ -194,7 +197,7 @@ export function openTask(t: Task): void {
   // instead of replacing the whole view.
   if (splitOn && stagePane()) {
     splitClosed.delete(pane.id);
-    if (!pins.includes(pane.id)) pins = togglePin(pins, pane.id, stagePane()?.id);
+    if (!pins.includes(pane.id)) pins = togglePin(pins, pane.id, stagePane()?.id, getPref("splitMax"));
     render(); // borrows it onto this screen if it lives in another project
     setCurrent(pane);
     return;
@@ -253,7 +256,7 @@ function clearSplit(ws: Workspace): void {
 function layoutSplit(): void {
   const ws = activeWs;
   if (!ws) return;
-  if (splitOn) pins = fillPins(pins, allTasks().map((t) => t.paneId), splitClosed);
+  if (splitOn) pins = fillPins(pins, allTasks().map((t) => t.paneId), splitClosed, getPref("splitMax"));
   const shown = splitOn ? pins.map(paneById).filter((p): p is Pane => !!p) : [];
   const on = shown.length > 1;
   const area = { width: ws.gridEl.clientWidth, height: ws.gridEl.clientHeight };
@@ -462,6 +465,9 @@ function renderAsk(list: Task[], pane: Pane | undefined): void {
   // Forget answers and tucked-away cards for questions no longer on screen.
   for (const k of answered) if (k !== key) answered.delete(k);
   for (const k of hidden) if (k !== key) hidden.delete(k);
+  for (const k of autoTucked) if (k !== key) autoTucked.delete(k);
+  // Settings → Inbox: start with the small chip instead of the full box.
+  if (key && !getPref("askCard") && !autoTucked.has(key)) { autoTucked.add(key); hidden.add(key); }
   // An agent that finished with changes gets a quiet chip that opens Review.
   if (t && t.status.state === "review" && reviewer?.paneId !== t.paneId) {
     const sig = `review|${t.paneId}|${t.changedFiles ?? 0}`;
@@ -703,6 +709,29 @@ function onStageButton(e: MouseEvent): void {
   }
 }
 
+const lastState = new Map<string, TaskState>();
+
+/** Settings → Inbox / Review: act on an agent's state changing. Bring an agent
+ *  that starts waiting on you onto the stage when the one there is not busy,
+ *  and open Changes when the agent on the stage finishes with changes. */
+function onStateChanges(list: Task[]): void {
+  const stage = stagePane();
+  const stageTask = stage && list.find((t) => t.paneId === stage.id);
+  const typing = (document.activeElement as HTMLElement | null)?.closest("input, textarea, .inbox-modal, .inbox-pal");
+  for (const t of list) {
+    const before = lastState.get(t.paneId);
+    lastState.set(t.paneId, t.status.state);
+    if (before === undefined || before === t.status.state) continue;
+    if (t.status.state === "needs" && getPref("jumpToNeeds") && !splitOn && !typing && t.paneId !== stage?.id &&
+        (!stageTask || !["needs", "working"].includes(stageTask.status.state))) {
+      openTask(t);
+      return;
+    }
+    if (t.status.state === "review" && before === "working" && t.paneId === stage?.id &&
+        getPref("reviewOnDone") && !reviewer?.paneId && !splitOn) openReview();
+  }
+}
+
 /** Clicking into another terminal in Split makes it the current one. */
 function onFocusIn(e: FocusEvent): void {
   if (!splitOn || !activeWs) return;
@@ -789,7 +818,9 @@ function mount(): void {
   document.addEventListener("focusin", onFocusIn);
   window.addEventListener("keydown", onCtrlK, true);
   window.addEventListener("resize", render);
-  offTasks = onTasksChange(render);
+  // Remember where everyone stands now, so only later changes count.
+  for (const t of allTasks()) lastState.set(t.paneId, t.status.state);
+  offTasks = onTasksChange(() => { onStateChanges(allTasks()); render(); });
   timer = window.setInterval(render, 1000);
   render();
 }
@@ -812,7 +843,7 @@ function unmount(): void {
   window.removeEventListener("keydown", onCtrlK, true);
   closePalette();
   window.removeEventListener("resize", render);
-  answered.clear(); hidden.clear();
+  answered.clear(); hidden.clear(); autoTucked.clear(); lastState.clear();
 }
 
 /** Mount or take down the interface. The app mounts it once at startup

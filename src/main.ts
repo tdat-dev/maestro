@@ -19,6 +19,7 @@ import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setS
 import { configureWorkspace, initWorkspace, createWorkspace, activateWorkspace, bootDetached } from "./workspace";
 import { updateTasks } from "./tasks";
 import { initInbox } from "./inbox";
+import { getPref } from "./prefs";
 import { confirmModal } from "./confirmmodal";
 import { wirePaneSearch } from "./panesearch";
 import { initMascotView } from "./mascotview";
@@ -497,7 +498,7 @@ if (isDetachedWindow) {
   void killAll().catch(() => {});
   // Recreate last session's tabs as STOPPED panes (no PTY spawn) before showing
   // the view, so reopening the app doesn't auto-launch a heavy fleet.
-  restoreSession();
+  if (getPref("restore")) restoreSession();
 }
 showView();
 

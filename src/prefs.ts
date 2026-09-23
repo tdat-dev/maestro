@@ -1,0 +1,89 @@
+// Maestro's own settings: how agents start, how the inbox gets your attention,
+// what Split and Review do, and what happens at startup. One typed store in
+// localStorage; every value has a default so a fresh install behaves well.
+// Settings → Agents / Inbox / Review render from PREF_META, and each feature
+// reads its value through getPref at the moment it acts.
+
+export interface Prefs {
+  /** CLI a New agent starts with: a preset id, or "last" for the last one used. */
+  defaultCli: string;
+  /** How many agents New agent offers to start on one job. */
+  defaultCount: 1 | 2 | 3;
+  /** Seconds to wait for a new agent's CLI to reach its prompt before typing its job. */
+  jobDelay: number;
+  /** Give every agent its own git worktree and branch (projects that are git repos). */
+  worktree: boolean;
+  /** Put the Director's rules into new projects' first agent. */
+  directorFirst: boolean;
+  /** Windows notification when an agent starts waiting on you. */
+  notifyNeeds: boolean;
+  /** When an agent needs you and the one on screen is not busy, show it. */
+  jumpToNeeds: boolean;
+  /** Show the answer box over the terminal (off: a small chip you open when ready). */
+  askCard: boolean;
+  /** Most terminals Split lays out side by side. */
+  splitMax: 2 | 3 | 4;
+  /** Open Changes on its own when the agent on screen finishes with changes. */
+  reviewOnDone: boolean;
+  /** Reopen last session's projects and agents (stopped) when Maestro starts. */
+  restore: boolean;
+}
+
+export const DEFAULTS: Prefs = {
+  defaultCli: "last",
+  defaultCount: 1,
+  jobDelay: 4,
+  worktree: true,
+  directorFirst: false,
+  notifyNeeds: true,
+  jumpToNeeds: false,
+  askCard: true,
+  splitMax: 4,
+  reviewOnDone: false,
+  restore: true,
+};
+
+const KEY = "maestro.prefs";
+const listeners = new Set<(p: Prefs) => void>();
+
+function clamp(p: Partial<Prefs>): Prefs {
+  const out = { ...DEFAULTS };
+  for (const k of Object.keys(DEFAULTS) as Array<keyof Prefs>) {
+    const v = p[k];
+    if (v === undefined || typeof v !== typeof DEFAULTS[k]) continue;
+    (out as Record<string, unknown>)[k] = v;
+  }
+  out.defaultCount = ([1, 2, 3] as const).includes(out.defaultCount) ? out.defaultCount : 1;
+  out.splitMax = ([2, 3, 4] as const).includes(out.splitMax) ? out.splitMax : 4;
+  out.jobDelay = Math.min(20, Math.max(1, Math.round(out.jobDelay)));
+  return out;
+}
+
+export function getPrefs(): Prefs {
+  try {
+    return clamp(JSON.parse(localStorage.getItem(KEY) || "{}"));
+  } catch {
+    return { ...DEFAULTS };
+  }
+}
+
+export function getPref<K extends keyof Prefs>(k: K): Prefs[K] {
+  return getPrefs()[k];
+}
+
+export function setPref<K extends keyof Prefs>(k: K, v: Prefs[K]): void {
+  const next = clamp({ ...getPrefs(), [k]: v });
+  try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* storage full or blocked */ }
+  for (const cb of listeners) cb(next);
+}
+
+export function resetPrefs(): void {
+  try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+  for (const cb of listeners) cb(getPrefs());
+}
+
+/** Be told when any setting changes. */
+export function onPrefs(cb: (p: Prefs) => void): () => void {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
+}

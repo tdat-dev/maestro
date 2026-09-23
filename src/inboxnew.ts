@@ -5,6 +5,7 @@
 import { CLI_PRESETS, type CliPreset } from "./crew";
 import { activeWs } from "./appstate";
 import { loadCrew, presetAvailable, spawnAgents } from "./spawnmodal";
+import { getPref } from "./prefs";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 const LAST_CLI = "maestro.inbox.lastCli";
@@ -22,7 +23,10 @@ export function startLabel(count: number): string {
 let el: HTMLElement | null = null;
 let returnTo: HTMLElement | null = null;
 
+/** The CLI New agent starts on: the one set in Settings, or the last one used. */
 function lastCli(): string {
+  const set = getPref("defaultCli");
+  if (set !== "last") return set;
   try { return localStorage.getItem(LAST_CLI) || "claude"; } catch { return "claude"; }
 }
 
@@ -34,7 +38,7 @@ export function closeNewAgent(): void {
 }
 
 export function openNewAgent(opts: { count?: number } = {}): void {
-  const preset = Math.min(3, Math.max(1, opts.count ?? 1));
+  const preset = Math.min(3, Math.max(1, opts.count ?? getPref("defaultCount")));
   const ws = activeWs;
   if (!ws) return;
   el?.remove();

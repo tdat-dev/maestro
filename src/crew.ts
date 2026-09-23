@@ -31,6 +31,13 @@ export const CLI_PRESETS: CliPreset[] = [
   { id: "cmd", label: "CMD", program: "cmd.exe", args: [], badge: "cmd", shell: true },
 ];
 
+/** A task's first line, short enough for a queue row and a header. */
+export function taskTitle(task: string | null | undefined, max = 64): string | undefined {
+  const line = (task ?? "").split("\n").map((l) => l.trim()).find(Boolean);
+  if (!line) return undefined;
+  return line.length > max ? line.slice(0, max - 1).trimEnd() + "…" : line;
+}
+
 /** Args to launch a preset with, optionally appending its skip-permissions
  *  flag. CLIs without such a flag are returned unchanged. */
 export function effectiveArgs(preset: CliPreset, skipPerms: boolean): string[] {

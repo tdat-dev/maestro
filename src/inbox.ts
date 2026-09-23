@@ -65,6 +65,12 @@ export function rowLine(t: Task): string {
   }
 }
 
+/** "+148 −455" at the end of a row that has changes to review. */
+export function lineCounts(t: Pick<Task, "added" | "removed">): string {
+  if (t.added == null || t.removed == null || (t.added === 0 && t.removed === 0)) return "";
+  return `<span class="iq-ln"><b class="a">+${t.added}</b> <b class="d">−${t.removed}</b></span>`;
+}
+
 export function ago(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return `${s}s`;
@@ -308,9 +314,9 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
         const p = paneOf(t);
         return `<button class="iq-row st-${t.status.state}" role="listitem" data-id="${esc(t.paneId)}" aria-current="${t.paneId === current}">
           <span class="iq-mk" style="background:${esc(p?.color ?? "#888")}" aria-hidden="true">${esc((t.name.trim()[0] ?? "?").toUpperCase())}</span>
-          <span class="iq-t">${esc(t.name)}</span>
+          <span class="iq-t">${esc(t.title ?? t.name)}</span>
           <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In Split">◫</span> ` : ""}${ago(now - t.since)}</span>
-          <span class="iq-s"><span class="iq-p">${esc(t.project)}</span> · <span class="iq-l">${esc(rowLine(t))}</span></span>
+          <span class="iq-s"><span class="iq-p">${esc(t.title ? t.name : t.project)}</span>${t.race ? ` <span class="iq-race">race ${t.race.n}/${t.race.of}</span>` : ""} · <span class="iq-l">${esc(rowLine(t))}</span>${lineCounts(t)}</span>
         </button>`;
       }).join("") : `<p class="iq-empty">All clear. Nothing is waiting on you.</p>`}
     </section>`).join("") +
@@ -354,8 +360,22 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
     acts.querySelector('[data-stage="review"]')?.setAttribute("aria-pressed", String(reviewer?.paneId === p.id));
     acts.querySelector('[data-stage="history"]')?.setAttribute("aria-pressed", String(historian?.paneId === p.id));
     // Just the branch: the project is already in the queue and the headline.
+    // On a Split card the second line is the job, when there is one.
     const where = p.el.querySelector<HTMLElement>("[data-where]");
-    if (where) where.textContent = p.spec.branch ?? (pinned ? t.project : "");
+    if (where) where.textContent = pinned ? t.title ?? t.branch ?? t.project : t.branch ?? "";
+    // On the stage the job is the big line, the agent's name moves up with the CLI.
+    let ttl = p.el.querySelector<HTMLElement>(".ib-ttl");
+    const showTtl = !pinned && !!t.title;
+    p.el.classList.toggle("ib-has-title", showTtl);
+    if (!showTtl) ttl?.remove();
+    else {
+      if (!ttl) {
+        ttl = document.createElement("span");
+        ttl.className = "ib-ttl";
+        p.el.querySelector(".pane-bar")?.appendChild(ttl);
+      }
+      ttl.textContent = t.title!;
+    }
     renderMini(p, t, pinned);
   }
 }
@@ -529,7 +549,7 @@ export function paletteItems(): PaletteItem[] {
     return {
       group: GROUP_LABEL[t.status.state],
       label: t.name,
-      sub: `${t.project} · ${rowLine(t)}`,
+      sub: `${t.title ? `${t.title} · ` : ""}${t.project} · ${rowLine(t)}`,
       mark: { color: p?.color ?? "#888", letter: (t.name.trim()[0] ?? "?").toUpperCase() },
       run: () => openTask(t),
     };
@@ -686,7 +706,7 @@ function unmount(): void {
   if (splitWs) clearSplit(splitWs);
   splitOn = false; pins = []; splitSig = ""; splitWs = null;
   if (reviewer?.paneId) reviewer.close();
-  for (const ws of workspaces.values()) for (const p of ws.panes.values()) { p.el.querySelector(".ib-pill")?.remove(); p.el.querySelector(".ib-acts")?.remove(); p.el.querySelector(".ib-mini")?.remove(); p.el.classList.remove("ib-needs"); }
+  for (const ws of workspaces.values()) for (const p of ws.panes.values()) { p.el.querySelector(".ib-pill")?.remove(); p.el.querySelector(".ib-acts")?.remove(); p.el.querySelector(".ib-mini")?.remove(); p.el.querySelector(".ib-ttl")?.remove(); p.el.classList.remove("ib-needs", "ib-has-title"); }
   queueEl?.remove(); askEl?.remove(); headEl?.remove(); dockEl?.remove();
   queueEl = askEl = headEl = dockEl = null; splitBtn = null; reviewer = null; historian = null;
   projectFilter = null;

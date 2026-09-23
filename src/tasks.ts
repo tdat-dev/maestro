@@ -7,7 +7,7 @@
 // status line for notifications.
 
 import { workspaces } from "./appstate";
-import { gitChangedFiles, sendInput } from "./ipc";
+import { gitChangedFiles, repoDiff, sendInput } from "./ipc";
 import { freeTextKeys, type AskOption } from "./askparse";
 import { deriveTaskState, statusLine, type TaskState, type TaskStatus } from "./taskstate";
 import type { Pane, Workspace } from "./panetypes";
@@ -19,8 +19,15 @@ export interface Task {
   /** Workspace name, which is the project the agent works in. */
   project: string;
   branch: string | null;
+  /** What it was asked to do, when Maestro handed it the job. */
+  title: string | null;
+  /** One of several agents given the same job ("race 2/3"). */
+  race: { id: string; n: number; of: number } | null;
   status: TaskStatus;
   changedFiles: number | null;
+  /** Lines added and removed on its branch, when it has changes. */
+  added: number | null;
+  removed: number | null;
   /** ms the current state began, for "waiting 4m" and queue order. */
   since: number;
 }
@@ -41,28 +48,46 @@ const HISTORY_MAX = 200;
 
 const tasks = new Map<string, Task>();
 const history = new Map<string, HistoryEvent[]>();
-const diffs = new Map<string, { n: number | null; at: number; pending: boolean }>();
+const diffs = new Map<string, { n: number | null; add: number | null; del: number | null; at: number; pending: boolean }>();
+
+/** Lines added and removed in a unified diff (file headers don't count). */
+export function countLines(diff: string): { add: number; del: number } {
+  let add = 0, del = 0;
+  for (const l of diff.split("\n")) {
+    if (l.startsWith("+++") || l.startsWith("---")) continue;
+    if (l.startsWith("+")) add++;
+    else if (l.startsWith("-")) del++;
+  }
+  return { add, del };
+}
 const listeners = new Set<(list: Task[]) => void>();
 
 /** Changed files can only be pinned on one agent when it has its own worktree;
  *  agents sharing a checkout share one diff, so for them it stays unknown. */
-function changedFilesFor(pane: Pane, now: number): number | null {
+function changesFor(pane: Pane, now: number): { n: number | null; add: number | null; del: number | null } {
   const wt = pane.spec.worktree;
-  if (!wt) return null;
-  const d = diffs.get(pane.id) ?? { n: null, at: 0, pending: false };
+  if (!wt) return { n: null, add: null, del: null };
+  const d = diffs.get(pane.id) ?? { n: null, add: null, del: null, at: 0, pending: false };
   if (!d.pending && now - d.at >= DIFF_EVERY_MS) {
     d.pending = true;
     gitChangedFiles(wt)
-      .then((files) => { d.n = files.length; })
-      .catch(() => { d.n = null; })
+      .then(async (files) => {
+        d.n = files.length;
+        // Line counts only matter once there is something to review.
+        if (!files.length) { d.add = d.del = 0; return; }
+        const c = countLines(await repoDiff(wt));
+        d.add = c.add; d.del = c.del;
+      })
+      .catch(() => { d.n = d.add = d.del = null; })
       .finally(() => { d.at = Date.now(); d.pending = false; });
   }
   diffs.set(pane.id, d);
-  return d.n;
+  return d;
 }
 
 function toTask(ws: Workspace, pane: Pane, now: number): Task {
-  const changedFiles = changedFilesFor(pane, now);
+  const changes = changesFor(pane, now);
+  const changedFiles = changes.n;
   const status = deriveTaskState(
     {
       running: pane.running,
@@ -79,8 +104,12 @@ function toTask(ws: Workspace, pane: Pane, now: number): Task {
     name: pane.spec.name,
     project: ws.name,
     branch: pane.spec.branch ?? null,
+    title: pane.spec.title ?? null,
+    race: pane.spec.race ?? null,
     status,
     changedFiles,
+    added: changes.add,
+    removed: changes.del,
     since: prev && prev.status.state === status.state ? prev.since : now,
   };
 }

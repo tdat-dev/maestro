@@ -617,3 +617,25 @@ body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pb-ctrls { display: none
 .ib-mini .ia-opt.always { background: transparent; color: var(--ib-ink-2); }
 .ib-mini .ia-opt.deny { background: oklch(0.72 0.15 25 / 0.12); color: var(--ib-del); }
 .ib-mini .ia-opt.allow { background: #fff; color: #000; }
+
+/* ---------- the job as the headline of an agent ---------- */
+.iq-s { display: flex; align-items: baseline; gap: 0 4px; }
+.iq-s .iq-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.iq-race { font: 11px var(--mono); padding: 1px 6px; border-radius: 5px; background: rgba(255, 255, 255, 0.07); color: var(--ib-ink-2); flex: none; }
+.iq-ln { margin-left: auto; flex: none; font: 12px var(--mono); padding-left: 8px; }
+.iq-ln .a { color: var(--ib-work); font-weight: 400; }
+.iq-ln .d { color: var(--ib-del); font-weight: 400; }
+body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused.ib-has-title .pb-name {
+  grid-row: 1; grid-column: 2;
+  font-size: 13px; font-weight: 600; color: var(--ib-ink);
+}
+body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused.ib-has-title .pb-cli { grid-column: 3; }
+body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused.ib-has-title .pb-cli::before { content: "· "; }
+body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused.ib-has-title .pb-where { grid-column: 4; }
+body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused.ib-has-title .pb-role { display: none; }
+.ib-ttl { display: none; }
+body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused.ib-has-title .ib-ttl {
+  display: block; grid-row: 2; grid-column: 2 / 5;
+  font: 600 22px/1.25 var(--sans); letter-spacing: -0.02em; color: var(--ib-ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}

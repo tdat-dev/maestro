@@ -5,10 +5,11 @@ let changed: Record<string, number> = {};
 vi.mock("./ipc", () => ({
   gitChangedFiles: vi.fn(async (root: string) => Array.from({ length: changed[root] ?? 0 }, (_, i) => ({ path: `f${i}`, status: "M" }))),
   sendInput: vi.fn(async (id: string, data: string) => { sent.push([id, data]); }),
+  repoDiff: vi.fn(async () => "--- a/x\n+++ b/x\n@@ -1 +1,2 @@\n-old\n+new\n+more\n"),
 }));
 
 import { workspaces } from "./appstate";
-import { allTasks, answerOption, answerText, historyOf, onTasksChange, taskLine, taskOf, updateTasks } from "./tasks";
+import { allTasks, answerOption, answerText, countLines, historyOf, onTasksChange, taskLine, taskOf, updateTasks } from "./tasks";
 import type { Pane, Workspace } from "./panetypes";
 
 const ASK = `
@@ -123,5 +124,19 @@ describe("tasks", () => {
       "Started working",
       "You said “use pnpm”",
     ]);
+  });
+
+  it("counts the lines a branch adds and removes, and carries the job's title", async () => {
+    expect(countLines("--- a/f\n+++ b/f\n@@\n-a\n-b\n+c\n ctx\n")).toEqual({ add: 1, del: 2 });
+    const p = pane("c", "Cy", { worktree: "D:\\wt\\cy", lastOutputAt: 0 });
+    p.spec.title = "Fix the flaky upload test";
+    p.spec.race = { id: "r1", n: 2, of: 3 };
+    workspaces.set("ws-1", workspace([p]));
+    changed = { "D:\\wt\\cy": 1 };
+    updateTasks(50_000);
+    await flush(); await flush();
+    updateTasks(50_010);
+    const t = taskOf("c")!;
+    expect([t.title, t.race?.n, t.added, t.removed]).toEqual(["Fix the flaky upload test", 2, 2, 1]);
   });
 });

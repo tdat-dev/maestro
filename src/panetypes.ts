@@ -16,6 +16,8 @@ export interface AgentSpec {
   role?: "conductor"; // a conductor gets the orchestration system prompt
   worktree?: string; // worktree path once created (isolated agents)
   branch?: string; // the agent's git branch (isolated agents)
+  title?: string; // what it was asked to do, short ("Fix the flaky upload test")
+  race?: { id: string; n: number; of: number }; // one of several agents given the same job
 }
 
 /** One agent pane: its DOM, its terminal, and live status bookkeeping. */

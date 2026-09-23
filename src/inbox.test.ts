@@ -42,7 +42,7 @@ vi.mock("./settingsmodal", () => ({ openSettings: () => {} }));
 vi.mock("./dock", () => ({ dockToggle: () => {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
-import { groupTasks, headline, rowLine, ago, togglePin, splitTiles, fillPins, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
+import { groupTasks, headline, rowLine, lineCounts, ago, togglePin, splitTiles, fillPins, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
 import type { Workspace, Pane } from "./panetypes";
 
 const RUN_ASK: Ask = {
@@ -54,7 +54,8 @@ const RUN_ASK: Ask = {
   ],
 };
 const task = (paneId: string, name: string, state: Task["status"]["state"], over: Partial<Task> = {}): Task => ({
-  paneId, wsId: "ws-1", name, project: "maestro", branch: null, changedFiles: null, since: 0,
+  paneId, wsId: "ws-1", name, project: "maestro", branch: null, title: null, race: null,
+  changedFiles: null, added: null, removed: null, since: 0,
   status: { state, ask: state === "needs" ? RUN_ASK : null }, ...over,
 });
 
@@ -262,6 +263,19 @@ describe("inbox DOM", () => {
     expect(labels).toContain("Back to the classic interface");
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, cancelable: true }));
     expect(document.querySelector(".inbox-pal")).toBeNull();
+  });
+
+  it("titles a row with the job, names the agent under it, tags races and counts lines", () => {
+    expect(lineCounts({ added: 148, removed: 455 })).toContain("+148");
+    expect(lineCounts({ added: 0, removed: 0 })).toBe("");
+    state.tasks = [task("e", "Eli", "review", { title: "Fix the flaky upload test", race: { id: "r", n: 1, of: 3 }, changedFiles: 2, added: 12, removed: 5 })];
+    setInbox(true);
+    const row = document.querySelector('.iq-row[data-id="e"]')!;
+    expect(row.querySelector(".iq-t")!.textContent).toBe("Fix the flaky upload test");
+    expect(row.querySelector(".iq-p")!.textContent).toBe("Eli");
+    expect(row.querySelector(".iq-race")!.textContent).toBe("race 1/3");
+    expect(row.querySelector(".iq-ln")!.textContent).toBe("+12 −5");
+    expect(panes[1].el.querySelector(".ib-ttl")!.textContent).toBe("Fix the flaky upload test");
   });
 
   it("does not wipe what you are typing when the tick re-renders", () => {

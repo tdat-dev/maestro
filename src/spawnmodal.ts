@@ -6,6 +6,7 @@
 import { pickFolder, sendMessage } from "./ipc";
 import {
   CLI_PRESETS,
+  taskTitle,
   expandCrew,
   runLimited,
   effectiveArgs,
@@ -286,6 +287,7 @@ export async function spawnForConductor(
       cwd: dir,
       name,
       badge: p.badge,
+      title: taskTitle(req.task),
       ...onCliLook(p.badge, p.label),
     });
   });
@@ -323,7 +325,9 @@ export async function spawnAgents(
   saveSkipPerms(skipPerms);
   const taken: string[] = [...ws.panes.values()].map((x) => x.spec.name);
   const names: string[] = [];
-  const boots = Array.from({ length: count }, () => {
+  const title = taskTitle(task);
+  const raceId = count > 1 ? `race-${Date.now().toString(36)}` : null;
+  const boots = Array.from({ length: count }, (_, i) => {
     const name = nameForNewPane(preset.badge, taken);
     taken.push(name);
     names.push(name);
@@ -334,6 +338,8 @@ export async function spawnAgents(
       name,
       badge: preset.badge,
       role: preset.role,
+      title,
+      race: raceId ? { id: raceId, n: i + 1, of: count } : undefined,
       ...onCliLook(preset.badge, preset.label),
     });
   });

@@ -13,11 +13,12 @@
 .upd-toast.show{transform:translateY(0);opacity:1;pointer-events:auto}
 .upd-toast[hidden]{display:none}
 
-/* the white M, as on the start screen and the intro */
+/* the Maestro mark, as on the start screen and the intro */
 .upd-mark{
   flex:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;
-  background:#fff;color:#050506;font:700 17px/1 var(--sans);letter-spacing:-.02em;
+  background:#11161d;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);
 }
+.upd-mark svg{width:22px;height:22px}
 
 .upd-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
 .upd-head{display:flex;align-items:center;gap:8px}

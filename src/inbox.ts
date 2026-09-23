@@ -1,0 +1,287 @@
+// Agent Inbox interface (preview, behind Settings → "New interface").
+//
+// It does not rebuild the app: the canvas, panes, PTYs and every existing
+// feature stay where they are. With the flag on it adds a Queue down the left
+// (every agent in every project, ordered by who needs you), a sentence in the
+// top bar that says what needs you, and a decision card that answers an agent's
+// prompt with buttons. The "stage" is simply the chosen pane in the canvas's
+// existing focus mode, so the terminal is the real xterm you can type into.
+
+import { workspaces, activeWs } from "./appstate";
+import { focusPane } from "./panelayout";
+import { revealPane } from "./agentbridge";
+import { getInboxUi, setInboxUi } from "./settings";
+import { allTasks, answerOption, answerText, onTasksChange, type Task } from "./tasks";
+import type { AskOption } from "./askparse";
+import type { TaskState } from "./taskstate";
+import type { Pane } from "./panetypes";
+
+/* ---------------- pure helpers (tested) ---------------- */
+
+const ORDER: TaskState[] = ["needs", "review", "working", "idle", "stopped"];
+export const GROUP_LABEL: Record<TaskState, string> = {
+  needs: "Needs you", review: "Ready to review", working: "Working", idle: "Idle", stopped: "Stopped",
+};
+
+/** Tasks grouped in queue order; empty groups dropped except "Needs you",
+ *  which stays so an empty inbox can say so. */
+export function groupTasks(list: Task[]): Array<{ state: TaskState; tasks: Task[] }> {
+  return ORDER.map((state) => ({ state, tasks: list.filter((t) => t.status.state === state) }))
+    .filter((g) => g.tasks.length || g.state === "needs");
+}
+
+/** The top-bar sentence: "2 agents need you. 1 is ready to review, 3 are working." */
+export function headline(list: Task[]): { lead: string; rest: string } {
+  const n = (s: TaskState) => list.filter((t) => t.status.state === s).length;
+  const needs = n("needs"), review = n("review"), working = n("working");
+  const are = (k: number) => (k === 1 ? "is" : "are");
+  if (!list.length) return { lead: "No agents yet.", rest: " Start one from + or New agents." };
+  const lead = needs ? `${needs} agent${needs === 1 ? " needs" : "s need"} you.` : "Nothing needs you.";
+  return { lead, rest: ` ${review} ${are(review)} ready to review, ${working} ${are(working)} working.` };
+}
+
+/** Short second line of a queue row, from the agent's side. */
+export function rowLine(t: Task): string {
+  const a = t.status.ask;
+  switch (t.status.state) {
+    case "needs":
+      if (!a) return "Needs you";
+      if (a.kind === "run") return a.detail ? `Wants to run ${a.detail}` : "Wants to run a command";
+      if (a.kind === "edit") return a.detail ? `Wants to edit ${a.detail}` : "Wants to edit a file";
+      return `Asks: ${a.prompt}`;
+    case "review": return `${t.changedFiles ?? 0} file${t.changedFiles === 1 ? "" : "s"} changed`;
+    case "working": return "Working";
+    case "stopped": return "Stopped";
+    default: return "Waiting for a task";
+  }
+}
+
+export function ago(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.round(s / 60);
+  return m < 60 ? `${m}m` : `${Math.round(m / 60)}h`;
+}
+
+/* ---------------- DOM ---------------- */
+
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+
+let queueEl: HTMLElement | null = null;
+let headEl: HTMLElement | null = null;
+let askEl: HTMLElement | null = null;
+let timer: number | null = null;
+let offTasks: (() => void) | null = null;
+/** Prompts the user tucked away ("paneId|prompt"), so they can type in the terminal instead. */
+const hidden = new Set<string>();
+/** Prompts already answered from a button, until the screen moves on. */
+const answered = new Set<string>();
+
+function paneOf(t: Task): Pane | undefined {
+  return workspaces.get(t.wsId)?.panes.get(t.paneId);
+}
+
+/** The pane on the stage: the focused pane of the workspace being shown. */
+function stagePane(): Pane | undefined {
+  if (!activeWs) return undefined;
+  return [...activeWs.panes.values()].find((p) => p.el.classList.contains("focused"));
+}
+
+/** Put a task's agent on the stage (switching project if needed). */
+export function openTask(t: Task): void {
+  const ws = workspaces.get(t.wsId);
+  const pane = ws?.panes.get(t.paneId);
+  if (!ws || !pane) return;
+  revealPane(t.wsId, t.paneId);
+  focusPane(ws, pane);
+  render();
+}
+
+/** Make sure something is on the stage: the first task that needs you in the
+ *  shown project, else its first pane. */
+function ensureStage(): void {
+  if (!activeWs || stagePane()) return;
+  const inWs = allTasks().filter((t) => t.wsId === activeWs!.id);
+  const first = inWs[0] ? activeWs.panes.get(inWs[0].paneId) : activeWs.panes.values().next().value;
+  if (first) focusPane(activeWs, first);
+}
+
+function renderQueue(list: Task[], current: string | undefined, now: number): void {
+  if (!queueEl) return;
+  const groups = groupTasks(list);
+  queueEl.innerHTML =
+    `<div class="iq-list" role="list">` +
+    groups.map((g) => `<section class="iq-group" aria-label="${GROUP_LABEL[g.state]}">
+      <div class="iq-gt"><span>${GROUP_LABEL[g.state]}</span><span class="iq-n">${g.tasks.length}</span></div>
+      ${g.tasks.length ? g.tasks.map((t) => {
+        const p = paneOf(t);
+        return `<button class="iq-row st-${t.status.state}" role="listitem" data-id="${esc(t.paneId)}" aria-current="${t.paneId === current}">
+          <span class="iq-mk" style="background:${esc(p?.color ?? "#888")}" aria-hidden="true">${esc((t.name.trim()[0] ?? "?").toUpperCase())}</span>
+          <span class="iq-t">${esc(t.name)}</span>
+          <span class="iq-tm">${ago(now - t.since)}</span>
+          <span class="iq-s"><span class="iq-p">${esc(t.project)}</span> · <span class="iq-l">${esc(rowLine(t))}</span></span>
+        </button>`;
+      }).join("") : `<p class="iq-empty">All clear. Nothing is waiting on you.</p>`}
+    </section>`).join("") +
+    `</div>`;
+}
+
+function renderHead(list: Task[]): void {
+  if (!headEl) return;
+  const h = headline(list);
+  headEl.innerHTML = `<b>${esc(h.lead)}</b>${esc(h.rest)}`;
+}
+
+function renderAsk(list: Task[], pane: Pane | undefined): void {
+  if (!askEl) return;
+  const t = pane ? list.find((x) => x.paneId === pane.id) : undefined;
+  const a = t?.status.state === "needs" ? t.status.ask : null;
+  // The command is part of the identity: Claude asks "Do you want to proceed?"
+  // with the same options for every command, and each one is a new question.
+  const key = t && a ? `${t.paneId}|${a.prompt}|${a.detail ?? ""}|${a.options.map((o) => o.label).join("/")}` : "";
+  // Forget answers and tucked-away cards for questions no longer on screen.
+  for (const k of answered) if (k !== key) answered.delete(k);
+  for (const k of hidden) if (k !== key) hidden.delete(k);
+  if (!t || !a || answered.has(key)) { askEl.hidden = true; askEl.innerHTML = ""; askEl.dataset.sig = ""; return; }
+  // Rebuild only when the question changes: the tick re-renders every second
+  // and would otherwise wipe what the user is typing in the answer field.
+  const sig = key + (hidden.has(key) ? "|min" : "");
+  if (askEl.dataset.sig === sig && !askEl.hidden) return;
+  askEl.dataset.sig = sig;
+  askEl.hidden = false;
+  if (hidden.has(key)) {
+    askEl.className = "inbox-ask min";
+    askEl.innerHTML = `<button class="ia-chip" data-act="show"><i class="ia-dia" aria-hidden="true"></i>${esc(t.name)} is waiting on you · Show</button>`;
+    return;
+  }
+  askEl.className = "inbox-ask";
+  const lead = a.kind === "run" ? `${t.name} wants to run a command` : a.kind === "edit" ? `${t.name} wants to edit a file` : `${t.name} has a question`;
+  askEl.innerHTML = `
+    <div class="ia-top"><i class="ia-dia" aria-hidden="true"></i><span>${esc(lead)}</span>${a.title ? `<span class="ia-title">${esc(a.title)}</span>` : ""}
+      <button class="ia-min" data-act="hide" title="Type in the terminal instead">Hide · type in terminal</button></div>
+    ${a.kind === "question" ? `<p class="ia-q">${esc(a.prompt)}</p>` : a.detail ? `<code class="ia-code">${esc(a.detail)}</code>` : `<p class="ia-q">${esc(a.prompt)}</p>`}
+    <div class="ia-opts">${a.options.map((o, i) => `<button class="ia-opt${o.deny ? " deny" : ""}${i === 0 ? " first" : ""}" data-n="${o.n}">
+      <span class="ia-k">${o.n}</span><span>${esc(o.label)}</span></button>`).join("")}</div>
+    <form class="ia-free"><label class="ia-sr" for="iaFree">Answer ${esc(t.name)} in your own words</label>
+      <input id="iaFree" autocomplete="off" placeholder="${a.kind === "question" ? "Something else…" : `Or tell ${esc(t.name)} what to do instead…`}"><button type="submit">Send</button></form>
+    <p class="ia-hint">Alt+1…${a.options.length} picks an option · Alt+↑/↓ moves through the queue</p>`;
+  askEl.dataset.key = key;
+}
+
+function render(): void {
+  if (!document.body.classList.contains("inbox-ui")) return;
+  ensureStage();
+  const list = allTasks();
+  const pane = stagePane();
+  renderQueue(list, pane?.id, Date.now());
+  renderHead(list);
+  renderAsk(list, pane);
+}
+
+async function pick(option: AskOption): Promise<void> {
+  const pane = stagePane();
+  const key = askEl?.dataset.key;
+  if (!pane) return;
+  if (key) answered.add(key);
+  render();
+  await answerOption(pane.id, option);
+  pane.term.focus();
+}
+
+function currentAsk() {
+  const pane = stagePane();
+  const t = pane ? allTasks().find((x) => x.paneId === pane.id) : undefined;
+  return t?.status.state === "needs" ? t.status.ask : null;
+}
+
+function move(delta: number): void {
+  const list = allTasks();
+  if (!list.length) return;
+  const cur = stagePane()?.id;
+  const i = list.findIndex((t) => t.paneId === cur);
+  const next = list[Math.max(0, Math.min(list.length - 1, (i < 0 ? 0 : i) + delta))];
+  if (next) openTask(next);
+}
+
+function onKey(e: KeyboardEvent): void {
+  if (!document.body.classList.contains("inbox-ui") || !e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); move(e.key === "ArrowDown" ? 1 : -1); return; }
+  if (/^[1-9]$/.test(e.key)) {
+    const o = currentAsk()?.options.find((x) => x.n === Number(e.key));
+    if (o) { e.preventDefault(); void pick(o); }
+  }
+}
+
+function mount(): void {
+  const app = document.getElementById("app");
+  if (!app || queueEl) return;
+  document.body.classList.add("inbox-ui");
+  queueEl = document.createElement("aside");
+  queueEl.className = "inbox-queue";
+  queueEl.setAttribute("aria-label", "Agents");
+  app.appendChild(queueEl);
+  askEl = document.createElement("section");
+  askEl.className = "inbox-ask";
+  askEl.hidden = true;
+  askEl.setAttribute("aria-live", "polite");
+  app.appendChild(askEl);
+  headEl = document.createElement("p");
+  headEl.className = "inbox-head";
+  headEl.setAttribute("aria-live", "polite");
+  document.querySelector(".topbar .tb-center")?.prepend(headEl);
+
+  queueEl.addEventListener("click", (e) => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>(".iq-row");
+    const t = row && allTasks().find((x) => x.paneId === row.dataset.id);
+    if (t) openTask(t);
+  });
+  askEl.addEventListener("click", (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>("button");
+    if (!b || !askEl) return;
+    const key = askEl.dataset.key ?? "";
+    if (b.dataset.act === "hide") { hidden.add(key); render(); stagePane()?.term.focus(); return; }
+    if (b.dataset.act === "show") { hidden.clear(); render(); return; }
+    const o = currentAsk()?.options.find((x) => x.n === Number(b.dataset.n));
+    if (o) void pick(o);
+  });
+  askEl.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = askEl?.querySelector<HTMLInputElement>("#iaFree");
+    const pane = stagePane();
+    if (!input?.value.trim() || !pane) return;
+    const key = askEl?.dataset.key;
+    if (key) answered.add(key);
+    void answerText(pane.id, input.value).then(() => pane.term.focus());
+    render();
+  });
+  document.addEventListener("keydown", onKey, true);
+  offTasks = onTasksChange(render);
+  timer = window.setInterval(render, 1000);
+  render();
+}
+
+function unmount(): void {
+  document.body.classList.remove("inbox-ui");
+  queueEl?.remove(); askEl?.remove(); headEl?.remove();
+  queueEl = askEl = headEl = null;
+  if (timer !== null) { clearInterval(timer); timer = null; }
+  offTasks?.(); offTasks = null;
+  document.removeEventListener("keydown", onKey, true);
+  answered.clear(); hidden.clear();
+}
+
+/** Turn the new interface on or off, and remember the choice. */
+export function setInbox(on: boolean): void {
+  setInboxUi(on);
+  if (on) mount(); else unmount();
+}
+
+/** Wire the Settings toggle and restore the saved choice. Call once at startup. */
+export function initInbox(): void {
+  const toggle = document.getElementById("setInboxUi") as HTMLInputElement | null;
+  if (toggle) {
+    toggle.checked = getInboxUi();
+    toggle.addEventListener("change", () => setInbox(toggle.checked));
+  }
+  if (getInboxUi()) mount();
+}

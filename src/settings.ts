@@ -14,6 +14,20 @@ export function setHideToTray(on: boolean): void {
   else localStorage.removeItem(HIDE_TO_TRAY_KEY);
 }
 
+/* ---------------- new interface (Agent Inbox) ---------------- */
+
+const INBOX_UI_KEY = "maestro.inboxUi";
+
+/** Whether the Agent Inbox interface is on (preview, off by default). The old
+ *  canvas UI stays intact underneath; this only changes how it is shown. */
+export function getInboxUi(): boolean {
+  return localStorage.getItem(INBOX_UI_KEY) === "1";
+}
+export function setInboxUi(on: boolean): void {
+  if (on) localStorage.setItem(INBOX_UI_KEY, "1");
+  else localStorage.removeItem(INBOX_UI_KEY);
+}
+
 /* ---------------- home mascot ---------------- */
 
 export type MascotMode = "move" | "still";

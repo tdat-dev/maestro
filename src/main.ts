@@ -18,6 +18,7 @@ import { configureScheduler, initScheduler } from "./scheduler";
 import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setStatus, clearAttention, updateAttention, retheme, applyZoom } from "./pane";
 import { configureWorkspace, initWorkspace, createWorkspace, activateWorkspace, bootDetached } from "./workspace";
 import { updateTasks } from "./tasks";
+import { initInbox } from "./inbox";
 import { confirmModal } from "./confirmmodal";
 import { wirePaneSearch } from "./panesearch";
 import { initMascotView } from "./mascotview";
@@ -244,6 +245,7 @@ configureBridges({ activateWorkspace, clearAttention, setStatus, updateCount, st
 initSpawnModal();
 initWizard();
 initSettingsModal();
+initInbox(); // new interface preview; no-op unless turned on in Settings
 initScheduler();
 initWorkspace();
 initBackground();

@@ -36,7 +36,6 @@ vi.mock("./panelayout", () => ({
 vi.mock("./agentbridge", () => ({ revealPane: () => true }));
 vi.mock("./zoom", () => ({ paneFont: (_ws: unknown, bump = 0) => 13 + bump }));
 vi.mock("./ipc", () => ({ resizePty: async () => {} }));
-vi.mock("./switcher", () => ({ openSwitcher: () => {} }));
 vi.mock("./spawnmodal", () => ({ openModal: () => {} }));
 vi.mock("./settingsmodal", () => ({ openSettings: () => {} }));
 vi.mock("./dock", () => ({ dockToggle: () => {} }));

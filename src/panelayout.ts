@@ -4,12 +4,9 @@
 // needs (refresh the broadcast targets, persist the session) are injected via
 // configurePaneLayout to avoid a circular import.
 
-import { tileToFit, nextSlot, serializeLayout } from "./canvas";
-import { refreshSigil } from "./sigilcanvas";
+import { nextSlot, serializeLayout } from "./canvas";
 import { resizePty } from "./ipc";
 import { paneFont } from "./zoom";
-import { paneStatus, type FleetStatus } from "./fleet";
-import { openSwitcher } from "./switcher";
 import { basename } from "./workspaces";
 import { type Pane, type Workspace } from "./panetypes";
 
@@ -33,10 +30,7 @@ export function saveLayout(ws: Workspace): void {
 export function layoutGrid(ws: Workspace): void {
   if (ws.gridEl.classList.contains("has-focus") && !ws.gridEl.querySelector(".pane.focused")) {
     ws.gridEl.classList.remove("has-focus");
-    ws.gridEl.querySelector(".cloud-rail")?.remove();
   }
-  const tile = ws.gridEl.querySelector<HTMLElement>(".tile-spawn");
-  if (tile) tile.style.display = ws.panes.size > 0 ? "none" : "";
   applyLayout(ws);
 }
 
@@ -58,33 +52,6 @@ export function applyLayout(ws: Workspace): void {
   }
   for (const id of [...ws.layout.keys()]) if (!ws.panes.has(id)) ws.layout.delete(id);
   saveLayout(ws);
-  // The sigil is a diagram of exactly this map — every spawn, kill, tidy and
-  // drag-release lands here, so this is the one place it needs re-reading.
-  refreshSigil();
-}
-
-/** Tidy order: the director takes the first tile (top-left); everyone else keeps
- *  the order they were spawned in. Position is prominence for free — a layout is
- *  read from its top-left corner, so that is where the agent handing out the work
- *  belongs. Stable, so re-tidying never shuffles the workers among themselves. */
-export function tidyOrder(panes: { id: string; role?: string }[]): string[] {
-  const director = panes.filter((p) => p.role === "conductor");
-  return [...director, ...panes.filter((p) => p.role !== "conductor")].map((p) => p.id);
-}
-
-/** Tidy: tile every pane to fill the screen (2→big side by side, 4→2×2, …). */
-export function tidyLayout(ws: Workspace): void {
-  const area = { width: ws.gridEl.clientWidth, height: ws.gridEl.clientHeight };
-  const ids = tidyOrder([...ws.panes.values()].map((p) => ({ id: p.id, role: p.spec.role })));
-  const tiles = tileToFit(ids.length, area);
-  ids.forEach((id, i) => ws.layout.set(id, tiles[i]));
-  applyLayout(ws);
-  requestAnimationFrame(() => {
-    for (const p of ws.panes.values()) {
-      const s = p.term.fit();
-      if (p.running) void resizePty(p.id, s.cols, s.rows).catch(() => {});
-    }
-  });
 }
 
 /* ---------------- pane focus (stage + avatar rail) ---------------- */
@@ -109,8 +76,6 @@ export function focusPane(ws: Workspace, pane: Pane, ev?: MouseEvent): void {
     pane.el.style.removeProperty("--oy");
   }
   ws.gridEl.classList.add("has-focus");
-  refreshSigil(); // the stage covers the canvas — stop drawing under it
-  renderRail(ws, pane);
   requestAnimationFrame(() => {
     pane.term.setFontSize(paneFont(ws, 2)); // bigger on the stage, still zoomed
     const s = pane.term.fit();
@@ -121,13 +86,11 @@ export function focusPane(ws: Workspace, pane: Pane, ev?: MouseEvent): void {
 export function exitFocus(ws: Workspace): void {
   if (!ws.gridEl.classList.contains("has-focus")) return;
   ws.gridEl.classList.remove("has-focus");
-  refreshSigil();
   const focused = [...ws.panes.values()].find((p) => p.el.classList.contains("focused"));
   for (const p of ws.panes.values()) {
     p.el.classList.remove("focused");
     p.el.querySelector("[data-max]")?.setAttribute("aria-label", "Focus pane");
   }
-  ws.gridEl.querySelector(".cloud-rail")?.remove();
   requestAnimationFrame(() => {
     focused?.term.setFontSize(paneFont(ws)); // back to the tiled (zoomed) size
     for (const p of ws.panes.values()) {
@@ -140,96 +103,10 @@ export function toggleMax(ws: Workspace, pane: Pane, ev?: MouseEvent): void {
   if (pane.el.classList.contains("focused")) exitFocus(ws);
   else focusPane(ws, pane, ev);
 }
-// The other panes as a tiny avatar column down the right edge of the stage.
-// Sorted by status so an agent waiting on you floats to the top where it can't
-// be missed, and topped by a count + a ⌘K entry into the full fleet switcher —
-// the discoverable way in for a fleet too big for a thin rail.
-const RAIL_RANK: Record<FleetStatus, number> = { needs: 0, active: 1, idle: 2, stopped: 3 };
-function renderRail(ws: Workspace, focused: Pane): void {
-  let rail = ws.gridEl.querySelector<HTMLElement>(".cloud-rail");
-  if (!rail) {
-    rail = document.createElement("aside");
-    rail.className = "cloud-rail";
-    ws.gridEl.appendChild(rail);
-  }
-  const now = Date.now();
-  const others = [...ws.panes.values()]
-    .filter((p) => p !== focused)
-    .sort((a, b) => RAIL_RANK[paneStatus(a, now)] - RAIL_RANK[paneStatus(b, now)] || a.spec.name.localeCompare(b.spec.name));
-  const needs = others.filter((p) => paneStatus(p, now) === "needs").length;
-  const head = others.length
-    ? `<div class="rail-head"><span class="rail-lbl">Others · ${others.length}</span>` +
-      (needs ? `<span class="rail-needs" title="${needs} waiting on you">${needs}</span>` : "") +
-      `</div>`
-    : "";
-  rail.innerHTML =
-    head +
-    others
-      .map((p) => {
-        // Status word drives both the ring colour and a screen-reader label, so
-        // the state never rides on colour alone.
-        const st = paneStatus(p, now); // needs | active | idle | stopped
-        const s = st === "needs" ? "attention" : st === "active" ? "running" : st;
-        const nm = p.spec.name;
-        const letter = (nm.trim()[0] ?? "?").toUpperCase();
-        // Same mark the tiled pane wears (canvas.css): focusing someone else
-        // must not be the moment the director becomes hard to find.
-        const role = p.spec.role === "conductor" ? ` data-role="director"` : "";
-        return `<button class="rc"${role} data-id="${p.id}" title="${nm} — ${st}" aria-label="${nm}, ${st}">
-        <span class="av" style="background:${p.color};--hue:${p.color}">${letter}<span class="s ${s}"></span></span>
-        <span class="n">${nm}</span></button>`;
-      })
-      .join("") +
-    `<button class="rail-all" title="Open the fleet switcher (Ctrl+K)" aria-label="Open fleet switcher">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-      <span class="rail-all-k">⌘K</span></button>`;
-  rail.querySelectorAll<HTMLElement>(".rc").forEach((rc) =>
-    rc.addEventListener("click", () => {
-      const p = rc.dataset.id ? ws.panes.get(rc.dataset.id) : undefined;
-      if (p) focusPane(ws, p);
-    }),
-  );
-  rail.querySelector<HTMLElement>(".rail-all")?.addEventListener("click", () => openSwitcher());
-}
-
-// Free-position a pane by dragging its title bar (Pointer Events — WebView2
-// breaks HTML5 DnD). Updates the workspace canvas layout live, persists on
-// release. A near-zero drag is a click (leaves focus handling alone).
-export function wirePaneDrag(ws: Workspace, pane: Pane): void {
-  const handle = pane.el.querySelector<HTMLElement>(".pane-bar");
-  if (!handle) return;
-  let sx = 0, sy = 0, ox = 0, oy = 0, moved = false, pid = -1;
-  handle.addEventListener("pointerdown", (e) => {
-    const dt = e.target as HTMLElement;
-    if (dt.closest(".pctrl") || dt.closest(".pb-name") || dt.closest("[data-edit]") || dt.isContentEditable) return;
-    if (ws.gridEl.classList.contains("has-focus")) return; // no free-drag while focused
-    const t = ws.layout.get(pane.id) ?? { x: 0, y: 0, w: pane.el.offsetWidth, h: pane.el.offsetHeight };
-    moved = false; pid = e.pointerId; handle.setPointerCapture(pid);
-    sx = e.clientX; sy = e.clientY; ox = t.x; oy = t.y;
-  });
-  handle.addEventListener("pointermove", (e) => {
-    if (pid < 0) return;
-    const dx = e.clientX - sx, dy = e.clientY - sy;
-    if (!moved && Math.abs(dx) + Math.abs(dy) > 4) { moved = true; pane.el.classList.add("dragging"); }
-    if (moved) {
-      const t = ws.layout.get(pane.id);
-      if (!t) return;
-      t.x = Math.max(0, ox + dx); t.y = Math.max(0, oy + dy);
-      pane.el.style.left = `${t.x}px`; pane.el.style.top = `${t.y}px`;
-    }
-  });
-  handle.addEventListener("pointerup", () => {
-    if (pid < 0) return;
-    try { handle.releasePointerCapture(pid); } catch { /* already released */ }
-    pid = -1;
-    if (moved) { pane.el.classList.remove("dragging"); saveLayout(ws); }
-  });
-}
-
 // Click the pane's name to rename it (persona → role). Commits on Enter/blur,
 // reverts on Escape. The name is the single identity across the pane, the focus
 // rail, and MAESTRO_AGENT (applied to future spawns of this pane).
-export function wirePaneRename(ws: Workspace, pane: Pane): void {
+export function wirePaneRename(_ws: Workspace, pane: Pane): void {
   const nameEl = pane.el.querySelector<HTMLElement>(".pb-name");
   if (!nameEl) return;
   const startEdit = (e: Event) => {
@@ -248,7 +125,6 @@ export function wirePaneRename(ws: Workspace, pane: Pane): void {
     const v = nameEl.textContent?.trim();
     pane.spec.name = v && v.length ? v : pane.spec.name;
     nameEl.textContent = pane.spec.name;
-    if (pane.el.classList.contains("focused")) renderRail(ws, pane);
     onBcastChange();
     onSessionChange();
   };

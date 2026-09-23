@@ -20,7 +20,7 @@ import {
 import { branchName } from "./worktree";
 import { launchSpec } from "./crew";
 import { type Pane, type Workspace, type AgentSpec } from "./panetypes";
-import { layoutGrid, wirePaneDrag, wirePaneRename, toggleMax } from "./panelayout";
+import { layoutGrid, wirePaneRename, toggleMax } from "./panelayout";
 import { saveSession } from "./session";
 import { openReplays, REC_DIR_REL } from "./replay";
 import { workspaces, newId } from "./appstate";
@@ -262,7 +262,6 @@ export function createAgent(
     toggleMax(ws, pane);
   });
   onWirePaneSearch(pane);
-  wirePaneDrag(ws, pane);
   wirePaneRename(ws, pane);
   // Clicking / focusing into a flagged pane means the user is now looking at it.
   el.addEventListener("pointerdown", () => clearAttention(pane));

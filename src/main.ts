@@ -3,7 +3,7 @@
 import { resizePty, killAll, setTrayTooltip } from "./ipc";
 import { CLI_PRESETS } from "./crew";
 import { type Pane } from "./panetypes";
-import { configurePaneLayout, tidyLayout } from "./panelayout";
+import { configurePaneLayout } from "./panelayout";
 import { configureBroadcast, initBroadcast, updateBcast, focusBroadcast } from "./broadcast";
 import { configureRecents, getRecents, renderRecents } from "./recents";
 import { configureUsage, initUsage } from "./usage";
@@ -25,12 +25,9 @@ import { wirePaneSearch } from "./panesearch";
 import { initMascotView } from "./mascotview";
 import { initVoice } from "./voice";
 import { configureBackground, initBackground, applyBackground } from "./background";
-import { initSigil } from "./sigilcanvas";
-import { initTopbarChrome } from "./topbarchrome";
 import { configureZoomUi, initZoomUi } from "./zoomui";
 import { initHint, topNote } from "./hint";
 import { configureBridges, initBridges } from "./bridges";
-import { initSwitcher } from "./switcher";
 import { initConsole, clearConsole } from "./console";
 import { initComposerActions } from "./composeractions";
 import { clearFlow } from "./flow";
@@ -193,10 +190,6 @@ function updateCount() {
     if (c) c.textContent = w.panes.size ? String(w.panes.size) : "";
     w.tabEl.classList.toggle("live", run > 0);
   }
-  const run = document.getElementById("runCount");
-  if (run) run.textContent = String(totalRun);
-  const tot = document.getElementById("agentCount");
-  if (tot) tot.textContent = String(total);
   updateBcast();
   syncResumeAll(); // parked/exited count may have changed
   // Keep the tray tooltip in sync so a hidden window still shows it's alive.
@@ -216,12 +209,6 @@ function updateCount() {
 
 document.getElementById("btnNewWorkspace")?.addEventListener("click", () => openWizard());
 document.getElementById("btnNewAgent")?.addEventListener("click", () => openModal("current"));
-document.getElementById("btnTidy")?.addEventListener("click", () => {
-  if (!activeWs) return;
-  tidyLayout(activeWs);
-  const n = activeWs.panes.size;
-  topNote(`Tidied ${n} pane${n === 1 ? "" : "s"} into a grid`);
-});
 configurePaneLayout({ updateBcast, saveSession });
 configureBroadcast({ getActiveWs: () => activeWs });
 initBroadcast();
@@ -250,14 +237,11 @@ initInbox(); // the Agent Inbox interface
 initScheduler();
 initWorkspace();
 initBackground();
-initSigil();
 initSpawnMenu();
-initTopbarChrome();
 initZoomUi();
 initHint();
 initMascotView();
 initBridges();
-initSwitcher();
 initConsole();
 initComposerActions({
   onSpawn: () => openModal("current"),

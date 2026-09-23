@@ -20,8 +20,6 @@ import { workspaces, activeWs, setActiveWs, nextWsId } from "./appstate";
 import { nextWorkspaceName, pickNextActive } from "./workspaces";
 import { dockSetContext } from "./dock";
 import { syncZoomUi } from "./zoomui";
-import { refreshSigil, markSigil } from "./sigilcanvas";
-import { openModal } from "./spawnmodal";
 import { confirmModal } from "./confirmmodal";
 import {
   buildDetachPayload,
@@ -90,9 +88,6 @@ const tabstrip = railList;
 const KILL_SVG =
   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
-const SPAWN_TILE_SVG =
-  '<span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span><span class="t">Spawn agent</span><span class="sub">real ConPTY · type · tree-kill</span>';
-
 export function createWorkspace(dir: string | null, name?: string): Workspace {
   const id = nextWsId();
   // A restored tab passes its original name; otherwise auto-name it.
@@ -100,11 +95,6 @@ export function createWorkspace(dir: string | null, name?: string): Workspace {
 
   const gridEl = document.createElement("div");
   gridEl.className = "grid canvas";
-  const tile = document.createElement("button");
-  tile.className = "tile-spawn";
-  tile.innerHTML = SPAWN_TILE_SVG;
-  tile.addEventListener("click", () => openModal("current"));
-  gridEl.appendChild(tile);
   wsHost.appendChild(gridEl);
 
   const tabEl = document.createElement("button");
@@ -158,8 +148,6 @@ export function activateWorkspace(ws: Workspace) {
   syncZoomUi();
   // The sigil is per-workspace as well: stop drawing the tab we just left and
   // start on this one (or stay stopped, if this one has it off / has no agents).
-  markSigil();
-  refreshSigil();
 }
 
 

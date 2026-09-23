@@ -10,11 +10,14 @@
 import { workspaces, activeWs } from "./appstate";
 import { focusPane } from "./panelayout";
 import { revealPane } from "./agentbridge";
+import { tileToFit, type Area, type Tile } from "./canvas";
+import { resizePty } from "./ipc";
+import { paneFont } from "./zoom";
 import { getInboxUi, setInboxUi } from "./settings";
 import { allTasks, answerOption, answerText, onTasksChange, type Task } from "./tasks";
 import type { AskOption } from "./askparse";
 import type { TaskState } from "./taskstate";
-import type { Pane } from "./panetypes";
+import type { Pane, Workspace } from "./panetypes";
 
 /* ---------------- pure helpers (tested) ---------------- */
 
@@ -63,6 +66,25 @@ export function ago(ms: number): string {
   return m < 60 ? `${m}m` : `${Math.round(m / 60)}h`;
 }
 
+export const MAX_SPLIT = 4;
+
+/** Pin or unpin an agent for Split. A fifth pin pushes out the oldest one,
+ *  never `keep` (the agent on the stage). */
+export function togglePin(pins: string[], id: string, keep?: string): string[] {
+  if (pins.includes(id)) return pins.filter((x) => x !== id);
+  const next = [...pins, id];
+  while (next.length > MAX_SPLIT) {
+    const i = next.findIndex((x) => x !== keep && x !== id);
+    next.splice(i < 0 ? 0 : i, 1);
+  }
+  return next;
+}
+
+/** Where each pinned terminal sits in Split: an even grid with a gap. */
+export function splitTiles(n: number, area: Area): Tile[] {
+  return tileToFit(n, area, { gap: 12, margin: 0, top: 0, bottom: 0 });
+}
+
 /* ---------------- DOM ---------------- */
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -76,6 +98,13 @@ let offTasks: (() => void) | null = null;
 const hidden = new Set<string>();
 /** Prompts already answered from a button, until the screen moves on. */
 const answered = new Set<string>();
+/** Split: pinned agents shown side by side as real terminals. Only the pins in
+ *  the shown project can be on screen, since each project has its own canvas. */
+let splitOn = false;
+let pins: string[] = [];
+let splitSig = "";
+let splitWs: Workspace | null = null;
+let splitBtn: HTMLButtonElement | null = null;
 
 function paneOf(t: Task): Pane | undefined {
   return workspaces.get(t.wsId)?.panes.get(t.paneId);
@@ -92,8 +121,93 @@ export function openTask(t: Task): void {
   const ws = workspaces.get(t.wsId);
   const pane = ws?.panes.get(t.paneId);
   if (!ws || !pane) return;
+  // In Split, picking an agent of the shown project pins it next to the others
+  // instead of replacing the whole view.
+  if (splitOn && ws === activeWs && stagePane()) {
+    if (!pins.includes(pane.id)) pins = togglePin(pins, pane.id, stagePane()?.id);
+    setCurrent(ws, pane);
+    return;
+  }
   revealPane(t.wsId, t.paneId);
   focusPane(ws, pane);
+  render();
+}
+
+/** Make a pane the one the decision card and Alt+number talk to, without
+ *  moving or refitting anything (Split keeps every terminal where it is). */
+function setCurrent(ws: Workspace, pane: Pane): void {
+  for (const p of ws.panes.values()) p.el.classList.toggle("focused", p === pane);
+  render();
+  pane.term.focus();
+}
+
+/* ---------------- Split ---------------- */
+
+function refit(pane: Pane, font: number): void {
+  pane.term.setFontSize(font);
+  const s = pane.term.fit();
+  if (pane.running) void resizePty(pane.id, s.cols, s.rows).catch(() => {});
+}
+
+function clearSplit(ws: Workspace): void {
+  ws.gridEl.classList.remove("inbox-split");
+  for (const p of ws.panes.values()) {
+    if (!p.el.classList.contains("split-pin")) continue;
+    p.el.classList.remove("split-pin");
+    for (const v of ["--sx", "--sy", "--sw", "--sh"]) p.el.style.removeProperty(v);
+  }
+  const stage = [...ws.panes.values()].find((p) => p.el.classList.contains("focused"));
+  requestAnimationFrame(() => { if (stage) refit(stage, paneFont(ws, 2)); });
+}
+
+/** Lay the pinned terminals of the shown project out side by side. Runs on
+ *  every render but only touches the DOM (and resizes PTYs) when the set of
+ *  panes or the space they share changed. */
+function layoutSplit(): void {
+  const ws = activeWs;
+  if (!ws) return;
+  const stage = stagePane();
+  if (splitOn && stage && !pins.includes(stage.id)) pins = togglePin(pins, stage.id, stage.id);
+  const shown = pins.map((id) => ws.panes.get(id)).filter((p): p is Pane => !!p);
+  const area = { width: ws.gridEl.clientWidth, height: ws.gridEl.clientHeight };
+  const on = splitOn && shown.length > 1;
+  const sig = on ? `${ws.id}|${shown.map((p) => p.id).join(",")}|${area.width}x${area.height}` : "";
+  if (sig === splitSig) return;
+  splitSig = sig;
+  // Leaving Split, or moving to another project, puts the old canvas back.
+  if (splitWs && (!on || splitWs !== ws)) clearSplit(splitWs);
+  splitWs = on ? ws : null;
+  if (!on) return;
+  ws.gridEl.classList.add("inbox-split");
+  const tiles = splitTiles(shown.length, area);
+  for (const p of ws.panes.values()) {
+    const i = shown.indexOf(p);
+    p.el.classList.toggle("split-pin", i >= 0);
+    if (i < 0) continue;
+    const t = tiles[i];
+    p.el.style.setProperty("--sx", `${t.x}px`);
+    p.el.style.setProperty("--sy", `${t.y}px`);
+    p.el.style.setProperty("--sw", `${t.w}px`);
+    p.el.style.setProperty("--sh", `${t.h}px`);
+  }
+  requestAnimationFrame(() => shown.forEach((p) => refit(p, paneFont(ws))));
+}
+
+export function setSplit(on: boolean): void {
+  splitOn = on;
+  splitBtn?.setAttribute("aria-pressed", String(on));
+  render();
+}
+
+function pinCurrent(): void {
+  const cur = stagePane();
+  if (!cur) return;
+  pins = togglePin(pins, cur.id, cur.id);
+  if (!pins.includes(cur.id) && splitOn) {
+    // Unpinning the agent on the stage hands the stage to another pin.
+    const next = pins.map((id) => activeWs?.panes.get(id)).find(Boolean);
+    if (next && activeWs) { setCurrent(activeWs, next); return; }
+  }
   render();
 }
 
@@ -118,7 +232,7 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
         return `<button class="iq-row st-${t.status.state}" role="listitem" data-id="${esc(t.paneId)}" aria-current="${t.paneId === current}">
           <span class="iq-mk" style="background:${esc(p?.color ?? "#888")}" aria-hidden="true">${esc((t.name.trim()[0] ?? "?").toUpperCase())}</span>
           <span class="iq-t">${esc(t.name)}</span>
-          <span class="iq-tm">${ago(now - t.since)}</span>
+          <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In Split">◫</span> ` : ""}${ago(now - t.since)}</span>
           <span class="iq-s"><span class="iq-p">${esc(t.project)}</span> · <span class="iq-l">${esc(rowLine(t))}</span></span>
         </button>`;
       }).join("") : `<p class="iq-empty">All clear. Nothing is waiting on you.</p>`}
@@ -171,6 +285,7 @@ function renderAsk(list: Task[], pane: Pane | undefined): void {
 function render(): void {
   if (!document.body.classList.contains("inbox-ui")) return;
   ensureStage();
+  layoutSplit();
   const list = allTasks();
   const pane = stagePane();
   renderQueue(list, pane?.id, Date.now());
@@ -206,10 +321,22 @@ function move(delta: number): void {
 function onKey(e: KeyboardEvent): void {
   if (!document.body.classList.contains("inbox-ui") || !e.altKey || e.ctrlKey || e.metaKey) return;
   if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); move(e.key === "ArrowDown" ? 1 : -1); return; }
+  const k = e.key.toLowerCase();
+  if (k === "s") { e.preventDefault(); setSplit(!splitOn); return; }
+  if (k === "p") { e.preventDefault(); pinCurrent(); return; }
   if (/^[1-9]$/.test(e.key)) {
     const o = currentAsk()?.options.find((x) => x.n === Number(e.key));
     if (o) { e.preventDefault(); void pick(o); }
   }
+}
+
+/** Clicking into another terminal in Split makes it the current one. */
+function onFocusIn(e: FocusEvent): void {
+  if (!splitOn || !activeWs) return;
+  const el = (e.target as HTMLElement | null)?.closest<HTMLElement>(".pane.split-pin");
+  if (!el || el.classList.contains("focused")) return;
+  const pane = [...activeWs.panes.values()].find((p) => p.el === el);
+  if (pane) setCurrent(activeWs, pane);
 }
 
 function mount(): void {
@@ -229,6 +356,13 @@ function mount(): void {
   headEl.className = "inbox-head";
   headEl.setAttribute("aria-live", "polite");
   document.querySelector(".topbar .tb-center")?.prepend(headEl);
+  splitBtn = document.createElement("button");
+  splitBtn.className = "inbox-split-btn";
+  splitBtn.textContent = "Split";
+  splitBtn.title = "Watch pinned agents side by side (Alt+S; Alt+P pins the current one)";
+  splitBtn.setAttribute("aria-pressed", String(splitOn));
+  splitBtn.addEventListener("click", () => setSplit(!splitOn));
+  headEl.after(splitBtn);
 
   queueEl.addEventListener("click", (e) => {
     const row = (e.target as HTMLElement).closest<HTMLElement>(".iq-row");
@@ -255,6 +389,8 @@ function mount(): void {
     render();
   });
   document.addEventListener("keydown", onKey, true);
+  document.addEventListener("focusin", onFocusIn);
+  window.addEventListener("resize", render);
   offTasks = onTasksChange(render);
   timer = window.setInterval(render, 1000);
   render();
@@ -262,11 +398,15 @@ function mount(): void {
 
 function unmount(): void {
   document.body.classList.remove("inbox-ui");
-  queueEl?.remove(); askEl?.remove(); headEl?.remove();
-  queueEl = askEl = headEl = null;
+  if (splitWs) clearSplit(splitWs);
+  splitOn = false; pins = []; splitSig = ""; splitWs = null;
+  queueEl?.remove(); askEl?.remove(); headEl?.remove(); splitBtn?.remove();
+  queueEl = askEl = headEl = null; splitBtn = null;
   if (timer !== null) { clearInterval(timer); timer = null; }
   offTasks?.(); offTasks = null;
   document.removeEventListener("keydown", onKey, true);
+  document.removeEventListener("focusin", onFocusIn);
+  window.removeEventListener("resize", render);
   answered.clear(); hidden.clear();
 }
 

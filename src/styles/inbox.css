@@ -109,6 +109,39 @@ body.inbox-ui .grid.canvas.has-focus .pane.focused {
   animation: none;
 }
 
+/* ---------- Split: pinned agents side by side, each a live terminal ---------- */
+body.inbox-ui .grid.canvas.has-focus.inbox-split .pane.split-pin {
+  display: flex;
+  left: var(--sx) !important;
+  top: var(--sy) !important;
+  width: var(--sw) !important;
+  height: var(--sh) !important;
+  border-radius: 14px;
+  background: var(--ib-panel);
+  box-shadow: inset 0 0 0 1px var(--ib-line);
+  animation: none;
+}
+/* the one the decision card and Alt+number talk to */
+body.inbox-ui .grid.canvas.has-focus.inbox-split .pane.split-pin.focused {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+body.inbox-ui .grid.canvas.has-focus.inbox-split .pane.split-pin.attention:not(.focused) {
+  box-shadow: inset 0 0 0 1px var(--ib-needs-line);
+}
+.inbox-split-btn {
+  flex: none;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font: 500 12.5px var(--sans);
+  color: var(--ib-ink-2);
+  background: rgba(255, 255, 255, 0.06);
+}
+.inbox-split-btn:hover { background: rgba(255, 255, 255, 0.12); color: var(--ib-ink); }
+.inbox-split-btn[aria-pressed="true"] { background: #fff; color: #000; }
+.inbox-split-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.iq-pin { color: var(--ib-ink-2); }
+
 /* ---------- decision card, floating over the bottom of the stage ---------- */
 .inbox-ask {
   grid-column: 2;

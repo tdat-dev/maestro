@@ -26,9 +26,11 @@ vi.mock("./panelayout", () => ({
   },
 }));
 vi.mock("./agentbridge", () => ({ revealPane: () => true }));
+vi.mock("./zoom", () => ({ paneFont: (_ws: unknown, bump = 0) => 13 + bump }));
+vi.mock("./ipc", () => ({ resizePty: async () => {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
-import { groupTasks, headline, rowLine, ago, initInbox, setInbox } from "./inbox";
+import { groupTasks, headline, rowLine, ago, togglePin, splitTiles, initInbox, setInbox } from "./inbox";
 import type { Workspace, Pane } from "./panetypes";
 
 const RUN_ASK: Ask = {
@@ -64,6 +66,17 @@ describe("inbox helpers", () => {
     expect(rowLine(task("h", "Hal", "idle"))).toBe("Waiting for a task");
     expect(ago(90_000)).toBe("2m");
   });
+
+  it("pins up to four agents for Split and never pushes out the one on the stage", () => {
+    expect(togglePin(["a", "b"], "b")).toEqual(["a"]);
+    expect(togglePin(["a", "b", "c", "d"], "e", "a")).toEqual(["a", "c", "d", "e"]);
+    expect(togglePin(["a", "b", "c", "d"], "e", "b")).toEqual(["b", "c", "d", "e"]);
+  });
+
+  it("lays two terminals side by side", () => {
+    const [l, r] = splitTiles(2, { width: 1012, height: 600 });
+    expect([l.x, l.w, r.x, r.w, l.h]).toEqual([0, 500, 512, 500, 600]);
+  });
 });
 
 describe("inbox DOM", () => {
@@ -74,8 +87,14 @@ describe("inbox DOM", () => {
       <input type="checkbox" id="setInboxUi">`;
     localStorage.clear();
     state.tasks = []; state.answered = []; state.texts = []; state.focused = []; state.listeners = [];
-    panes = ["a", "e"].map((id) => ({ id, el: document.createElement("div"), color: "#f2b27a", term: { focus: () => {} } } as unknown as Pane));
-    const ws = { id: "ws-1", name: "maestro", panes: new Map(panes.map((p) => [p.id, p])) } as unknown as Workspace;
+    panes = ["a", "e"].map((id) => ({
+      id, el: document.createElement("div"), color: "#f2b27a", running: false,
+      term: { focus: () => {}, setFontSize: () => {}, fit: () => ({ cols: 80, rows: 24 }) },
+    } as unknown as Pane));
+    const gridEl = document.createElement("div");
+    panes.forEach((p) => { p.el.className = "pane"; gridEl.appendChild(p.el); });
+    document.getElementById("app")!.appendChild(gridEl);
+    const ws = { id: "ws-1", name: "maestro", gridEl, panes: new Map(panes.map((p) => [p.id, p])) } as unknown as Workspace;
     workspaces.clear(); workspaces.set("ws-1", ws); setActiveWs(ws);
     setInbox(false);
   });
@@ -141,6 +160,26 @@ describe("inbox DOM", () => {
     state.listeners.forEach((cb) => cb());
     expect((document.querySelector(".inbox-ask") as HTMLElement).hidden).toBe(false);
     expect(document.querySelector(".ia-code")!.textContent).toBe("npm test");
+  });
+
+  it("puts pinned agents side by side in Split and lets you leave it", () => {
+    state.tasks = [task("a", "Ana", "needs"), task("e", "Eli", "working")];
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true }));
+    expect(document.querySelector(".inbox-split-btn")!.getAttribute("aria-pressed")).toBe("true");
+    // Only one pin yet: still a single stage.
+    expect(document.querySelectorAll(".split-pin")).toHaveLength(0);
+    (document.querySelector('.iq-row[data-id="e"]') as HTMLButtonElement).click();
+    expect([...document.querySelectorAll(".split-pin")].length).toBe(2);
+    expect(panes[1].el.classList.contains("focused")).toBe(true);
+    expect(panes[0].el.classList.contains("focused")).toBe(false);
+    expect(panes[1].el.style.getPropertyValue("--sw")).not.toBe("");
+    // Clicking into the other terminal makes it the current one again.
+    panes[0].el.appendChild(document.createElement("textarea")).dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    expect(panes[0].el.classList.contains("focused")).toBe(true);
+    (document.querySelector(".inbox-split-btn") as HTMLButtonElement).click();
+    expect(document.querySelectorAll(".split-pin")).toHaveLength(0);
+    expect(panes[0].el.style.getPropertyValue("--sw")).toBe("");
   });
 
   it("does not wipe what you are typing when the tick re-renders", () => {

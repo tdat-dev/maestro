@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maestro Visual Directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500;600&family=Figtree:wght@400;500;600;700;800&family=Archivo:wdth,wght@75..100,500;75..100,700&family=Hanken+Grotesk:wght@400;500;600&family=Be+Vietnam+Pro:wght@400;600;700&display=swap">
+<style>
+/* page chrome: neutral so the directions are judged on their own */
+:root{color-scheme:dark;--page:#18191c;--txt:#e8e8ea;--mute:#a4a7ad}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--txt);font:15px/1.5 "Be Vietnam Pro",system-ui,sans-serif;padding-block:32px 60px}
+.wrap{max-width:1300px;margin:0 auto;padding:0 20px}
+.intro h1{font-size:24px;margin:0 0 6px}
+.intro p{margin:0;color:var(--mute);max-width:80ch}
+.dir{margin-top:48px}
+.dir h2{margin:0 0 4px;font-size:18px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.dir h2 span{font-size:13px;font-weight:400;color:var(--mute)}
+.why{margin:0 0 6px;color:var(--mute);font-size:14px;max-width:88ch}
+.refs{margin:0 0 14px;font-size:13px;color:var(--mute);display:flex;gap:6px 14px;flex-wrap:wrap}
+.refs a{color:#9cc3ff}
+.frame{border-radius:12px;overflow:auto;box-shadow:0 30px 60px rgba(0,0,0,.45)}
+.frame>.app{min-width:1200px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+.nowrap{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ============ D · CINEMA — after Fey: black stage, floating soft panels, sentence headline, bottom dock ============ */
+.D{--bg:#050506;--p:#0e0f11;--p2:#15161a;--ln:rgba(255,255,255,.06);--ink:#f4f4f5;--ink2:#a1a1aa;--ink3:#76767f;
+   --amber:oklch(0.83 0.13 75);--blue:oklch(0.78 0.09 250);--green:oklch(0.8 0.13 155);--red:oklch(0.72 0.15 25);
+   position:relative;height:740px;background:radial-gradient(900px 420px at 60% -10%,rgba(255,196,120,.07),transparent 60%),var(--bg);color:var(--ink);font:14px/1.45 "Geist",system-ui,sans-serif;padding:22px 26px 86px;display:grid;grid-template-columns:330px 1fr 290px;grid-template-rows:auto 1fr;gap:16px}
+.D .hello{grid-column:1/-1;display:flex;align-items:flex-end;gap:16px}
+.D .hello .lg{font-weight:600;display:flex;gap:10px;align-items:center;font-size:15px}
+.D .hello .lg i{width:20px;height:20px;border-radius:6px;background:#fff;color:#000;font-style:normal;font-size:11px;font-weight:700;display:grid;place-items:center}
+.D .hello h1{margin:0 0 0 28px;font-weight:500;font-size:22px;letter-spacing:-.01em;color:var(--ink2)}
+.D .hello h1 b{color:var(--ink);font-weight:600}
+.D .hello .sp{flex:1}
+.D .hello .meta{font:12px "Geist Mono";color:var(--ink3)}
+.D .panel{background:var(--p);border-radius:18px;box-shadow:inset 0 0 0 1px var(--ln);overflow:hidden;min-height:0}
+.D .q{padding:10px}
+.D .gt{font-size:12px;color:var(--ink3);padding:12px 10px 6px;display:flex;justify-content:space-between}
+.D .row{display:grid;grid-template-columns:auto 1fr auto;gap:1px 10px;align-items:center;padding:10px;border-radius:12px}
+.D .row.on{background:var(--p2);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+.D .row .t{font-weight:500}
+.D .row .s{grid-column:2/4;font-size:12.5px;color:var(--ink3)}
+.D .row.need .s{color:var(--amber)}
+.D .row .v{font:12px "Geist Mono";color:var(--ink3)}
+.D .row .v .g{color:var(--green)} .D .row .v .r{color:var(--red)}
+.D .mk{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;font-size:11px;font-weight:600;color:#000}
+.D .bar{height:4px;border-radius:2px;background:rgba(255,255,255,.07);grid-column:2/4;overflow:hidden;margin-top:6px}
+.D .bar i{display:block;height:100%;background:linear-gradient(90deg,rgba(125,211,168,.25),rgba(125,211,168,.9))}
+.D .st{display:flex;flex-direction:column;padding:22px 24px;gap:14px;position:relative}
+.D .st::before{content:"";position:absolute;inset:0;background:radial-gradient(600px 240px at 30% 110%,rgba(255,196,120,.10),transparent 70%);pointer-events:none}
+.D .h{font-size:13px;color:var(--ink3);display:flex;gap:12px}
+.D .h b{color:var(--ink2);font-weight:500}
+.D .h1{font-size:26px;font-weight:500;letter-spacing:-.02em;margin:0}
+.D .term{flex:1;min-height:0;font:13px/1.7 "Geist Mono";color:var(--ink2);overflow:hidden}
+.D .term .u{color:var(--ink)} .D .term .u::before{content:"› ";color:var(--amber)}
+.D .term .k::before{content:"⏺ ";color:var(--green)} .D .term .say{color:var(--ink)} .D .term .say::before{content:"● "}
+.D .ask{background:var(--p2);border-radius:14px;padding:16px 18px;box-shadow:inset 0 0 0 1px rgba(255,210,140,.18),0 20px 50px rgba(255,190,110,.06)}
+.D .ask .lb{font-size:12px;color:var(--amber)}
+.D .ask .qq{font-size:18px;font-weight:500;letter-spacing:-.01em;margin:4px 0 10px}
+.D .opt{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.03);margin-top:5px;color:var(--ink)}
+.D .opt:first-of-type{background:rgba(255,255,255,.08)}
+.D .opt .k{font:12px "Geist Mono";color:var(--ink3);width:14px}
+.D .rv{padding:18px}
+.D .rv .lb{font-size:12px;color:var(--ink3)}
+.D .rv h3{font-size:16px;font-weight:500;margin:4px 0 14px}
+.D .spark{height:60px;margin:0 0 14px}
+.D .f{display:flex;gap:8px;font:12px "Geist Mono";color:var(--ink2);padding:7px 0;border-top:1px solid var(--ln)}
+.D .f .p{flex:1}.D .a{color:var(--green)} .D .d{color:var(--red)}
+.D .btn{margin-top:14px;width:100%;height:36px;border-radius:999px;background:#fff;color:#000;font-weight:600}
+.D .dock{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);display:flex;gap:10px;align-items:center}
+.D .dock .pill{display:flex;gap:4px;padding:5px;border-radius:999px;background:rgba(28,29,33,.9);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08),0 10px 30px rgba(0,0,0,.6)}
+.D .dock .pill span{width:34px;height:30px;border-radius:999px;display:grid;place-items:center;font-size:12px;color:var(--ink2)}
+.D .dock .pill span.on{background:rgba(255,255,255,.12);color:#fff}
+.D .dock .cmd{width:380px;height:40px;border-radius:12px;background:rgba(28,29,33,.9);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08),0 10px 30px rgba(0,0,0,.6);display:flex;align-items:center;padding:0 14px;color:var(--ink3);font-size:13px;gap:8px}
+.D .dock .cmd kbd{margin-left:auto;font:11px "Geist Mono";color:var(--ink3)}
+
+/* ============ E · LANES — after Slack Lists / Airtable: light, each status is a coloured lane with a tab ============ */
+.E{--bg:#f6f5f8;--card:#fff;--ink:#1d1b22;--ink2:#56525f;--ink3:#77727f;--ln:#e7e4ec;
+   --needs:#b25d00;--needsL:#fff1dc;--needsT:#ffd9a3;--rev:#5b3fb8;--revL:#f1ecff;--revT:#dcd0ff;--work:#0b7a55;--workL:#e3f6ee;--workT:#bfe9d6;
+   height:740px;background:var(--bg);color:var(--ink);font:14px/1.45 "Figtree",system-ui,sans-serif;display:grid;grid-template-rows:auto 1fr}
+.E .top{display:flex;align-items:center;gap:16px;padding:12px 20px;background:var(--card);border-bottom:1px solid var(--ln)}
+.E .lg{font-weight:800;font-size:17px;display:flex;gap:8px;align-items:center;letter-spacing:-.01em}
+.E .lg i{width:24px;height:24px;border-radius:8px;background:linear-gradient(135deg,#ff9f43,#a66bff);font-style:normal;color:#fff;font-size:12px;display:grid;place-items:center}
+.E .tabs{display:flex;gap:6px}
+.E .tabs span{padding:5px 12px;border-radius:999px;font-weight:600;font-size:13px;color:var(--ink2)}
+.E .tabs span.on{background:var(--ink);color:#fff}
+.E .sp{flex:1}
+.E .search{height:34px;width:260px;border-radius:10px;background:var(--bg);border:1px solid var(--ln);display:flex;align-items:center;padding:0 12px;color:var(--ink3);font-size:13px}
+.E .new{height:34px;padding:0 14px;border-radius:10px;background:var(--ink);color:#fff;font-weight:700;font-size:13px}
+.E .body{display:grid;grid-template-columns:350px 1fr 290px;min-height:0}
+.E .q{padding:14px;overflow:hidden;display:flex;flex-direction:column;gap:12px}
+.E .lane{border-radius:0 14px 14px 14px;padding:6px}
+.E .lane .tab{display:inline-flex;gap:8px;align-items:center;margin:-6px 0 6px -6px;padding:6px 12px;border-radius:12px 12px 0 0;font-weight:700;font-size:13px}
+.E .lane .tab b{font-weight:800;opacity:.7}
+.E .lane.n{background:var(--needsL)} .E .lane.n .tab{background:var(--needsL);color:var(--needs)}
+.E .lane.r{background:var(--revL)} .E .lane.r .tab{background:var(--revL);color:var(--rev)}
+.E .lane.w{background:var(--workL)} .E .lane.w .tab{background:var(--workL);color:var(--work)}
+.E .row{display:grid;grid-template-columns:1fr auto;gap:1px 10px;padding:9px 11px;border-radius:10px;background:var(--card);margin-bottom:5px;box-shadow:0 1px 0 rgba(30,20,50,.05)}
+.E .row.on{box-shadow:0 0 0 2px var(--ink)}
+.E .row .t{font-weight:600}
+.E .row .s{grid-column:1/3;font-size:12.5px;color:var(--ink2)}
+.E .row .v{font-size:12px;color:var(--ink3);font-weight:600}
+.E .st{display:flex;flex-direction:column;gap:14px;padding:22px 24px;background:var(--card);border-left:1px solid var(--ln);border-right:1px solid var(--ln);min-height:0}
+.E .hd{display:flex;gap:12px;align-items:center}
+.E .av{width:40px;height:40px;border-radius:12px;background:#c9f0dd;display:grid;place-items:center;font-weight:800;color:#0b5c40}
+.E .h1{font-size:22px;font-weight:800;letter-spacing:-.02em;margin:0}
+.E .meta{font-size:13px;color:var(--ink2);display:flex;gap:12px;align-items:center}
+.E .chip{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--needsT);color:#7a3d00}
+.E .term{flex:1;min-height:0;overflow:hidden;background:#1d1b22;color:#d9d6e0;border-radius:14px;padding:16px 18px;font:13px/1.65 "Geist Mono"}
+.E .term .u{color:#fff} .E .term .u::before{content:"› ";color:#ffb865}
+.E .term .k::before{content:"⏺ ";color:#6ee7b7} .E .term .say::before{content:"● "}
+.E .ask{border-radius:14px;background:var(--needsL);padding:14px 16px;border:2px solid var(--needsT)}
+.E .ask .lb{font-size:12.5px;font-weight:800;color:var(--needs)}
+.E .ask .qq{font-size:17px;font-weight:800;margin:4px 0 10px;letter-spacing:-.01em}
+.E .opts{display:flex;gap:8px;flex-wrap:wrap}
+.E .opt{padding:9px 12px;border-radius:10px;background:var(--card);font-weight:600;display:flex;gap:8px;align-items:center;box-shadow:0 1px 0 rgba(0,0,0,.06)}
+.E .opt:first-of-type{background:var(--ink);color:#fff}
+.E .opt .k{font:600 11px "Geist Mono";opacity:.6}
+.E .rv{padding:20px 16px}
+.E .rv .lb{font-size:12px;font-weight:800;color:var(--rev);text-transform:uppercase;letter-spacing:.06em}
+.E .rv h3{font-size:16px;font-weight:800;margin:4px 0 12px}
+.E .f{display:flex;gap:8px;font:12.5px "Geist Mono";padding:8px 10px;border-radius:9px;background:var(--card);margin-bottom:5px;border:1px solid var(--ln)}
+.E .f .p{flex:1}.E .a{color:#0b7a55} .E .d{color:#c0362c}
+.E .btn{margin-top:12px;width:100%;height:38px;border-radius:10px;background:var(--rev);color:#fff;font-weight:800}
+
+/* ============ F · BLUEPRINT — after Midday / Render: monochrome, visible grid, mono labels, one signal orange ============ */
+.F{--bg:#fafafa;--ink:#111;--ink2:#555;--ink3:#6f6f6f;--ln:#dcdcdc;--hatch:repeating-linear-gradient(135deg,#ececec 0 1px,transparent 1px 7px);--sig:#ff4d00;--ok:#0a7d3c;--bad:#c62828;
+   height:740px;background:var(--bg);color:var(--ink);font:14px/1.45 "Hanken Grotesk",system-ui,sans-serif;display:grid;grid-template-rows:auto 1fr;border:1px solid var(--ln)}
+.F .top{display:grid;grid-template-columns:330px 1fr auto auto;border-bottom:1px solid var(--ink)}
+.F .top>div{padding:12px 18px;border-right:1px solid var(--ln);display:flex;align-items:center;gap:14px}
+.F .lg{font:700 18px "Archivo";font-stretch:75%;text-transform:uppercase;letter-spacing:.02em}
+.F .lg i{font-style:normal;color:var(--sig)}
+.F .tally{font:12px "Geist Mono";text-transform:uppercase;letter-spacing:.04em;color:var(--ink2);display:flex;gap:18px}
+.F .tally b{color:var(--ink);font-weight:600}
+.F .tally .sig b{color:var(--sig)}
+.F .new{font:600 12px "Geist Mono";text-transform:uppercase;letter-spacing:.06em;background:var(--ink);color:#fff;padding:9px 14px}
+.F .body{display:grid;grid-template-columns:330px 1fr 290px;min-height:0}
+.F .q{border-right:1px solid var(--ink);overflow:hidden}
+.F .gt{font:600 11px "Geist Mono";text-transform:uppercase;letter-spacing:.08em;padding:8px 18px;border-bottom:1px solid var(--ln);background:var(--hatch);display:flex;justify-content:space-between}
+.F .gt.sig{color:var(--sig)}
+.F .row{display:grid;grid-template-columns:18px 1fr auto;gap:1px 8px;padding:10px 18px;border-bottom:1px solid var(--ln);align-items:center}
+.F .row.on{background:#fff;box-shadow:inset 3px 0 0 var(--ink)}
+.F .row .t{font-weight:600}
+.F .row .s{grid-column:2/4;font:11.5px "Geist Mono";color:var(--ink3)}
+.F .row.need .s{color:var(--sig)}
+.F .row .v{font:11.5px "Geist Mono";color:var(--ink3)}
+.F .mk{font:12px "Geist Mono";color:var(--ink3)} .F .row.need .mk{color:var(--sig)}
+.F .st{display:flex;flex-direction:column;min-height:0}
+.F .coord{display:flex;border-bottom:1px solid var(--ln);font:11px "Geist Mono";text-transform:uppercase;letter-spacing:.06em;color:var(--ink3)}
+.F .coord span{padding:8px 18px;border-right:1px solid var(--ln)}
+.F .coord span b{color:var(--ink);font-weight:600}
+.F .h1{font:700 34px/1.05 "Archivo";font-stretch:80%;text-transform:uppercase;margin:0;padding:18px 18px 16px;border-bottom:1px solid var(--ln);letter-spacing:.005em}
+.F .term{flex:1;min-height:0;overflow:hidden;padding:16px 18px;font:13px/1.7 "Geist Mono";color:var(--ink2);background-image:radial-gradient(#d5d5d5 1px,transparent 1px);background-size:14px 14px}
+.F .term .u{color:var(--ink);font-weight:600} .F .term .u::before{content:"> ";color:var(--sig)}
+.F .term .k::before{content:"+ ";color:var(--ink3)} .F .term .say{color:var(--ink)} .F .term .say::before{content:"* "}
+.F .ask{border-top:2px solid var(--sig);background:#fff}
+.F .ask .lb{font:600 11px "Geist Mono";text-transform:uppercase;letter-spacing:.08em;color:var(--sig);padding:10px 18px 0}
+.F .ask .qq{font-weight:700;font-size:17px;padding:4px 18px 10px;margin:0}
+.F .opts{border-top:1px solid var(--ln)}
+.F .opt{display:flex;gap:12px;align-items:center;width:100%;text-align:left;padding:10px 18px;border-bottom:1px solid var(--ln);font-weight:500}
+.F .opt:first-of-type{background:var(--ink);color:#fff}
+.F .opt .k{font:12px "Geist Mono";opacity:.7}
+.F .rv{border-left:1px solid var(--ink);display:flex;flex-direction:column}
+.F .rv .gt{border-bottom:1px solid var(--ln)}
+.F .rv h3{font:700 18px "Archivo";font-stretch:80%;text-transform:uppercase;margin:0;padding:14px 18px;border-bottom:1px solid var(--ln)}
+.F .f{display:flex;gap:8px;font:12px "Geist Mono";padding:9px 18px;border-bottom:1px solid var(--ln)}
+.F .f .p{flex:1}.F .a{color:var(--ok)} .F .d{color:var(--bad)}
+.F .rv .fill{flex:1;background:var(--hatch)}
+.F .btn{height:46px;background:var(--sig);color:#fff;font:600 12px "Geist Mono";text-transform:uppercase;letter-spacing:.08em}
+
+/* ============ current, for comparison ============ */
+.O{--bg:oklch(0.165 0.010 255);--panel:oklch(0.192 0.011 255);--raise:oklch(0.232 0.012 255);--line:oklch(0.252 0.011 255);--ink:oklch(0.945 0.005 255);--ink2:oklch(0.80 0.010 255);--ink3:oklch(0.68 0.012 255);--needs:oklch(0.83 0.145 78);
+   height:740px;background:var(--bg);color:var(--ink);font:14px/1.45 "Hanken Grotesk",sans-serif;display:grid;grid-template-rows:auto 1fr}
+.O .top{display:flex;gap:14px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink2)}
+.O .top b{color:var(--ink)}
+.O .body{display:grid;grid-template-columns:320px 1fr 290px;min-height:0}
+.O .q{padding:10px 8px;border-right:1px solid var(--line);overflow:hidden}
+.O .gt{font:600 11.5px "Hanken Grotesk";letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);padding:8px}
+.O .row{display:grid;grid-template-columns:1fr auto;gap:1px 8px;padding:9px;border-radius:8px}.O .row.on{background:var(--raise)}
+.O .row .t{font-weight:500}.O .row .s{grid-column:1/3;font-size:12.5px;color:var(--ink3)}.O .row.need .s{color:var(--needs)}.O .row .v{font:12px "Geist Mono";color:var(--ink3)}
+.O .st{background:var(--panel);padding:16px 20px;display:flex;flex-direction:column;gap:12px;min-height:0}
+.O .h1{font-size:17px;font-weight:600;margin:0}
+.O .term{flex:1;min-height:0;overflow:hidden;font:13px/1.62 "Geist Mono";color:var(--ink2)}.O .term .u{color:var(--ink)}.O .term .u::before{content:"› "}.O .term .k::before{content:"⏺ "}.O .term .say::before{content:"● "}
+.O .ask{border:1px solid oklch(0.55 0.10 78 / .5);border-radius:12px;padding:12px 14px}.O .ask .lb{color:var(--needs);font-weight:600;font-size:13px}.O .ask .qq{font-size:14.5px;margin:6px 0 8px}
+.O .opt{display:flex;gap:10px;width:100%;text-align:left;padding:8px 10px;border-radius:8px;border:1px solid var(--line);margin-top:4px}
+.O .rv{border-left:1px solid var(--line);padding:14px 16px}.O .rv h3{margin:0 0 10px;font-size:14px}
+.O .f{display:flex;gap:8px;font:12.5px "Geist Mono";padding:6px 0;color:var(--ink2)}.O .f .p{flex:1}.O .a{color:oklch(0.80 0.13 150)}.O .d{color:oklch(0.74 0.14 22)}
+.O .btn{margin-top:12px;height:34px;border-radius:8px;background:var(--ink);color:var(--bg);font-weight:600;width:100%}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="intro">
+    <h1>Maestro: 3 hướng hình ảnh mới, dựa trên Mobbin</h1>
+    <p>Cùng một màn hình, cùng nội dung: Bo đang hỏi, 2 agent cần bạn, 2 agent chờ duyệt, 3 agent đang chạy. Mỗi hướng ghi rõ lấy cảm hứng từ màn Mobbin nào. Khung cuối là bản hiện tại, để so sánh.</p>
+  </header>
+
+  <section class="dir">
+    <h2>D · Cinema <span>đen sâu, panel nổi có quầng sáng, câu tóm tắt lớn, dock nổi ở đáy</span></h2>
+    <p class="why">Như Fey: không có đường kẻ chia cột, mọi thứ nằm trên các panel bo tròn trôi trên nền đen. Đầu màn là một câu nói thẳng tình hình ("2 agents need you"), giống "The markets are neutral" của Fey. Mỗi agent đang chạy có một vạch tiến độ mảnh. Cảm giác cao cấp, tĩnh, ban đêm.</p>
+    <p class="refs">Tham khảo:
+      <a href="https://mobbin.com/screens/53357e14-9365-46af-8fc9-cd1347d0fca5" target="_blank" rel="noopener">Fey Home</a>
+      <a href="https://mobbin.com/screens/55551250-acb8-4686-b71e-b95288f56e48" target="_blank" rel="noopener">Fey Analysis</a>
+      <a href="https://mobbin.com/screens/03246461-94cb-40bf-a873-d9e122b05bde" target="_blank" rel="noopener">Fey command bar</a>
+      <a href="https://mobbin.com/screens/77000ab2-924c-4d2e-9aaa-58b8b328b73f" target="_blank" rel="noopener">Magnific panel nổi</a></p>
+    <div class="frame"><div class="app D" data-dir="D"></div></div>
+  </section>
+
+  <section class="dir">
+    <h2>E · Lanes <span>nền sáng, mỗi trạng thái là một dải màu có tab</span></h2>
+    <p class="why">Như Slack Lists: nhóm "Needs you" là dải cam, "Ready to review" là dải tím, "Working" là dải xanh lá. Nhìn thoáng qua đã biết việc đang dồn ở đâu, không cần đọc chữ. Font Figtree tròn và thân thiện, tiêu đề đậm. Câu trả lời cho Bo hiện thành các nút nằm ngang. Dễ tiếp cận nhất, ít giống "tool cho dev" nhất.</p>
+    <p class="refs">Tham khảo:
+      <a href="https://mobbin.com/screens/94ccf9c8-f26a-413c-bc4f-3eb45f28795d" target="_blank" rel="noopener">Slack Lists</a>
+      <a href="https://mobbin.com/screens/1ccf6613-4abd-420f-9d18-ac7b40a04848" target="_blank" rel="noopener">Airtable interface</a>
+      <a href="https://mobbin.com/screens/caff93fc-a78d-413a-bd6b-01c82845b482" target="_blank" rel="noopener">ClickUp status groups</a></p>
+    <div class="frame"><div class="app E" data-dir="E"></div></div>
+  </section>
+
+  <section class="dir">
+    <h2>F · Blueprint <span>đơn sắc, lưới kẻ mảnh, nhãn chữ mono, một màu cam báo hiệu</span></h2>
+    <p class="why">Như Midday và Render: bản vẽ kỹ thuật. Lưới kẻ hiện rõ, vùng trống được gạch chéo, nền terminal là lưới chấm. Tiêu đề in hoa, font Archivo hẹp. Chỉ có một màu cam, và nó chỉ xuất hiện ở chỗ cần bạn. Rất "kỹ sư", khác hẳn mọi app AI hiện nay.</p>
+    <p class="refs">Tham khảo:
+      <a href="https://mobbin.com/screens/13a35914-9137-4eeb-a364-8407b696fd6f" target="_blank" rel="noopener">Midday</a>
+      <a href="https://mobbin.com/screens/e0a1a3a2-c54c-4f35-a17b-5a34082e6fa0" target="_blank" rel="noopener">Render</a>
+      <a href="https://mobbin.com/screens/1b8115df-fca5-4eb8-bf3e-83dddc8ebaa8" target="_blank" rel="noopener">Stitch dotted canvas</a>
+      <a href="https://mobbin.com/screens/1984fa6a-c3d3-4cef-80ca-a7bc3f50db8e" target="_blank" rel="noopener">Visual Electric (màu cam)</a></p>
+    <div class="frame"><div class="app F" data-dir="F"></div></div>
+  </section>
+
+  <section class="dir">
+    <h2>Hiện tại <span>bản prototype, để đối chiếu</span></h2>
+    <div class="frame"><div class="app O" data-dir="O"></div></div>
+  </section>
+</div>
+
+<script>
+const NEED = [
+  {n:"B", c:"#8fd6b0", t:"CSV export for the orders table", s:"Bo · Asks: include cancelled orders?", tm:"4m", on:1},
+  {n:"A", c:"#f2b27a", t:"Derive agent state from PTY output", s:"Ana · Wants to run npm run tauri build", tm:"2m"}];
+const REV = [
+  {n:"D", c:"#a9b4ff", t:"Reject empty password on login", s:"Dee · 2 files", tm:"15m", add:10, del:1},
+  {n:"K", c:"#f2b27a", t:"Fix the flaky upload test", s:"Kai · race 1/3", tm:"5m", add:12, del:5}];
+const WORK = [
+  {n:"E", c:"#f2b27a", t:"Kill the N+1 on the customer list", s:"Eli · Measuring (1m 12s)", tm:"3m", p:62},
+  {n:"F", c:"#8fd6b0", t:"Review panel on top of review.rs", s:"Fin · Compiling (38s)", tm:"1m", p:35},
+  {n:"M", c:"#a9b4ff", t:"Fix the flaky upload test", s:"Mo · race 3/3 · Reading", tm:"3m", p:18}];
+const TERM = [["u","Add CSV export to the orders table. Match the columns on screen."],["",""],["k","Read(app/Http/Controllers/OrderController.php)"],["k","Read(resources/js/pages/orders/Index.vue)"],["say","Two sources disagree about cancelled orders, so I'll ask before writing the query."]];
+const OPTS = ["Only paid orders","All orders, with a Status column","Match the finance report"];
+const FILES = [["src/palette.ts",142,0],["src/spawnmodal.ts",0,436],["src/main.ts",6,19]];
+const term = () => `<div class="term">${TERM.map(([k,t]) => `<div class="${k}">${t || "&nbsp;"}</div>`).join("")}</div>`;
+const files = () => FILES.map(f => `<div class="f"><span class="p nowrap">${f[0]}</span><span class="a">+${f[1]}</span><span class="d">−${f[2]}</span></div>`).join("");
+
+function D(){
+  const row = (r, kind) => `<div class="row${kind==="n" ? " need" : ""}${r.on ? " on" : ""}"><span class="mk" style="background:${r.c}">${r.n}</span><span class="t nowrap">${r.t}</span><span class="v">${r.add!=null ? `<span class="g">+${r.add}</span> <span class="r">−${r.del}</span>` : r.tm}</span><span class="s nowrap">${r.s}</span>${r.p!=null ? `<span class="bar"><i style="width:${r.p}%"></i></span>` : ""}</div>`;
+  const pts = [8,14,10,22,18,30,26,40,34,46,38,52,48,44,58].map((v,i) => `${i*18},${60-v}`).join(" ");
+  return `<div class="hello"><span class="lg"><i>M</i>Maestro</span><h1><b>2 agents need you.</b> 2 are ready to review, 3 are working.</h1><span class="sp"></span><span class="meta">Today $7.97 · 9 agents · 3 projects</span></div>
+    <nav class="panel q"><div class="gt"><span>Needs you</span><span>2</span></div>${NEED.map(r=>row(r,"n")).join("")}<div class="gt"><span>Ready to review</span><span>2</span></div>${REV.map(r=>row(r,"r")).join("")}<div class="gt"><span>Working</span><span>3</span></div>${WORK.map(r=>row(r,"w")).join("")}</nav>
+    <main class="panel st"><div class="h"><b>Bo</b><span>Codex</span><span>WhaleloSource / bo/order-export</span><span>$0.62</span></div><p class="h1">CSV export for the orders table</p>${term()}
+      <div class="ask"><div class="lb">Bo is waiting on you</div><p class="qq">Should the export include cancelled orders?</p>${OPTS.map((o,i)=>`<button class="opt"><span class="k">${i+1}</span>${o}</button>`).join("")}</div></main>
+    <aside class="panel rv"><div class="lb">Next to review</div><h3>Command palette replaces the spawn wizard</h3>
+      <svg class="spark" viewBox="0 0 252 60" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="#f4f4f5" stroke-width="1.4"/></svg>${files()}<button class="btn">Open review</button></aside>
+    <div class="dock"><div class="pill"><span class="on">▤</span><span>▦</span><span>◷</span><span>⚙</span></div><div class="cmd">Ask, jump, or start a task<kbd>Ctrl K</kbd></div></div>`;
+}
+function E(){
+  const row = r => `<div class="row${r.on ? " on" : ""}"><span class="t nowrap">${r.t}</span><span class="v">${r.add!=null ? `+${r.add} −${r.del}` : r.tm}</span><span class="s nowrap">${r.s}</span></div>`;
+  return `<div class="top"><span class="lg"><i>M</i>maestro</span><span class="tabs"><span class="on">Queue</span><span>Board</span><span>History</span></span><span class="sp"></span><span class="search">Search agents and commands · Ctrl K</span><button class="new">+ New task</button></div>
+    <div class="body"><nav class="q"><div class="lane n"><span class="tab">Needs you <b>2</b></span>${NEED.map(row).join("")}</div><div class="lane r"><span class="tab">Ready to review <b>2</b></span>${REV.map(row).join("")}</div><div class="lane w"><span class="tab">Working <b>3</b></span>${WORK.slice(0,2).map(row).join("")}</div></nav>
+    <main class="st"><div class="hd"><span class="av">B</span><div><p class="h1">CSV export for the orders table</p><div class="meta"><span>Bo · Codex</span><span>bo/order-export</span><span class="chip">Needs you</span></div></div></div>${term()}
+      <div class="ask"><div class="lb">Bo has a question</div><p class="qq">Should the export include cancelled orders?</p><div class="opts">${OPTS.map((o,i)=>`<button class="opt"><span class="k">${i+1}</span>${o}</button>`).join("")}</div></div></main>
+    <aside class="rv"><div class="lb">Up next · review</div><h3>Command palette replaces the spawn wizard</h3>${files()}<button class="btn">Open review</button></aside></div>`;
+}
+function F(){
+  const row = (r, kind) => `<div class="row${kind==="n" ? " need" : ""}${r.on ? " on" : ""}"><span class="mk">${kind==="n" ? "◆" : kind==="r" ? "○" : "◌"}</span><span class="t nowrap">${r.t}</span><span class="v">${r.add!=null ? `+${r.add}/−${r.del}` : r.tm}</span><span class="s nowrap">${r.s}</span></div>`;
+  return `<div class="top"><div><span class="lg">Maestro<i>.</i></span></div><div><span class="tally"><span class="sig"><b>02</b> need you</span><span><b>02</b> review</span><span><b>03</b> working</span><span><b>$7.97</b> today</span></span></div><div><span class="tally">Ctrl K · search</span></div><div style="padding:0;border:0"><button class="new" style="height:100%">+ New task</button></div></div>
+    <div class="body"><nav class="q"><div class="gt sig"><span>01 · Needs you</span><span>02</span></div>${NEED.map(r=>row(r,"n")).join("")}<div class="gt"><span>02 · Ready to review</span><span>02</span></div>${REV.map(r=>row(r,"r")).join("")}<div class="gt"><span>03 · Working</span><span>03</span></div>${WORK.map(r=>row(r,"w")).join("")}</nav>
+    <main class="st"><div class="coord"><span>Agent <b>Bo</b></span><span>CLI <b>Codex</b></span><span>Branch <b>bo/order-export</b></span><span>Cost <b>$0.62</b></span></div><p class="h1">CSV export for the orders table</p>${term()}
+      <div class="ask"><div class="lb">◆ Waiting on you · 4m</div><p class="qq">Should the export include cancelled orders?</p><div class="opts">${OPTS.map((o,i)=>`<button class="opt"><span class="k">[${i+1}]</span>${o}</button>`).join("")}</div></div></main>
+    <aside class="rv"><div class="gt"><span>Next · review</span><span>Cy</span></div><h3>Palette replaces wizard</h3>${files()}<div class="fill"></div><button class="btn">Open review →</button></aside></div>`;
+}
+function O(){
+  const row = (r, kind) => `<div class="row${kind==="n" ? " need" : ""}${r.on ? " on" : ""}"><span class="t nowrap">${r.t}</span><span class="v">${r.tm}</span><span class="s nowrap">${r.s}</span></div>`;
+  return `<div class="top"><b>Maestro</b><span><b>2</b> need you</span><span><b>2</b> to review</span><span><b>3</b> working</span></div>
+    <div class="body"><nav class="q"><div class="gt">Needs you 2</div>${NEED.map(r=>row(r,"n")).join("")}<div class="gt">Ready to review 2</div>${REV.map(r=>row(r,"r")).join("")}<div class="gt">Working 3</div>${WORK.map(r=>row(r,"w")).join("")}</nav>
+    <main class="st"><p class="h1">CSV export for the orders table</p>${term()}<div class="ask"><div class="lb">Bo has a question</div><p class="qq">Should the export include cancelled orders?</p>${OPTS.map((o,i)=>`<button class="opt">${i+1} ${o}</button>`).join("")}</div></main>
+    <aside class="rv"><h3>Next to review</h3>${files()}<button class="btn">Open review</button></aside></div>`;
+}
+const R = {D, E, F, O};
+document.querySelectorAll(".app").forEach(el => el.innerHTML = R[el.dataset.dir]());
+</script>
+</body>
+</html>

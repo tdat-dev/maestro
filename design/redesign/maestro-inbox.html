@@ -1,0 +1,1206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maestro Inbox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=Be+Vietnam+Pro:wght@400;600;700&family=Geist+Mono:wght@400;500;600&display=swap">
+<style>
+/* Tokens. One deliberate dark theme: a tool that sits next to terminals for hours.
+   Colour is reserved for state: amber = needs you, blue = to review, teal = working. */
+:root{
+  color-scheme: dark;
+  --ground: oklch(0.165 0.010 255);
+  --panel: oklch(0.192 0.011 255);
+  --raise: oklch(0.232 0.012 255);
+  --hover: oklch(0.262 0.013 255);
+  --line: oklch(0.305 0.012 255);
+  --line-soft: oklch(0.252 0.011 255);
+  --well: oklch(0.14 0.009 255);
+  --ink: oklch(0.945 0.005 255);
+  --ink-2: oklch(0.80 0.010 255);
+  --ink-3: oklch(0.68 0.012 255);
+  --brand: oklch(0.80 0.105 188);
+  --brand-ink: oklch(0.20 0.03 188);
+  --needs: oklch(0.83 0.145 78);
+  --needs-bg: oklch(0.29 0.055 78 / .55);
+  --needs-line: oklch(0.55 0.10 78 / .5);
+  --review: oklch(0.78 0.10 250);
+  --review-bg: oklch(0.30 0.06 250 / .5);
+  --work: oklch(0.80 0.105 188);
+  --work-bg: oklch(0.30 0.05 188 / .5);
+  --fail: oklch(0.72 0.16 25);
+  --add: oklch(0.80 0.13 150);
+  --add-bg: oklch(0.32 0.06 150 / .42);
+  --del: oklch(0.74 0.14 22);
+  --del-bg: oklch(0.32 0.07 22 / .42);
+  --focus: oklch(0.86 0.12 188);
+  --ui: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
+  --vi: "Be Vietnam Pro", "Segoe UI", system-ui, sans-serif;
+  --mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --r-sm: 5px; --r: 8px; --r-lg: 12px;
+  --z-sticky: 10; --z-drawer: 30; --z-backdrop: 40; --z-modal: 50; --z-toast: 60;
+  --ease: cubic-bezier(.2,.8,.2,1);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font:14px/1.45 var(--ui);-webkit-font-smoothing:antialiased;overflow:hidden}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0;padding:0}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
+kbd{font:500 11px/1 var(--mono);color:var(--ink-3);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:2px 5px;background:var(--panel);white-space:nowrap}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.a{color:var(--add)} .d{color:var(--del)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- status glyphs: shape carries meaning, colour only reinforces ---------- */
+.g{display:inline-block;width:12px;height:12px;flex:none;vertical-align:-1px}
+.g.needs{background:var(--needs);transform:rotate(45deg) scale(.78);border-radius:2px}
+.g.review{border:2px solid var(--review);border-radius:50%}
+.g.working{border-radius:50%;border:2px solid var(--work);border-right-color:transparent;animation:spin 1.1s linear infinite}
+.g.idle{height:2px;margin:5px 0;background:var(--ink-3);border-radius:2px}
+.g.merged{border-radius:50%;background:var(--ink-3);transform:scale(.55)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---------- shell ---------- */
+.app{display:grid;grid-template-rows:48px minmax(0,1fr);grid-template-columns:minmax(0,1fr);height:100%}
+.top{display:flex;align-items:center;gap:16px;padding:0 16px;border-bottom:1px solid var(--line-soft);min-width:0}
+.brand{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:.01em}
+.views{display:flex;background:var(--panel);border:1px solid var(--line-soft);border-radius:var(--r);padding:2px}
+.views button{padding:4px 12px;border-radius:6px;color:var(--ink-3);font-weight:500;font-size:13px}
+.views button[aria-pressed="true"]{background:var(--raise);color:var(--ink)}
+.pulse{display:flex;gap:14px;font-size:13px;color:var(--ink-2)}
+.pulse span{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.pulse b{font:600 13px var(--mono);color:var(--ink)}
+.grow{flex:1}
+.kbtn{display:flex;align-items:center;gap:10px;height:32px;padding:0 8px 0 12px;background:var(--panel);border:1px solid var(--line-soft);border-radius:var(--r);color:var(--ink-3);min-width:250px;font-size:13px;white-space:nowrap}
+.kbtn:hover{border-color:var(--line);color:var(--ink-2)}
+.kbtn .sp{flex:1;text-align:left}
+.newbtn{height:32px;padding:0 12px;border-radius:var(--r);background:var(--brand);color:var(--brand-ink);font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.newbtn:hover{filter:brightness(1.07)}
+.newbtn kbd{background:transparent;border-color:oklch(0.2 0.03 188 / .35);color:var(--brand-ink)}
+.tbtn{height:32px;padding:0 10px;border-radius:var(--r);color:var(--ink-2);font-size:13px;border:1px solid var(--line-soft);white-space:nowrap}
+.tbtn:hover{color:var(--ink);background:var(--panel)}
+.tbtn.vi{font-family:var(--vi);border-style:dashed}
+
+.body{display:grid;grid-template-columns:340px minmax(0,1fr) auto;grid-template-rows:minmax(0,1fr);min-height:0}
+
+/* ---------- queue ---------- */
+.queue{border-right:1px solid var(--line-soft);display:flex;flex-direction:column;min-height:0;position:relative}
+.qhead{padding:12px 12px 6px;display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line-soft);color:var(--ink-3)}
+.chip:hover{color:var(--ink-2)}
+.chip[aria-pressed="true"]{border-color:var(--line);background:var(--raise);color:var(--ink)}
+.qlist{overflow:auto;padding:0 8px 12px;flex:1}
+.group{margin-top:10px}
+.gtitle{display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.gtitle .n{font:500 11.5px var(--mono);letter-spacing:0}
+.row{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:3px 9px;width:100%;text-align:left;padding:9px 9px 10px;border-radius:var(--r);border:1px solid transparent;position:relative}
+.row:hover{background:var(--panel)}
+.row[aria-current="true"]{background:var(--raise);border-color:var(--line)}
+.row.sel{background:oklch(0.26 0.03 188 / .55);border-color:oklch(0.5 0.07 188 / .5)}
+.row .glyph{grid-row:1/3;padding-top:3px;display:flex;justify-content:center}
+.row .title{font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .time{font:12px var(--mono);color:var(--ink-3);padding-top:2px;text-align:right}
+.row .sub{grid-column:2/3;display:flex;gap:6px;min-width:0;font-size:12.5px;color:var(--ink-3)}
+.row .sub .st{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}
+.row .sub .st.needs{color:var(--needs)} .row .sub .st.review{color:var(--review)}
+.row .dc{grid-column:3/4;font:12px var(--mono);text-align:right;white-space:nowrap}
+.row .tag{font:500 10.5px var(--mono);padding:1px 5px;border-radius:4px;border:1px solid var(--line);color:var(--ink-2);margin-left:6px;vertical-align:1px}
+.row.merged-row .title,.row.merged-row .sub{opacity:.7}
+.allclear{margin:2px 8px 6px 33px;font-size:12.5px;color:var(--ink-3)}
+.qfoot{padding:8px 14px 12px;font-size:11.5px;color:var(--ink-3);border-top:1px solid var(--line-soft)}
+
+.bulk{position:absolute;left:12px;right:12px;bottom:44px;z-index:var(--z-sticky);display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 6px 6px 12px;border-radius:var(--r-lg);background:var(--raise);border:1px solid var(--line);box-shadow:0 12px 30px oklch(0.05 0.01 255 / .55);font-size:13px}
+.bulk .n{font-weight:600;margin-right:auto}
+.bulk button{height:28px;padding:0 9px;border-radius:6px;font-size:12.5px;font-weight:600;border:1px solid var(--line)}
+.bulk button:hover{background:var(--hover)}
+
+/* ---------- stage ---------- */
+.stage{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--panel)}
+.shead{display:flex;align-items:center;gap:14px;padding:14px 20px 12px;border-bottom:1px solid var(--line-soft)}
+.back{display:none}
+.avatar{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font:700 14px var(--ui);color:var(--ground);flex:none}
+.stitle{min-width:0;flex:1}
+.stitle h1{margin:0;font-size:17px;font-weight:600;line-height:1.25;text-wrap:balance}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:3px;font-size:12.5px;color:var(--ink-3)}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:600;white-space:nowrap}
+.pill.needs{background:var(--needs-bg);color:var(--needs)}
+.pill.review{background:var(--review-bg);color:var(--review)}
+.pill.working{background:var(--work-bg);color:var(--work)}
+.pill.idle,.pill.merged{background:var(--raise);color:var(--ink-2)}
+.hbtn{height:30px;padding:0 10px;border-radius:var(--r-sm);color:var(--ink-2);font-size:12.5px;border:1px solid var(--line-soft);white-space:nowrap}
+.hbtn:hover{background:var(--raise);color:var(--ink)}
+
+.term{flex:1;overflow:auto;padding:18px 20px 14px;font:13px/1.62 var(--mono);color:var(--ink-2);min-height:0}
+.term .l{white-space:pre-wrap;word-break:break-word}
+.term .you{color:var(--ink);font-weight:500}
+.term .you::before{content:"› ";color:var(--brand)}
+.term .say{color:var(--ink)}
+.term .say::before{content:"● "}
+.term .tool::before{content:"⏺ ";color:var(--work)}
+.term .dim{color:var(--ink-3);padding-left:2ch}
+.term .ok{color:var(--add);padding-left:2ch}
+.term .err{color:var(--del);padding-left:2ch}
+.term .gap{height:10px}
+.term .thinking{color:var(--ink-3)}
+.term .thinking::before{content:"✻ ";color:var(--needs)}
+
+/* the "N files changed" block that closes a turn (Cursor) */
+.fcsum{margin-top:14px;border:1px solid var(--line);border-radius:var(--r);background:var(--ground);font-family:var(--ui);max-width:620px;overflow:hidden}
+.fch{display:flex;gap:8px;align-items:center;padding:8px 12px;font-size:13px;font-weight:600;border-bottom:1px solid var(--line-soft)}
+.fch .num{font-weight:500}
+.fch button{margin-left:auto;font-size:12.5px;color:var(--ink-2);font-weight:500}
+.fch button:hover{color:var(--ink)}
+.fcrow{display:flex;gap:10px;width:100%;padding:6px 12px;font:12.5px var(--mono);color:var(--ink-2);text-align:left}
+.fcrow:hover{background:var(--panel);color:var(--ink)}
+.fcrow .p{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------- the one input: composer, or the decision that replaces it ---------- */
+.dock{margin:0 20px 16px}
+.runbar{display:flex;align-items:center;gap:10px;padding:7px 8px 7px 12px;border:1px solid var(--line);border-bottom:0;border-radius:var(--r-lg) var(--r-lg) 0 0;background:var(--work-bg);font-size:12.5px;color:var(--work)}
+.runbar .sp{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.runbar button{height:26px;padding:0 9px;border-radius:6px;border:1px solid oklch(0.6 0.08 188 / .5);color:var(--ink);font-size:12px;font-weight:600;display:flex;gap:6px;align-items:center}
+.runbar button:hover{background:oklch(0.35 0.05 188 / .6)}
+.runbar + .composer{border-top-left-radius:0;border-top-right-radius:0}
+.composer{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--ground);display:flex;align-items:flex-end;gap:10px;padding:8px 8px 8px 14px}
+.composer:focus-within{border-color:var(--ink-3)}
+.composer textarea{flex:1;resize:none;border:0;background:transparent;outline:none;min-height:24px;max-height:140px;padding:4px 0;line-height:1.5}
+.composer textarea::placeholder{color:var(--ink-3)}
+.send{height:32px;padding:0 12px;border-radius:var(--r);background:var(--raise);font-weight:600;font-size:13px}
+.send:hover{background:var(--hover)}
+.chint{margin-top:8px;font-size:12px;color:var(--ink-3);display:flex;gap:14px;flex-wrap:wrap}
+
+.decision{border:1px solid var(--needs-line);border-radius:var(--r-lg);background:var(--ground);overflow:hidden}
+.dtop{display:flex;align-items:center;gap:9px;padding:10px 14px;background:var(--needs-bg);font-size:13px;font-weight:600;color:var(--needs);flex-wrap:wrap}
+.dtop .why{font-weight:400;color:var(--ink-2);flex-basis:100%;padding-left:21px;font-size:12.5px}
+.dbody{padding:12px 14px 4px}
+.dbody code{display:block;padding:9px 12px;border-radius:var(--r);background:var(--well);font:13px/1.5 var(--mono);color:var(--ink);overflow-x:auto;white-space:pre}
+.qtext{margin:0 0 10px;font-size:14.5px;font-weight:500;color:var(--ink)}
+.dopts{display:flex;flex-direction:column;gap:4px}
+.dopt{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:var(--r);text-align:left;border:1px solid var(--line-soft);background:var(--panel)}
+.dopt:hover,.dopt:focus-visible{background:var(--raise);border-color:var(--line)}
+.dopt .k{width:22px;height:22px;border-radius:5px;display:grid;place-items:center;background:var(--raise);font:600 12px var(--mono);color:var(--ink-2);flex:none}
+.dopt .sp{flex:1}
+.dopt .go{color:var(--ink-3)}
+.dfoot{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px 12px}
+.dfoot .reply{flex:1;min-width:200px;height:34px;border-radius:var(--r);border:1px solid var(--line);background:var(--panel);padding:0 10px;font-size:13px}
+.dfoot .reply::placeholder{color:var(--ink-3)}
+.btn{height:34px;padding:0 12px;border-radius:var(--r);font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);white-space:nowrap}
+.btn:hover{background:var(--hover)}
+.btn.primary{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+.btn.primary:hover{background:oklch(0.88 0.005 255)}
+.btn.primary kbd{background:transparent;color:oklch(0.38 0.01 255);border-color:oklch(0.55 0.01 255 / .5)}
+.btn.quiet{border-color:transparent;color:var(--ink-2)}
+.btn.danger{color:var(--del)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+
+/* ---------- review panel ---------- */
+.rpanel{width:450px;border-left:1px solid var(--line-soft);display:flex;flex-direction:column;min-height:0}
+.rhead{padding:14px 16px 12px;border-bottom:1px solid var(--line-soft)}
+.rclose{display:none;float:right;margin:-4px 0 0 8px}
+.rhead h2{margin:0 0 3px;font-size:14px;font-weight:600;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.rhead .br{margin:0;font:12px var(--mono);color:var(--ink-3)}
+.checks{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.check{font-size:12px;padding:3px 8px;border-radius:var(--r-sm);background:var(--panel);border:1px solid var(--line-soft);color:var(--ink-2);display:inline-flex;gap:6px;align-items:center}
+.race{margin-top:10px;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r);border:1px dashed var(--line);font-size:12.5px;color:var(--ink-2)}
+.race .sp{flex:1}
+.race button{font-weight:600;color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+.fbar{display:flex;align-items:center;justify-content:space-between;padding:8px 16px 4px;font-size:12px;color:var(--ink-3)}
+.progress{height:4px;border-radius:4px;background:var(--raise);overflow:hidden;width:90px}
+.progress i{display:block;height:100%;background:var(--review)}
+.files{padding:2px 8px 8px;border-bottom:1px solid var(--line-soft);max-height:34%;overflow:auto}
+.file{display:flex;gap:8px;align-items:center;border-radius:var(--r-sm);padding:0 6px 0 0}
+.file:hover{background:var(--panel)}
+.file.cur{background:var(--raise)}
+.file .pick{flex:1;min-width:0;display:flex;gap:8px;align-items:center;padding:6px 8px;font:12.5px var(--mono);color:var(--ink-2);text-align:left}
+.file.cur .pick{color:var(--ink)}
+.file .p{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file.seen .p{color:var(--ink-3);text-decoration:line-through;text-decoration-color:oklch(0.6 0.01 255 / .5)}
+.file label{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ink-3);cursor:pointer;white-space:nowrap}
+.file input{accent-color:var(--review);margin:0}
+.diff{flex:1;overflow:auto;font:12.5px/1.6 var(--mono);padding:6px 0}
+.hunk{color:var(--ink-3);padding:4px 16px;background:var(--panel)}
+.dl{display:grid;grid-template-columns:34px 1fr;white-space:pre;padding-right:16px}
+.dl .ln{color:var(--ink-3);text-align:right;padding-right:10px;user-select:none}
+.dl.add{background:var(--add-bg)} .dl.add .c{color:oklch(0.9 0.06 150)}
+.dl.del{background:var(--del-bg)} .dl.del .c{color:oklch(0.88 0.06 22)}
+.rfoot{padding:12px 16px 16px;border-top:1px solid var(--line-soft);display:flex;flex-direction:column;gap:10px}
+.rfoot .row2{display:flex;gap:8px;flex-wrap:wrap}
+.note{width:100%;min-height:60px;border-radius:var(--r);border:1px solid var(--line);background:var(--panel);padding:8px 10px;resize:vertical;font-size:13px}
+.note::placeholder{color:var(--ink-3)}
+.rempty{padding:26px 18px;color:var(--ink-3);font-size:13px}
+.rempty strong{display:block;color:var(--ink-2);margin-bottom:4px;font-weight:600}
+
+/* ---------- board ---------- */
+.board{grid-column:1/-1;grid-row:1;align-content:start;display:grid;grid-template-columns:repeat(5,minmax(220px,1fr));gap:12px;padding:16px;overflow:auto;align-items:start;min-height:0}
+.bnote{grid-column:1/-1;font-size:12.5px;color:var(--ink-3);margin:0 4px}
+.col{background:var(--panel);border:1px solid var(--line-soft);border-radius:var(--r-lg);padding:10px}
+.col h3{margin:2px 4px 10px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);display:flex;gap:8px;align-items:center}
+.card{display:block;width:100%;text-align:left;background:var(--ground);border:1px solid var(--line-soft);border-radius:var(--r);padding:10px 11px;margin-bottom:8px}
+.card:hover{border-color:var(--line)}
+.card .t{font-weight:500;margin-bottom:8px;line-height:1.35}
+.card .f{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3)}
+.mini{width:18px;height:18px;border-radius:5px;display:grid;place-items:center;font-size:10.5px;font-weight:700;color:var(--ground);flex:none}
+.bempty{font-size:12.5px;color:var(--ink-3);padding:4px 4px 8px}
+
+/* ---------- overlays ---------- */
+.backdrop{position:fixed;inset:0;background:oklch(0.1 0.01 255 / .62);z-index:var(--z-backdrop);display:grid;place-items:start center;padding:11vh 16px 16px;overflow:auto}
+.palette{width:min(640px,100%);background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:0 24px 60px oklch(0.05 0.01 255 / .6);overflow:hidden}
+.palette input{width:100%;border:0;border-bottom:1px solid var(--line-soft);background:transparent;padding:15px 18px;font-size:15px;outline:none}
+.palette input::placeholder{color:var(--ink-3)}
+.plist{max-height:52vh;overflow:auto;padding:6px}
+.psec{padding:8px 12px 4px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.pitem{display:flex;align-items:center;gap:10px;width:100%;padding:8px 12px;border-radius:var(--r);text-align:left}
+.pitem[aria-selected="true"]{background:var(--raise)}
+.pitem .sp{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pitem .sub{color:var(--ink-3);font-size:12.5px;white-space:nowrap}
+.pfoot{display:flex;gap:16px;padding:9px 14px;border-top:1px solid var(--line-soft);font-size:12px;color:var(--ink-3);flex-wrap:wrap}
+.pfoot span{display:flex;gap:6px;align-items:center}
+.pnone{padding:18px 14px;color:var(--ink-3);font-size:13px}
+
+/* new task: Linear-style (big text + one row of property chips) */
+.sheet{width:min(680px,100%);background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:0 24px 60px oklch(0.05 0.01 255 / .6)}
+.sheet form{display:flex;flex-direction:column}
+.shtop{display:flex;align-items:center;gap:8px;padding:14px 18px 0;font-size:12.5px;color:var(--ink-3)}
+.shtop .x{margin-left:auto;width:28px;height:28px;border-radius:6px;color:var(--ink-3)}
+.shtop .x:hover{background:var(--raise);color:var(--ink)}
+.sheet textarea#nfPrompt{border:0;background:transparent;outline:none;resize:none;padding:10px 18px 6px;font-size:17px;line-height:1.45;min-height:120px;color:var(--ink)}
+.sheet textarea#nfPrompt::placeholder{color:var(--ink-3)}
+.props{display:flex;flex-wrap:wrap;gap:6px;padding:8px 18px 14px}
+.prop{position:relative;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid var(--line);border-radius:999px;font-size:12.5px;color:var(--ink-2);background:var(--ground)}
+.prop:hover{border-color:var(--ink-3);color:var(--ink)}
+.prop select{appearance:none;border:0;background:transparent;font-size:12.5px;color:inherit;padding-right:14px;cursor:pointer;outline:none}
+.prop select option{background:var(--panel);color:var(--ink)}
+.prop:focus-within{outline:2px solid var(--focus);outline-offset:1px}
+.prop .caret{position:absolute;right:9px;pointer-events:none;color:var(--ink-3);font-size:10px}
+.prop .lbl{color:var(--ink-3)}
+.prop.count button{width:20px;height:20px;border-radius:5px;color:var(--ink-2);font-size:14px;line-height:1}
+.prop.count button:hover{background:var(--raise);color:var(--ink)}
+.prop.count output{font:600 12.5px var(--mono);min-width:10px;text-align:center}
+.prop.wt input{accent-color:var(--brand);margin:0}
+.shhelp{padding:0 18px 12px;font-size:12.5px;color:var(--ink-3);min-height:18px}
+.shfoot{display:flex;align-items:center;gap:12px;padding:12px 18px;border-top:1px solid var(--line-soft);flex-wrap:wrap}
+.shfoot .hint{font-size:12px;color:var(--ink-3);margin-right:auto}
+.switch{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-2);cursor:pointer}
+.switch input{appearance:none;width:30px;height:18px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;margin:0;transition:background .15s var(--ease)}
+.switch input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--ink);transition:transform .15s var(--ease)}
+.switch input:checked{background:var(--brand)}
+.switch input:checked::after{transform:translateX(12px)}
+
+/* race compare (Braintrust / AI Studio compare) */
+.compare{width:min(1100px,100%);background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:0 24px 60px oklch(0.05 0.01 255 / .6)}
+.cmphead{display:flex;align-items:flex-start;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line-soft)}
+.cmphead h2{margin:0;font-size:16px;font-weight:600}
+.cmphead p{margin:3px 0 0;font-size:12.5px;color:var(--ink-3)}
+.cmphead .x{margin-left:auto}
+.cmpgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1px;background:var(--line-soft)}
+.cmpcol{background:var(--panel);padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.cmpcol.best{background:oklch(0.21 0.02 188)}
+.cmpwho{display:flex;align-items:center;gap:10px}
+.cmpwho b{font-weight:600}
+.cmpwho .cli{font-size:12px;color:var(--ink-3)}
+.cmpwho .badge{margin-left:auto;font-size:11px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--work-bg);color:var(--work)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin:0;font-size:12.5px}
+.stats dt{color:var(--ink-3)} .stats dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.cmpfiles{font:12px/1.7 var(--mono);color:var(--ink-2);border-top:1px solid var(--line-soft);padding-top:8px}
+.cmpfiles div{display:flex;gap:8px}
+.cmpfiles .p{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmpsay{font-size:12.5px;color:var(--ink-2);margin:0}
+.cmpsay.warn{color:var(--del)}
+.cmpcol .btn{margin-top:auto;justify-content:center}
+
+/* shortcut sheet (Superhuman / Front) */
+.keys{position:fixed;top:48px;right:0;bottom:0;width:min(340px,100%);background:var(--panel);border-left:1px solid var(--line);z-index:var(--z-drawer);overflow:auto;padding:14px 18px 30px;box-shadow:-16px 0 40px oklch(0.05 0.01 255 / .5)}
+.keys h2{margin:0 0 4px;font-size:14px;display:flex;align-items:center}
+.keys h2 button{margin-left:auto}
+.keys h3{margin:18px 0 6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.keys dl{margin:0;display:grid;grid-template-columns:1fr auto;gap:7px 12px;font-size:13px;color:var(--ink-2)}
+.keys dd{margin:0;display:flex;gap:4px;justify-content:flex-end}
+
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:var(--z-toast);background:var(--ink);color:var(--ground);padding:10px 12px 10px 16px;border-radius:var(--r);font-size:13px;font-weight:500;display:flex;gap:14px;align-items:center;box-shadow:0 12px 32px oklch(0.05 0.01 255 / .5);max-width:calc(100% - 32px)}
+.toast button{font-weight:700;text-decoration:underline;text-underline-offset:3px}
+
+/* ---------- design notes (Vietnamese, light for long reading) ---------- */
+.notes{position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);background:oklch(0.975 0.004 255);color:oklch(0.22 0.012 255);z-index:var(--z-modal);overflow:auto;box-shadow:-20px 0 50px oklch(0.05 0.01 255 / .5);color-scheme:light;font-family:var(--vi)}
+.notes .in{padding:26px 30px 60px;max-width:70ch}
+.notes .close{float:right;height:30px;padding:0 10px;border-radius:6px;border:1px solid oklch(0.85 0.01 255);background:#fff;color:oklch(0.3 0.01 255);font-size:12.5px}
+.notes h2{font-size:22px;margin:0 0 6px;text-wrap:balance;letter-spacing:-.01em}
+.notes .lede{color:oklch(0.40 0.012 255);margin:0 0 18px}
+.notes h3{font-size:14.5px;margin:26px 0 8px}
+.notes p,.notes li{font-size:13.5px;line-height:1.6;text-wrap:pretty}
+.notes ul{padding-left:18px;margin:6px 0} .notes li{margin:5px 0}
+.notes table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+.notes td,.notes th{padding:7px 8px;border-bottom:1px solid oklch(0.88 0.008 255);vertical-align:top;text-align:left}
+.notes th{font-weight:600;color:oklch(0.40 0.012 255)}
+.notes code,.notes kbd{font:12px var(--mono);background:oklch(0.92 0.006 255);padding:1px 5px;border-radius:4px;border:0;color:inherit}
+.notes a{color:oklch(0.45 0.10 230)}
+.notes .phase{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:8px 0}
+.notes .phase b{font:600 12px var(--mono);color:oklch(0.45 0.09 188);padding-top:2px}
+
+/* ---------- responsive ---------- */
+@media (max-width:1320px){ .rpanel{width:390px} .pulse .popt{display:none} .body{grid-template-columns:310px minmax(0,1fr) auto} }
+@media (max-width:1100px){
+  .body{grid-template-columns:290px minmax(0,1fr)}
+  .rpanel{position:fixed;right:0;top:48px;bottom:0;z-index:var(--z-drawer);width:min(430px,100%);background:var(--ground);box-shadow:-16px 0 40px oklch(0.05 0.01 255 / .5)}
+  .pulse{display:none}
+  .kbtn{min-width:0}
+  .rclose{display:inline-flex;align-items:center}
+}
+@media (max-width:760px){
+  .top{gap:8px;padding:0 12px}
+  .kbtn{width:36px;padding:0;justify-content:center}.kbtn .sp,.kbtn kbd,.newbtn kbd,.views,.tbtn.keysbtn{display:none}
+  .body{grid-template-columns:minmax(0,1fr)}
+  .stitle{order:5;flex-basis:100%}
+  .shead .pill{margin-left:auto}
+  .stage{display:none}
+  .app.show-stage .queue{display:none}
+  .app.show-stage .stage{display:flex}
+  .back{display:inline-flex;align-items:center}
+  .tbtn.vi .long{display:none}
+  .shead{padding:12px 16px;flex-wrap:wrap}
+  .dock{margin:0 12px 12px}
+  .term{padding:14px 16px}
+  .board{grid-template-columns:repeat(5,minmax(240px,1fr))}
+  .rpanel{width:100%}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+  .g.working{border-right-color:var(--work)}
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="top">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect x="1" y="1" width="20" height="20" rx="6" fill="none" stroke="currentColor" stroke-opacity=".35"/><path d="M6 15V7l5 5 5-5v8" fill="none" stroke="oklch(0.80 0.105 188)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Maestro
+    </div>
+    <div class="views" role="group" aria-label="View">
+      <button id="vQueue" aria-pressed="true">Queue</button>
+      <button id="vBoard" aria-pressed="false">Board</button>
+    </div>
+    <div class="pulse" id="pulse" aria-live="polite"></div>
+    <div class="grow"></div>
+    <button class="kbtn" id="openPalette" aria-label="Search and commands"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m11 11 3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span class="sp">Jump to an agent or run a command</span><kbd>Ctrl K</kbd></button>
+    <button class="newbtn" id="openNew">New task <kbd>N</kbd></button>
+    <button class="tbtn keysbtn" id="openKeys" aria-label="Keyboard shortcuts">?</button>
+    <button class="tbtn vi" id="openNotes">Ghi chú<span class="long"> thiết kế</span></button>
+  </header>
+
+  <div class="body" id="body">
+    <nav class="queue" id="queue" aria-label="Agents">
+      <div class="qhead" id="projChips" role="group" aria-label="Filter by project"></div>
+      <div class="qlist" id="qlist"></div>
+      <div class="bulk" id="bulk" hidden></div>
+      <div class="qfoot">Prototype with sample data. Nothing here touches a real agent.</div>
+    </nav>
+    <main class="stage" id="stage"></main>
+    <aside class="rpanel" id="rpanel" aria-label="Changes"></aside>
+    <div class="board" id="board" hidden></div>
+  </div>
+</div>
+
+<!-- command palette -->
+<div class="backdrop" id="palBack" hidden>
+  <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+    <input id="palInput" placeholder="Type an agent, a task, or a command…" autocomplete="off" role="combobox" aria-expanded="true" aria-controls="palList">
+    <div class="plist" id="palList" role="listbox" aria-label="Results"></div>
+    <div class="pfoot"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> select</span><span><kbd>Esc</kbd> close</span></div>
+  </div>
+</div>
+
+<!-- new task -->
+<div class="backdrop" id="newBack" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="newTitle">
+    <form id="newForm" novalidate>
+      <div class="shtop"><span id="newCrumb">maestro</span><span aria-hidden="true">›</span><span id="newTitle">New task</span><button type="button" class="x" id="nfClose" aria-label="Close">✕</button></div>
+      <label for="nfPrompt" class="sr">What should get done?</label>
+      <textarea id="nfPrompt" placeholder="What should get done? e.g. The login form accepts an empty password. Reject it and add a test."></textarea>
+      <div class="props">
+        <span class="prop"><span class="lbl">Project</span><select id="nfProject" aria-label="Project"></select><span class="caret" aria-hidden="true">▾</span></span>
+        <span class="prop"><span class="lbl">Agent</span><select id="nfCli" aria-label="Agent CLI"></select><span class="caret" aria-hidden="true">▾</span></span>
+        <span class="prop count" role="group" aria-label="How many agents"><button type="button" id="nfMinus" aria-label="Fewer agents">−</button><output id="nfCount" aria-live="polite">1</output><button type="button" id="nfPlus" aria-label="More agents">+</button><span class="lbl" id="nfCountLbl">agent</span></span>
+        <span class="prop"><span class="lbl">Flow</span><select id="nfFlow" aria-label="How the task moves"><option value="direct">Just do it</option><option value="relay">Build → Test → Review</option><option value="plan">Plan first, wait for me</option></select><span class="caret" aria-hidden="true">▾</span></span>
+        <label class="prop wt"><input type="checkbox" id="nfWt" checked> Own worktree</label>
+      </div>
+      <div class="shhelp" id="nfHelp">One agent on its own branch. Nothing touches your checkout until you merge.</div>
+      <div class="shfoot">
+        <span class="hint"><kbd>Ctrl ↵</kbd> start · <kbd>Esc</kbd> cancel</span>
+        <label class="switch"><input type="checkbox" id="nfMore"> Create more</label>
+        <button class="btn primary" type="submit">Start task</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- race compare -->
+<div class="backdrop" id="cmpBack" hidden>
+  <div class="compare" role="dialog" aria-modal="true" aria-labelledby="cmpTitle">
+    <div class="cmphead"><div><h2 id="cmpTitle">Compare</h2><p id="cmpSub"></p></div><button class="btn quiet x" id="cmpClose">Close <kbd>Esc</kbd></button></div>
+    <div class="cmpgrid" id="cmpGrid"></div>
+  </div>
+</div>
+
+<!-- shortcuts -->
+<aside class="keys" id="keys" hidden aria-label="Keyboard shortcuts">
+  <h2>Keyboard shortcuts <button class="btn quiet" id="closeKeys">Close</button></h2>
+  <h3>Queue</h3>
+  <dl>
+    <dt>Next / previous agent</dt><dd><kbd>J</kbd><kbd>K</kbd></dd>
+    <dt>Select for bulk actions</dt><dd><kbd>X</kbd></dd>
+    <dt>Type to the open agent</dt><dd><kbd>I</kbd></dd>
+    <dt>Switch Queue / Board</dt><dd><kbd>B</kbd></dd>
+  </dl>
+  <h3>When an agent needs you</h3>
+  <dl>
+    <dt>Allow the command</dt><dd><kbd>A</kbd></dd>
+    <dt>Deny it</dt><dd><kbd>D</kbd></dd>
+    <dt>Pick an answer</dt><dd><kbd>1</kbd>–<kbd>9</kbd></dd>
+  </dl>
+  <h3>Review</h3>
+  <dl>
+    <dt>Merge into main</dt><dd><kbd>M</kbd></dd>
+    <dt>Mark file viewed, next file</dt><dd><kbd>V</kbd></dd>
+    <dt>Compare a race</dt><dd><kbd>C</kbd></dd>
+  </dl>
+  <h3>Anywhere</h3>
+  <dl>
+    <dt>Command palette</dt><dd><kbd>Ctrl</kbd><kbd>K</kbd></dd>
+    <dt>New task</dt><dd><kbd>N</kbd></dd>
+    <dt>Stop the open agent</dt><dd><kbd>S</kbd></dd>
+    <dt>This sheet</dt><dd><kbd>?</kbd></dd>
+  </dl>
+</aside>
+
+<div class="toast" id="toast" role="status" hidden><span id="toastMsg"></span><button id="toastUndo" hidden>Undo</button></div>
+
+<aside class="notes" id="notes" hidden aria-label="Ghi chú thiết kế">
+  <div class="in">
+    <button class="close" id="closeNotes">Đóng</button>
+    <h2>Maestro là hộp thư của các agent, không phải trình quản lý cửa sổ</h2>
+    <p class="lede">Hướng redesign và lý do, kèm các mẫu tham khảo trên Mobbin. Thử ngay: <kbd>J</kbd>/<kbd>K</kbd> đi qua danh sách, <kbd>A</kbd> cho phép, <kbd>1</kbd>/<kbd>2</kbd> trả lời Bo, <kbd>V</kbd> đánh dấu đã xem file, <kbd>M</kbd> merge, <kbd>X</kbd> chọn nhiều, <kbd>N</kbd> tạo việc, <kbd>?</kbd> xem phím tắt.</p>
+
+    <h3>Vấn đề của bản hiện tại</h3>
+    <ul>
+      <li><b>Màn hình xoay quanh terminal, nhưng việc của bạn là quyết định.</b> Chạy 10+ agent thì câu hỏi duy nhất là "ai đang chờ tôi, chờ cái gì". Hiện tại câu trả lời chỉ là một chấm màu nhỏ, và agent ở workspace khác thì không nhìn thấy.</li>
+      <li><b>Hai ô nhập.</b> Prompt của terminal và ô "Message the fleet" cùng nằm ở đáy màn hình.</li>
+      <li><b>Công việc bị chia ra bốn công cụ.</b> Board, Fleet, Flow và Diff là bốn góc nhìn của cùng một thứ, nằm ở bốn icon dock không có nhãn.</li>
+      <li><b>Trang trí đè lên nội dung.</b> Sigil và wallpaper nằm ngay sau chữ trong terminal.</li>
+      <li><b>Duyệt code nằm ngoài vòng lặp.</b> Merge, gửi lại hay bỏ đi là điểm kết thúc thật sự của việc, nhưng lại nằm ở một công cụ riêng.</li>
+    </ul>
+
+    <h3>Mô hình: một việc = một agent + một nhánh + một diff</h3>
+    <table>
+      <tr><th>Trạng thái</th><th>Suy ra từ</th><th>Bạn làm gì</th></tr>
+      <tr><td>◆ Cần bạn</td><td>CLI đang hỏi quyền, hỏi lại, hoặc lỗi chặn</td><td>Trả lời ngay tại ô nhập</td></tr>
+      <tr><td>○ Chờ duyệt</td><td>Agent dừng, worktree có diff</td><td>Merge · gửi lại · bỏ</td></tr>
+      <tr><td>◌ Đang làm</td><td>PTY có output gần đây</td><td>Không làm gì</td></tr>
+      <tr><td>— Rảnh</td><td>Không output, không diff</td><td>Giao việc</td></tr>
+    </table>
+    <p>Trạng thái được suy ra, không ai phải kéo card. Queue xếp theo thứ tự trên và gộp mọi project. Hình dạng biểu tượng mang nghĩa, không phụ thuộc màu (giống cách Vercel ghi "● Ready" chứ không chỉ tô màu).</p>
+
+    <h3>Học từ Mobbin (~85 màn đã xem, ~40 màn dùng được)</h3>
+    <table>
+      <tr><th>Chỗ</th><th>Học từ</th><th>Áp dụng</th></tr>
+      <tr><td>Hàng Queue</td><td><a href="https://mobbin.com/screens/beb9d6b3-ec34-46d7-9332-320fcb32a338" target="_blank" rel="noopener">Linear Inbox</a>, <a href="https://mobbin.com/screens/92e0222c-8ba8-4abe-bc18-3ddef5b2e357" target="_blank" rel="noopener">Devin</a>, <a href="https://mobbin.com/screens/9042dc24-874c-4f95-821e-b9b63972426e" target="_blank" rel="noopener">Cursor</a></td><td>Tên việc lên đầu, dòng phụ "agent · trạng thái" có màu, <code>+/−</code> bên phải</td></tr>
+      <tr><td>Hỏi / duyệt</td><td><a href="https://mobbin.com/screens/f0ee7046-b34e-415a-a830-564baf6f902d" target="_blank" rel="noopener">Higgsfield</a>, <a href="https://mobbin.com/screens/34aa9592-2138-4be6-95f6-4aa7410e9bb9" target="_blank" rel="noopener">Claude</a></td><td>Hộp quyết định thay thế ô nhập. Lựa chọn đánh số, phím 1–9, có ô "Something else"</td></tr>
+      <tr><td>Đang chạy</td><td><a href="https://mobbin.com/screens/4a3b2d78-ee1c-406f-824e-6a5d5f4fa8a8" target="_blank" rel="noopener">Emergent</a></td><td>Dải "đang làm · thời gian" và nút Stop ngay trên ô nhập</td></tr>
+      <tr><td>Kết thúc lượt</td><td><a href="https://mobbin.com/screens/2d15a5ae-b0e1-41b7-bcc0-d6c6c9bf5901" target="_blank" rel="noopener">Cursor</a></td><td>Khối "N files changed" ở cuối log, bấm vào là mở diff</td></tr>
+      <tr><td>Review</td><td><a href="https://mobbin.com/screens/72783a50-4cc2-4e3d-83f9-048f9a2455cf" target="_blank" rel="noopener">GitHub</a>, <a href="https://mobbin.com/screens/943c5aac-94ad-4e06-bbab-70d3a88e3fa1" target="_blank" rel="noopener">Devin Review</a>, <a href="https://mobbin.com/screens/b16e3604-0116-4db7-8fbe-effb138c49d6" target="_blank" rel="noopener">Graphite</a></td><td>Ô "Viewed" cho từng file, "x / N viewed", ghi chú kèm hành động ở đáy</td></tr>
+      <tr><td>Đua agent</td><td><a href="https://mobbin.com/screens/da7f4d57-a8bd-4efd-b827-1dabf6d7ef30" target="_blank" rel="noopener">Braintrust</a>, <a href="https://mobbin.com/screens/c6a5dd57-4d2f-4c6b-83cf-21a32c897eb3" target="_blank" rel="noopener">AI Studio compare</a></td><td>So sánh theo cột, nút "Keep this one"</td></tr>
+      <tr><td>Palette</td><td><a href="https://mobbin.com/screens/85dc5994-9360-428d-9092-7425e070ed7f" target="_blank" rel="noopener">Superhuman Command</a>, <a href="https://mobbin.com/screens/593d7acd-2e16-4365-bcd6-02ce52f48f3b" target="_blank" rel="noopener">Vapi</a></td><td>Phím tắt ghi cạnh mỗi lệnh, dải gợi ý phím ở đáy</td></tr>
+      <tr><td>Tạo việc</td><td><a href="https://mobbin.com/screens/7d2d62c7-8fb9-40d8-bd36-f1a8ff0a860c" target="_blank" rel="noopener">Linear New issue</a></td><td>Ô prompt lớn, một hàng chip thuộc tính, công tắc "Create more"</td></tr>
+      <tr><td>Hàng loạt</td><td><a href="https://mobbin.com/screens/be6c4ee4-aa93-42b4-89b3-dcfc8386f022" target="_blank" rel="noopener">Linear</a>, <a href="https://mobbin.com/screens/e9639493-e0a6-46c9-93d1-d3189cbdc3c7" target="_blank" rel="noopener">ClickUp</a></td><td>Phím X chọn nhiều hàng, thanh nổi thao tác chung</td></tr>
+      <tr><td>Phím tắt</td><td><a href="https://mobbin.com/screens/6b6a701f-8589-415c-9c52-c91d4feade1c" target="_blank" rel="noopener">Front</a>, <a href="https://mobbin.com/screens/0e821e22-026a-4641-a91b-ac63b0c9e4bc" target="_blank" rel="noopener">Superhuman</a></td><td>Phím <code>?</code> mở bảng phím tắt bên phải</td></tr>
+    </table>
+    <p><b>Cố ý không lấy:</b> lưới thẻ agent kiểu Cursor dashboard (quá ít thông tin khi có 10+ agent), ô số lớn kiểu Railway/Sentry (chi phí chỉ cần một dòng), empty state có hình minh hoạ (công cụ cho dev chỉ cần "All clear").</p>
+
+    <h3>Cắt bỏ hoặc đẩy ra rìa</h3>
+    <table>
+      <tr><th>Tính năng</th><th>Quyết định</th></tr>
+      <tr><td>Sigil, mascot, wallpaper sau terminal</td><td>Bỏ.</td></tr>
+      <tr><td>Pomodoro</td><td>Bỏ. Không thuộc việc điều phối agent.</td></tr>
+      <tr><td>Canvas kéo thả pane, Tidy, zoom</td><td>Bỏ. Queue + Stage thay thế. Cần xem nhiều terminal cùng lúc thì dùng "Wall" chỉ đọc qua Ctrl K.</td></tr>
+      <tr><td>Wizard, spawn modal, spawn menu, console, switcher</td><td>Gộp vào Ctrl K và New task.</td></tr>
+      <tr><td>Code panel, file tree, editor</td><td>Đẩy ra rìa: mở file từ diff sang VS Code / Cursor.</td></tr>
+      <tr><td>Conductor, Pipelines</td><td>Thành lựa chọn "Flow" khi tạo việc.</td></tr>
+      <tr><td>Schedule, Replay, Usage</td><td>Gộp vào lịch sử của từng việc.</td></tr>
+    </table>
+
+    <h3>Giữ nguyên</h3>
+    <p>Rust ConPTY + tree-kill, worktree isolation, maestro-mcp, hand-off giữa agent, typing đáng tin cậy, updater. Bản redesign chỉ thay giao diện và mô hình dữ liệu.</p>
+
+    <h3>Lộ trình</h3>
+    <div class="phase"><b>P1</b><span>Mô hình <code>Task</code> + bộ suy trạng thái từ PTY + worktree, có test. Chạy song song UI cũ.</span></div>
+    <div class="phase"><b>P2</b><span>Queue + Stage + hộp quyết định (phát hiện prompt quyền của Claude Code / Codex trước). Bật bằng cờ.</span></div>
+    <div class="phase"><b>P3</b><span>Review panel trên <code>review.rs</code>: viewed, merge, gửi lại, bỏ.</span></div>
+    <div class="phase"><b>P4</b><span>Ctrl K + New task thay 5 UI cũ. Đua nhiều agent + màn so sánh.</span></div>
+    <div class="phase"><b>P5</b><span>Gỡ canvas, dock, sigil, pomodoro. Board thành view suy ra. Xoá code chết.</span></div>
+
+    <h3>Hình ảnh</h3>
+    <p>Một theme tối, nền graphite gần trung tính (đã đối chiếu với Railway, Supabase, Neon). Màu chỉ dành cho trạng thái. Chữ giao diện dùng Schibsted Grotesk (sắc, hơi hẹp, đọc tốt ở 13px). Terminal và số liệu dùng Geist Mono. Ghi chú này dùng Be Vietnam Pro để hiển thị đúng dấu tiếng Việt.</p>
+  </div>
+</aside>
+
+<script>
+(() => {
+"use strict";
+
+// ---------- sample data ----------
+const CLIS = {
+  claude:{label:"Claude Code", hue:"oklch(0.78 0.11 55)"},
+  codex:{label:"Codex", hue:"oklch(0.80 0.09 150)"},
+  gemini:{label:"Gemini", hue:"oklch(0.76 0.10 265)"},
+  opencode:{label:"opencode", hue:"oklch(0.80 0.08 320)"}
+};
+const PROJECTS = ["maestro","WhaleloSource","ByteWaker"];
+const ORDER = ["needs","review","working","idle","merged"];
+const LABEL = {needs:"Needs you", review:"Ready to review", working:"Working", idle:"Idle", merged:"Merged today"};
+const T0 = Date.now();
+const ago = s => T0 - s*1000;
+const F = (p,a,d,h) => ({p,a,d,h});
+
+const agents = [
+  {id:"ana", name:"Ana", cli:"claude", project:"maestro", branch:"ana/queue-state", task:"Derive agent state from PTY output", state:"needs", since:ago(95), cost:1.84,
+   ask:{kind:"run", cmd:"npm run tauri build -- --debug", why:"Needs a debug build to check the new state events reach the frontend."},
+   log:[["you","Add a state deriver: needs / review / working / idle, from PTY output + worktree diff. Tests first."],["gap"],["say","I'll start with the pure deriver so it's testable without a PTY."],["tool","Write(src/taskstate.ts)"],["dim","└ Wrote 84 lines"],["tool","Write(src/taskstate.test.ts)"],["dim","└ Wrote 61 lines"],["tool","Bash(npx vitest run src/taskstate.test.ts)"],["ok","└ 9 passed (9)"],["gap"],["say","Deriver is green. Now I need the Rust side to emit output timestamps, which means a debug build."],["thinking","Waiting for permission…"]]},
+  {id:"bo", name:"Bo", cli:"codex", project:"WhaleloSource", branch:"bo/order-export", task:"CSV export for the orders table", state:"needs", since:ago(240), cost:0.62,
+   ask:{kind:"question", q:"Should the export include cancelled orders?", why:"The spec says “all orders”, but the finance report filters cancelled ones out.", options:["Only paid orders","All orders, with a Status column","Match whatever the finance report does"]},
+   log:[["you","Add CSV export to the orders table. Match the columns on screen."],["gap"],["tool","Read(app/Http/Controllers/OrderController.php)"],["tool","Read(resources/js/pages/orders/Index.vue)"],["say","Two sources disagree about cancelled orders, so I'll ask before writing the query."]]},
+  {id:"cy", name:"Cy", cli:"claude", project:"maestro", branch:"cy/palette", task:"Command palette replaces the spawn wizard", state:"review", since:ago(420), cost:2.31,
+   diff:{checks:[["ok","48 tests passed"],["ok","tsc clean"],["ok","vite build"]], files:[
+     F("src/palette.ts",142,0,[["@@ -0,0 +1,14 @@",[["+","import { fuzzy } from \"./fuzzy\";"],["+","import type { Task } from \"./task\";"],["+",""],["+","export type Command = {"],["+","  id: string;"],["+","  label: string;"],["+","  keys?: string;"],["+","  run: () => void;"],["+","};"],["+",""],["+","export function rank(q: string, items: Command[]) {"],["+","  if (!q) return items;"],["+","  return fuzzy(q, items, (c) => c.label);"],["+","}"]]]]),
+     F("src/spawnmodal.ts",0,436,[["@@ -1,6 +0,0 @@",[["-","// Spawn modal: folder, count tiles, model multi-select."],["-","import { spawnCrew } from \"./crew\";"],["-","import { gridDims } from \"./canvas\";"],["-","export function openSpawnModal() {"],["-","  const m = document.getElementById(\"spawnModal\")!;"],["-","  m.hidden = false;"]]]]),
+     F("src/main.ts",6,19,[["@@ -212,9 +212,6 @@ function wireShortcuts()",[[" ","  switch (e.key) {"],["-","    case \"t\": openSpawnModal(); break;"],["-","    case \"w\": openWizard(); break;"],["-","    case \"k\": openSwitcher(); break;"],["+","    case \"k\": openPalette(); break;"],["+","    case \"n\": openPalette(\"new\"); break;"],[" ","  }"]]]])
+   ]},
+   log:[["you","Replace spawn modal, spawn menu, wizard and switcher with one Ctrl K palette."],["gap"],["tool","Write(src/palette.ts)"],["tool","Bash(git rm src/spawnmodal.ts src/spawnmenu.ts src/switcher.ts)"],["tool","Bash(npm test)"],["ok","└ 48 passed"],["gap"],["say","Done. Net −300 lines. The palette ranks agents above commands when the query matches a name."]]},
+  {id:"kai", name:"Kai", cli:"claude", project:"ByteWaker", branch:"kai/flaky-upload", task:"Fix the flaky upload test", race:"r1", state:"review", since:ago(300), cost:0.88,
+   diff:{checks:[["ok","31 tests passed ×20 runs"]], files:[
+     F("src/upload/queue.ts",9,4,[["@@ -40,8 +40,13 @@ export async function flush()",[[" ","  const batch = take(queue, 10);"],["-","  await Promise.all(batch.map(send));"],["+","  // sends must finish in order: the server"],["+","  // rejects chunk n+1 before chunk n lands"],["+","  for (const item of batch) {"],["+","    await send(item);"],["+","  }"],[" ","  emit(\"flushed\", batch.length);"]]]]),
+     F("src/upload/queue.test.ts",3,1,[["@@ -12,4 +12,6 @@",[["-","  it(\"flushes\", async () => {"],["+","  it(\"flushes chunks in order\", async () => {"],["+","    vi.useFakeTimers();"],["+","    await run20(flush);"]]]])
+   ]},
+   log:[["you","The upload test fails about 1 in 8 runs. Find out why and fix the cause, not the test."],["gap"],["tool","Bash(npx vitest run upload --repeat 20)"],["err","└ 3 failed / 20"],["say","Chunks are sent in parallel and the server rejects out-of-order ones. Making the flush sequential."],["tool","Edit(src/upload/queue.ts)"],["tool","Bash(npx vitest run upload --repeat 20)"],["ok","└ 20 / 20 passed"],["say","Root cause fixed. 20 clean runs."]]},
+  {id:"lu", name:"Lu", cli:"codex", project:"ByteWaker", branch:"lu/flaky-upload", task:"Fix the flaky upload test", race:"r1", state:"review", since:ago(260), cost:0.41,
+   diff:{checks:[["ok","31 tests passed ×20 runs"],["no","adds a retry"]], files:[
+     F("src/upload/queue.test.ts",2,0,[["@@ -1,3 +1,5 @@",[["+","// retry: the ordering issue is intermittent"],["+","vi.setConfig({ retry: 2 });"]]]])
+   ]},
+   log:[["you","The upload test fails about 1 in 8 runs. Find out why and fix the cause, not the test."],["gap"],["tool","Bash(npx vitest run upload --repeat 20)"],["err","└ 2 failed / 20"],["say","Intermittent ordering issue. Added a retry to the test so CI stays green."],["ok","└ 20 / 20 passed"]]},
+  {id:"mo", name:"Mo", cli:"gemini", project:"ByteWaker", branch:"mo/flaky-upload", task:"Fix the flaky upload test", race:"r1", state:"working", since:ago(200), cost:0.19,
+   log:[["you","The upload test fails about 1 in 8 runs. Find out why and fix the cause, not the test."],["gap"],["tool","Bash(npx vitest run upload --repeat 20)"],["err","└ 3 failed / 20"],["thinking","Reading the chunk handler (2m)"]]},
+  {id:"dee", name:"Dee", cli:"gemini", project:"ByteWaker", branch:"dee/fix-login-empty", task:"Reject empty password on login", state:"review", since:ago(900), cost:0.21,
+   diff:{checks:[["ok","12 tests passed"],["no","1 lint warning"]], files:[
+     F("src/auth/validate.ts",4,1,[["@@ -8,7 +8,10 @@ export function validateLogin(input)",[[" ","  const email = input.email.trim();"],["-","  if (!email) return err(\"Enter your email\");"],["+","  if (!email) return err(\"Enter your email\");"],["+","  if (!input.password) {"],["+","    return err(\"Enter your password\");"],["+","  }"],[" ","  return ok({ email, password: input.password });"]]]]),
+     F("src/auth/validate.test.ts",6,0,[["@@ -22,0 +22,6 @@",[["+","it(\"rejects an empty password\", () => {"],["+","  const r = validateLogin({ email: \"a@b.co\", password: \"\" });"],["+","  expect(r.ok).toBe(false);"],["+","  expect(r.error).toBe(\"Enter your password\");"],["+","});"],["+",""]]]])
+   ]},
+   log:[["you","Login accepts an empty password. Reject it with a clear message and add a test."],["gap"],["tool","Edit(src/auth/validate.ts)"],["tool","Edit(src/auth/validate.test.ts)"],["tool","Bash(npm test -- auth)"],["ok","└ 12 passed"],["say","Fixed. Lint flags an unused import in a file I didn't touch; left it alone."]]},
+  {id:"eli", name:"Eli", cli:"claude", project:"WhaleloSource", branch:"eli/n-plus-one", task:"Kill the N+1 on the customer list", state:"working", since:ago(180), cost:0.93,
+   log:[["you","The customer list does one query per row. Fix it and show me the before/after query count."],["gap"],["tool","Bash(php artisan test --filter=CustomerList)"],["ok","└ 4 passed"],["tool","Read(app/Models/Customer.php)"],["say","Adding eager loading for orders and tags, then counting queries."],["tool","Edit(app/Http/Controllers/CustomerController.php)"],["thinking","Measuring… (1m 12s)"]]},
+  {id:"fin", name:"Fin", cli:"codex", project:"maestro", branch:"fin/review-panel", task:"Review panel on top of review.rs", state:"working", since:ago(60), cost:0.40,
+   log:[["you","Build the review side panel: file list, hunks, merge / send back / discard."],["gap"],["tool","Read(src-tauri/src/review.rs)"],["say","review.rs already returns hunks per file. I'll reuse review_diff and add review_merge."],["tool","Edit(src-tauri/src/review.rs)"],["thinking","Compiling… (38s)"]]},
+  {id:"hal", name:"Hal", cli:"gemini", project:"WhaleloSource", branch:"main", task:"", state:"idle", since:ago(3600), cost:0,
+   log:[["dim","Session started. Waiting for a task."]]},
+  {id:"ivy", name:"Ivy", cli:"claude", project:"maestro", branch:"ivy/updater-copy", task:"Rewrite updater dialog copy", state:"merged", since:ago(5400), cost:0.18,
+   log:[["say","Merged into main."]]}
+];
+const races = { r1: { task:"Fix the flaky upload test", project:"ByteWaker" } };
+
+// ---------- state ----------
+let current = "ana", filter = "all", view = "queue", fileIdx = 0, lastUndo = null;
+const selected = new Set();
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+const byId = id => agents.find(a => a.id === id);
+const fmt = ms => { const s = Math.max(0, Math.round(ms/1000)); if (s < 60) return s + "s"; const m = Math.round(s/60); if (m < 60) return m + "m"; return Math.round(m/60) + "h"; };
+const visible = () => agents.filter(a => filter === "all" || a.project === filter);
+const inState = (st, list = visible()) => list.filter(a => a.state === st).sort((x,y) => x.since - y.since);
+const sorted = () => ORDER.flatMap(st => inState(st));
+const sums = a => a.diff ? a.diff.files.reduce((t,x) => [t[0]+x.a, t[1]+x.d], [0,0]) : null;
+const raceMates = a => a.race ? agents.filter(x => x.race === a.race) : [];
+const titleOf = a => a.state === "idle" ? `${a.name} is free` : a.task;
+
+function statusLine(a){
+  if (a.state === "needs") return a.ask.kind === "question" ? "Asks: " + a.ask.q : "Wants to run " + a.ask.cmd;
+  if (a.state === "review") { const n = a.diff.files.length; return `${n} file${n===1?"":"s"} changed`; }
+  if (a.state === "working") { const t = [...a.log].reverse().find(l => l[0]==="tool" || l[0]==="thinking"); return t ? t[1] : "Working"; }
+  if (a.state === "merged") return "Merged into main";
+  return "Waiting for a task";
+}
+
+// ---------- render ----------
+function pulse(){
+  const c = s => agents.filter(a => a.state === s).length;
+  const spend = agents.reduce((t,a) => t + a.cost, 0);
+  $("#pulse").innerHTML =
+    `<span><i class="g needs" aria-hidden="true"></i><b>${c("needs")}</b> need you</span>`+
+    `<span><i class="g review" aria-hidden="true"></i><b>${c("review")}</b> to review</span>`+
+    `<span class="popt"><i class="g working" aria-hidden="true"></i><b>${c("working")}</b> working</span>`+
+    `<span class="popt">Today <b>$${spend.toFixed(2)}</b></span>`;
+  document.title = c("needs") ? `(${c("needs")}) Maestro Inbox` : "Maestro Inbox";
+}
+
+function chips(){
+  $("#projChips").innerHTML = ["all", ...PROJECTS].map(p => {
+    const n = agents.filter(a => a.state === "needs" && (p === "all" || a.project === p)).length;
+    return `<button class="chip" aria-pressed="${filter===p}" data-p="${esc(p)}">${p==="all" ? "All projects" : esc(p)}${n ? ` · <span class="num">${n}</span>` : ""}</button>`;
+  }).join("");
+}
+
+function queue(){
+  $("#qlist").innerHTML = ORDER.map(st => {
+    const list = inState(st);
+    if (!list.length && st !== "needs") return "";
+    const rows = list.map(a => {
+      const s = sums(a), mates = raceMates(a);
+      const tag = mates.length > 1 ? `<span class="tag">race ${mates.indexOf(a)+1}/${mates.length}</span>` : "";
+      return `<button class="row${st==="merged" ? " merged-row" : ""}${selected.has(a.id) ? " sel" : ""}" data-id="${a.id}" aria-current="${a.id===current}" aria-pressed="${selected.has(a.id)}">
+        <span class="glyph"><i class="g ${st}" aria-hidden="true"></i><span class="sr">${LABEL[st]}</span></span>
+        <span class="title">${esc(titleOf(a))}${tag}</span>
+        <span class="time">${fmt(Date.now()-a.since)}</span>
+        <span class="sub"><span>${esc(a.name)}</span><span aria-hidden="true">·</span><span class="st ${st}">${esc(statusLine(a))}</span></span>
+        ${s && st !== "merged" ? `<span class="dc"><span class="a">+${s[0]}</span> <span class="d">−${s[1]}</span></span>` : "<span></span>"}
+      </button>`;
+    }).join("");
+    const empty = !list.length ? `<p class="allclear">All clear. Nothing is waiting on you.</p>` : "";
+    return `<section class="group" aria-label="${LABEL[st]}"><div class="gtitle">${LABEL[st]} <span class="n">${list.length}</span></div>${rows}${empty}</section>`;
+  }).join("");
+  bulkbar();
+}
+
+function bulkbar(){
+  const b = $("#bulk");
+  if (!selected.size) { b.hidden = true; return; }
+  const list = [...selected].map(byId).filter(Boolean);
+  const canMerge = list.filter(a => a.state === "review").length;
+  const canStop = list.filter(a => a.state === "working").length;
+  b.hidden = false;
+  b.innerHTML = `<span class="n">${list.length} selected</span>
+    ${canMerge ? `<button id="bMerge">Merge ${canMerge}</button>` : ""}
+    <button id="bMsg">Message</button>
+    ${canStop ? `<button id="bStop">Stop ${canStop}</button>` : ""}
+    <button id="bClear" aria-label="Clear selection">✕</button>`;
+  const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
+  on("#bMerge", () => { const done = list.filter(a => a.state === "review"); const snaps = done.map(a => [a, snap(a)]); done.forEach(a => doMerge(a)); selected.clear(); toast(`Merged ${done.length} branches into main.`, () => snaps.forEach(([a,s]) => Object.assign(a, s))); render(); });
+  on("#bStop", () => { list.filter(a => a.state === "working").forEach(a => doStop(a)); selected.clear(); toast("Stopped."); render(); });
+  on("#bMsg", () => { const names = list.map(a => "@" + a.name).join(" "); selected.clear(); render(); const m = $("#msg"); if (m) { m.value = names + " "; m.focus(); } });
+  on("#bClear", () => { selected.clear(); queue(); });
+}
+
+function termHTML(a){
+  return a.log.map(([k,t]) => k === "gap" ? `<div class="gap"></div>` : `<div class="l ${k}">${esc(t)}</div>`).join("");
+}
+
+function dockHTML(a){
+  if (a.state === "needs") {
+    const q = a.ask.kind === "question";
+    return `<section class="decision" aria-label="${q ? "Question" : "Approval"} from ${esc(a.name)}">
+      <div class="dtop"><i class="g needs" aria-hidden="true"></i>${q ? `${esc(a.name)} has a question` : `${esc(a.name)} wants to run a command`}<span class="why">${esc(a.ask.why)}</span></div>
+      <div class="dbody">${q
+        ? `<p class="qtext">${esc(a.ask.q)}</p><div class="dopts">${a.ask.options.map((o,i) => `<button class="dopt" data-o="${i}"><span class="k">${i+1}</span><span class="sp">${esc(o)}</span><span class="go" aria-hidden="true">→</span></button>`).join("")}</div>`
+        : `<code>${esc(a.ask.cmd)}</code>`}</div>
+      <div class="dfoot">
+        <label class="sr" for="replyIn">Reply to ${esc(a.name)}</label>
+        <input class="reply" id="replyIn" autocomplete="off" placeholder="${q ? "Something else…" : "Or tell " + esc(a.name) + " what to do instead…"}">
+        ${q ? `<button class="btn primary" id="doReply">Send <kbd>↵</kbd></button>`
+            : `<button class="btn quiet" id="doAlways">Always allow here</button><button class="btn danger" id="doDeny">Deny <kbd>D</kbd></button><button class="btn primary" id="doAllow">Allow <kbd>A</kbd></button>`}
+      </div>
+    </section>`;
+  }
+  const run = a.state === "working" ? `<div class="runbar" role="status"><i class="g working" aria-hidden="true"></i><span class="sp">${esc(a.name)} is working · ${fmt(Date.now()-a.since)} · ${esc(statusLine(a))}</span><button id="doStop"><span aria-hidden="true">■</span> Stop <kbd>S</kbd></button></div>` : "";
+  const ph = a.state === "idle" || a.state === "merged" ? `Give ${a.name} a task…` : `Message ${a.name}…`;
+  return `${run}<form class="composer" id="composer">
+      <label class="sr" for="msg">${esc(ph)}</label>
+      <textarea id="msg" rows="1" placeholder="${esc(ph)}"></textarea>
+      <button class="send" type="submit">Send</button>
+    </form>
+    <div class="chint"><span>Goes to ${esc(a.name)} only</span><span><kbd>@name</kbd> hand to another agent</span><span><kbd>Ctrl K</kbd> everything else</span></div>`;
+}
+
+function stage(){
+  const a = byId(current);
+  const st = $("#stage");
+  if (!a) { st.innerHTML = `<div class="rempty"><strong>No agent selected</strong>Pick one from the queue, or press N to start a task.</div>`; return; }
+  const cli = CLIS[a.cli], s = sums(a);
+  const summary = a.diff && a.state !== "working" ? `<div class="fcsum">
+      <div class="fch">${a.diff.files.length} file${a.diff.files.length===1?"":"s"} changed <span class="num a">+${s[0]}</span> <span class="num d">−${s[1]}</span><button id="openDiff">Review →</button></div>
+      ${a.diff.files.map((x,i) => `<button class="fcrow" data-i="${i}"><span class="p">${esc(x.p)}</span><span class="a">+${x.a}</span><span class="d">−${x.d}</span></button>`).join("")}
+    </div>` : "";
+  st.innerHTML = `
+    <div class="shead">
+      <button class="hbtn back" id="back">← Queue</button>
+      <div class="avatar" style="background:${cli.hue}" aria-hidden="true">${esc(a.name[0])}</div>
+      <div class="stitle">
+        <h1>${esc(titleOf(a))}</h1>
+        <div class="meta"><span>${esc(a.name)} · ${cli.label}</span><span>${esc(a.project)} / <span class="num">${esc(a.branch)}</span></span><span class="num">$${a.cost.toFixed(2)}</span></div>
+      </div>
+      <span class="pill ${a.state}"><i class="g ${a.state}" aria-hidden="true"></i>${LABEL[a.state]}</span>
+      <button class="hbtn" id="toggleReview" aria-expanded="${!$("#rpanel").hidden}" aria-controls="rpanel">Changes${s ? ` <span class="num a">+${s[0]}</span>` : ""}</button>
+    </div>
+    <div class="term" id="term" tabindex="0" aria-label="${esc(a.name)} output">${termHTML(a)}${summary}</div>
+    <div class="dock">${dockHTML(a)}</div>`;
+  const t = $("#term"); t.scrollTop = t.scrollHeight;
+  wireStage(a);
+}
+
+function review(){
+  const a = byId(current), r = $("#rpanel");
+  if (!a || !a.diff) {
+    const working = a && a.state === "working";
+    r.innerHTML = `<div class="rhead"><button class="hbtn rclose" id="rClose">Close</button><h2>Changes</h2><p class="br">${a ? esc(a.branch) : ""}</p></div>
+      <div class="rempty"><strong>${working ? "Still working" : "Nothing to review"}</strong>${working ? `The diff lands here when ${esc(a.name)} stops.` : a && a.state === "needs" ? `${esc(a.name)} is waiting on you before writing more.` : "No changes on this branch."}</div>`;
+    $("#rClose").onclick = closeReview;
+    return;
+  }
+  const f = a.diff.files; if (fileIdx >= f.length) fileIdx = 0;
+  a.viewed = a.viewed || [];
+  const cur = f[fileIdx], s = sums(a), seen = a.viewed.length;
+  let ln = 1;
+  const hunks = cur.h.map(([hd, lines]) => `<div class="hunk">${esc(hd)}</div>` + lines.map(([k,c]) =>
+    `<div class="dl ${k==="+" ? "add" : k==="-" ? "del" : ""}"><span class="ln">${k==="-" ? "" : ln++}</span><span class="c">${esc(k===" " ? " " : k)}${esc(c)}</span></div>`).join("")).join("");
+  const mates = raceMates(a);
+  const race = mates.length > 1 ? `<div class="race"><span class="sp">Racing with ${esc(mates.filter(x => x !== a).map(x => x.name).join(" and "))} on the same task.</span><button id="openCompare">Compare <kbd>C</kbd></button></div>` : "";
+  r.innerHTML = `
+    <div class="rhead"><button class="hbtn rclose" id="rClose">Close</button>
+      <h2>${f.length} file${f.length===1?"":"s"} changed <span class="num a">+${s[0]}</span><span class="num d">−${s[1]}</span></h2>
+      <p class="br">${esc(a.branch)} → main</p>
+      <div class="checks">${a.diff.checks.map(([k,t]) => `<span class="check"><span class="${k==="ok" ? "a" : "d"}" aria-hidden="true">${k==="ok" ? "✓" : "!"}</span>${esc(t)}</span>`).join("")}</div>
+      ${race}
+    </div>
+    <div class="fbar"><span><span class="num">${seen} / ${f.length}</span> files viewed</span><span class="progress" aria-hidden="true"><i style="width:${Math.round(seen/f.length*100)}%"></i></span></div>
+    <div class="files">${f.map((x,i) => `<div class="file${i===fileIdx ? " cur" : ""}${a.viewed.includes(i) ? " seen" : ""}">
+        <button class="pick" data-i="${i}" aria-current="${i===fileIdx}"><span class="p">${esc(x.p)}</span><span class="a">+${x.a}</span><span class="d">−${x.d}</span></button>
+        <label><input type="checkbox" data-v="${i}" ${a.viewed.includes(i) ? "checked" : ""}> Viewed</label></div>`).join("")}</div>
+    <div class="diff" tabindex="0" aria-label="Diff of ${esc(cur.p)}">${hunks}</div>
+    ${a.state === "review" ? `<div class="rfoot">
+      <label class="sr" for="note">Note for ${esc(a.name)}</label>
+      <textarea class="note" id="note" placeholder="What should ${esc(a.name)} change? Needed only for Send back."></textarea>
+      <div class="row2"><button class="btn primary" id="doMerge">Merge into main <kbd>M</kbd></button><button class="btn" id="doSendBack">Send back</button><button class="btn danger" id="doDiscard">Discard branch</button></div>
+    </div>` : ""}`;
+  r.querySelectorAll(".pick").forEach(b => b.onclick = () => { fileIdx = +b.dataset.i; review(); });
+  r.querySelectorAll("input[data-v]").forEach(c => c.onchange = () => { toggleViewed(a, +c.dataset.v, c.checked); });
+  const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
+  on("#rClose", closeReview);
+  on("#doMerge", () => merge(a)); on("#doSendBack", () => sendBack(a)); on("#doDiscard", () => discard(a)); on("#openCompare", () => openCompare(a.race));
+}
+
+function closeReview(){ $("#rpanel").hidden = true; const t = $("#toggleReview"); if (t) { t.setAttribute("aria-expanded", "false"); t.focus(); } }
+
+function toggleViewed(a, i, on){
+  a.viewed = a.viewed || [];
+  if (on && !a.viewed.includes(i)) a.viewed.push(i);
+  if (!on) a.viewed = a.viewed.filter(x => x !== i);
+  review();
+}
+
+function board(){
+  const cols = [["idle","Free"],["working","Working"],["needs","Needs you"],["review","Ready to review"],["merged","Merged"]];
+  $("#board").innerHTML = `<p class="bnote">Columns follow what each agent is actually doing, so there is nothing to drag. Click a card to open it.</p>` +
+    cols.map(([st, t]) => { const list = inState(st); return `<section class="col" aria-label="${t}"><h3><i class="g ${st}" aria-hidden="true"></i>${t} <span class="num">${list.length}</span></h3>${list.length ? list.map(a => `<button class="card" data-id="${a.id}"><div class="t">${esc(titleOf(a))}</div><div class="f"><span class="mini" style="background:${CLIS[a.cli].hue}" aria-hidden="true">${esc(a.name[0])}</span>${esc(a.name)} · ${esc(a.project)}<span style="margin-left:auto" class="num">${fmt(Date.now()-a.since)}</span></div></button>`).join("") : `<p class="bempty">None</p>`}</section>`; }).join("");
+  $("#board").querySelectorAll(".card").forEach(c => c.onclick = () => { current = c.dataset.id; fileIdx = 0; setView("queue"); });
+}
+
+function setView(v){
+  view = v;
+  $("#vQueue").setAttribute("aria-pressed", v === "queue");
+  $("#vBoard").setAttribute("aria-pressed", v === "board");
+  const q = v === "queue";
+  $("#queue").hidden = !q; $("#stage").hidden = !q; $("#board").hidden = q;
+  $("#rpanel").hidden = !q || (window.innerWidth <= 1100 && !(byId(current) && byId(current).state === "review"));
+  render();
+}
+
+function render(){
+  pulse();
+  if (view === "board") { board(); return; }
+  chips(); queue(); stage(); review();
+}
+
+// ---------- actions ----------
+function toast(msg, undo){
+  $("#toastMsg").textContent = msg; $("#toast").hidden = false;
+  $("#toastUndo").hidden = !undo; lastUndo = undo || null;
+  clearTimeout(toast.t); toast.t = setTimeout(() => { $("#toast").hidden = true; lastUndo = null; }, 5500);
+}
+$("#toastUndo").onclick = () => { if (lastUndo) { lastUndo(); render(); } $("#toast").hidden = true; lastUndo = null; };
+
+const snap = a => JSON.parse(JSON.stringify(a));
+function giveBack(el){
+  if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+  if (el && el.isConnected && el.focus && el !== document.body) el.focus();
+}
+const restorer = (a, s) => () => { Object.assign(a, s); if (!s.ask) delete a.ask; if (!s.diff) delete a.diff; current = a.id; };
+
+function advance(from){
+  const next = sorted().filter(x => x.id !== from && (x.state === "needs" || x.state === "review"))[0];
+  current = next ? next.id : from; fileIdx = 0; render();
+}
+function resume(a, lines, then){
+  a.log = a.log.filter(l => l[0] !== "thinking");
+  a.log.push(...lines);
+  a.state = "working"; a.since = Date.now(); delete a.ask;
+  if (then) finishLater(a, then.ms, then.lines);
+}
+function finishLater(a, ms, lines){
+  const token = a.since;
+  setTimeout(() => {
+    if (a.state !== "working" || a.since !== token) return;
+    a.log = a.log.filter(l => l[0] !== "thinking");
+    a.log.push(...lines);
+    a.state = "review"; a.since = Date.now();
+    if (!a.diff) a.diff = sampleDiff(a);
+    render();
+  }, ms);
+}
+function sampleDiff(a){
+  const slug = a.branch.split("/")[1] || "change";
+  return {checks:[["ok","All tests passed"]], files:[F(`src/${slug}.ts`, 37, 8, [["@@ -1,4 +1,6 @@",[[" ","// " + a.task],["-","export const TODO = true;"],["+","export function run() {"],["+","  // implemented by " + a.name],["+","}"]]]])]};
+}
+
+function allow(a, always){
+  const undo = restorer(a, snap(a));
+  resume(a, [["tool", "Bash(" + a.ask.cmd + ")"], ["thinking", "Running… (0s)"]], {ms:7000, lines:[["ok","└ Finished in 41s"],["say","Build is green and the state events reach the frontend. Ready for you to look at."]]});
+  toast(always ? `Always allowed in ${a.project}. ${a.name} is back to work.` : `Allowed. ${a.name} is back to work.`, undo);
+  advance(a.id);
+}
+function deny(a){
+  const undo = restorer(a, snap(a));
+  resume(a, [["err","└ Denied by you"], ["say","Understood. I'll cover the events with a unit test on the emitter instead."], ["thinking","Writing the test…"]], {ms:8000, lines:[["ok","└ 11 passed"],["say","Covered by tests instead of a build. Ready for review."]]});
+  toast(`Denied. ${a.name} is trying another way.`, undo);
+  advance(a.id);
+}
+function answer(a, text){
+  if (!text || !text.trim()) return;
+  const undo = restorer(a, snap(a));
+  resume(a, [["you", text.trim()], ["gap"], ["say","Got it. Going with that."], ["thinking","Writing the query…"]], {ms:9000, lines:[["ok","└ 6 passed"],["say","Done. Ready for review."]]});
+  toast(`Sent to ${a.name}.`, undo);
+  advance(a.id);
+}
+function doMerge(a){
+  a.state = "merged"; a.since = Date.now(); a.log.push(["gap"],["say",`Merged ${a.branch} into main. Worktree removed.`]);
+}
+function merge(a){
+  const undo = restorer(a, snap(a));
+  doMerge(a); toast(`Merged ${a.branch} into main.`, undo); advance(a.id);
+}
+function sendBack(a){
+  const n = $("#note"); const note = (n.value || "").trim();
+  if (!note) { n.placeholder = "Write what should change first, then press Send back."; n.focus(); return; }
+  const undo = restorer(a, snap(a));
+  a.viewed = [];
+  resume(a, [["gap"],["you", note],["say","On it."],["thinking","Revising…"]], {ms:8000, lines:[["ok","└ Updated"],["say","Addressed your note. Ready again."]]});
+  toast(`Sent back to ${a.name}.`, undo); advance(a.id);
+}
+function discard(a){
+  const undo = restorer(a, snap(a));
+  a.state = "idle"; a.task = ""; a.since = Date.now(); delete a.diff; delete a.race; a.branch = "main"; a.viewed = [];
+  a.log.push(["gap"],["dim","Branch discarded. Waiting for a task."]);
+  toast(`Discarded the branch. ${a.name} is free.`, undo); advance(a.id);
+}
+function doStop(a){
+  a.log = a.log.filter(l => l[0] !== "thinking");
+  a.log.push(["err","└ Stopped by you"]);
+  a.since = Date.now();
+  a.state = a.diff ? "review" : "idle";
+}
+function stop(a){
+  const undo = restorer(a, snap(a));
+  doStop(a); toast(`Stopped ${a.name}.`, undo); render();
+}
+function message(a, text){
+  text = text.trim(); if (!text) return;
+  const targets = [...text.matchAll(/@(\w+)/g)].map(m => m[1].toLowerCase());
+  const body = text.replace(/@\w+/g, "").trim();
+  if (targets.length && body) {
+    const group = targets.includes("all") ? agents.filter(x => x.state !== "merged") :
+                  targets.includes("working") ? agents.filter(x => x.state === "working") :
+                  agents.filter(x => targets.includes(x.name.toLowerCase()));
+    if (group.length) {
+      group.forEach(t => { t.log.push(["gap"],["you", body]); if (t.state === "idle" || t.state === "merged") assign(t, body); });
+      toast(`Sent to ${group.map(t => t.name).join(", ")}.`); render(); return;
+    }
+  }
+  a.log.push(["gap"],["you", text]);
+  if (a.state === "idle" || a.state === "merged") assign(a, text);
+  render();
+}
+function assign(a, text){
+  a.task = text.length > 70 ? text.slice(0,68) + "…" : text;
+  a.branch = a.name.toLowerCase() + "/" + (text.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,22) || "task");
+  a.state = "working"; a.since = Date.now(); delete a.diff; a.viewed = [];
+  a.log.push(["thinking","Reading the codebase…"]);
+  finishLater(a, 9000, [["ok","└ Tests pass"],["say","Finished. Ready for review."]]);
+}
+
+function wireStage(a){
+  const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
+  on("#back", () => $("#app").classList.remove("show-stage"));
+  on("#doAllow", () => allow(a)); on("#doAlways", () => allow(a, true)); on("#doDeny", () => deny(a));
+  on("#doReply", () => answer(a, $("#replyIn").value));
+  on("#doStop", () => stop(a));
+  on("#openDiff", () => { $("#rpanel").hidden = false; review(); $("#rpanel .diff") && $("#rpanel .diff").focus(); });
+  on("#toggleReview", () => { const r = $("#rpanel"); r.hidden = !r.hidden; $("#toggleReview").setAttribute("aria-expanded", String(!r.hidden)); });
+  document.querySelectorAll(".dopt").forEach(b => b.onclick = () => answer(a, a.ask.options[+b.dataset.o]));
+  document.querySelectorAll(".fcrow").forEach(b => b.onclick = () => { fileIdx = +b.dataset.i; $("#rpanel").hidden = false; review(); });
+  const ri = $("#replyIn");
+  if (ri) ri.onkeydown = e => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (a.ask.kind === "question") answer(a, ri.value);
+    else if (ri.value.trim()) { const undo = restorer(a, snap(a)); resume(a, [["err","└ Not run"],["you", ri.value.trim()],["say","Okay, doing it that way instead."],["thinking","Working…"]], {ms:8000, lines:[["ok","└ Done"],["say","Ready for review."]]}); toast(`Sent to ${a.name} instead of running the command.`, undo); advance(a.id); }
+  };
+  const msg = $("#msg");
+  if (msg) {
+    msg.oninput = () => { msg.style.height = "auto"; msg.style.height = Math.min(140, msg.scrollHeight) + "px"; };
+    msg.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#composer").requestSubmit(); } };
+    $("#composer").onsubmit = e => { e.preventDefault(); message(a, msg.value); };
+  }
+}
+
+function select(id){
+  current = id; fileIdx = 0;
+  const a = byId(id);
+  if (window.innerWidth <= 1100) $("#rpanel").hidden = !(a && a.state === "review");
+  render();
+  $("#app").classList.add("show-stage");
+}
+
+$("#qlist").addEventListener("click", e => { const row = e.target.closest(".row"); if (row) select(row.dataset.id); });
+$("#projChips").addEventListener("click", e => { const c = e.target.closest(".chip"); if (c) { filter = c.dataset.p; render(); } });
+$("#vQueue").onclick = () => setView("queue");
+$("#vBoard").onclick = () => setView("board");
+
+// ---------- race compare ----------
+let cmpReturn = null;
+function openCompare(raceId){
+  const r = races[raceId]; if (!r) return;
+  const mates = agents.filter(x => x.race === raceId);
+  cmpReturn = document.activeElement;
+  $("#cmpTitle").textContent = r.task;
+  $("#cmpSub").textContent = `${mates.length} agents raced on ${r.project}, each on its own branch. Keep one; the others are discarded.`;
+  const score = a => a.diff ? a.diff.checks.filter(c => c[0] === "ok").length - a.diff.checks.filter(c => c[0] === "no").length : -9;
+  const best = mates.filter(a => a.state === "review").sort((x,y) => score(y) - score(x) || x.cost - y.cost)[0];
+  $("#cmpGrid").innerHTML = mates.map(a => {
+    const s = sums(a), last = [...a.log].reverse().find(l => l[0] === "say");
+    return `<section class="cmpcol${a === best ? " best" : ""}" aria-label="${esc(a.name)}">
+      <div class="cmpwho"><span class="mini" style="background:${CLIS[a.cli].hue};width:26px;height:26px;border-radius:7px;font-size:12px" aria-hidden="true">${esc(a.name[0])}</span><div><b>${esc(a.name)}</b><div class="cli">${CLIS[a.cli].label}</div></div>${a === best ? `<span class="badge">Suggested</span>` : ""}</div>
+      <dl class="stats">
+        <dt>Status</dt><dd>${LABEL[a.state]}</dd>
+        <dt>Changes</dt><dd>${s ? `<span class="a">+${s[0]}</span> <span class="d">−${s[1]}</span>` : "—"}</dd>
+        <dt>Checks</dt><dd>${a.diff ? a.diff.checks.map(c => c[0]==="ok" ? "✓" : "!").join(" ") : "—"}</dd>
+        <dt>Cost</dt><dd>$${a.cost.toFixed(2)}</dd>
+      </dl>
+      ${a.diff ? `<div class="cmpfiles">${a.diff.files.map(x => `<div><span class="p">${esc(x.p)}</span><span class="a">+${x.a}</span><span class="d">−${x.d}</span></div>`).join("")}</div>` : ""}
+      ${a.diff ? a.diff.checks.filter(c => c[0]==="no").map(c => `<p class="cmpsay warn">! ${esc(c[1])}</p>`).join("") : ""}
+      <p class="cmpsay">${last ? "“" + esc(last[1]) + "”" : ""}</p>
+      ${a.state === "review" ? `<button class="btn ${a === best ? "primary" : ""}" data-keep="${a.id}">Keep ${esc(a.name)}'s version</button>` : `<button class="btn" disabled>Still working</button>`}
+    </section>`;
+  }).join("");
+  $("#cmpGrid").querySelectorAll("[data-keep]").forEach(b => b.onclick = () => keep(raceId, b.dataset.keep));
+  $("#cmpBack").hidden = false;
+  const first = $("#cmpGrid [data-keep]"); (first || $("#cmpClose")).focus();
+}
+function closeCompare(){ $("#cmpBack").hidden = true; giveBack(cmpReturn); }
+function keep(raceId, id){
+  const mates = agents.filter(x => x.race === raceId);
+  const snaps = mates.map(a => [a, snap(a)]);
+  mates.forEach(a => {
+    if (a.id === id) { doMerge(a); }
+    else { a.log = a.log.filter(l => l[0] !== "thinking"); a.log.push(["gap"],["dim",`Race lost to ${byId(id).name}. Branch discarded.`]); a.state = "idle"; a.task = ""; a.branch = "main"; delete a.diff; a.since = Date.now(); }
+    delete a.race;
+  });
+  closeCompare();
+  toast(`Kept ${byId(id).name}'s fix and merged it. The other branches were discarded.`, () => snaps.forEach(([a,s]) => Object.assign(a, s)));
+  current = id; render();
+}
+$("#cmpClose").onclick = closeCompare;
+$("#cmpBack").onclick = e => { if (e.target.id === "cmpBack") closeCompare(); };
+
+// ---------- palette ----------
+let palItems = [], palSel = 0, palReturn = null;
+function commands(){
+  const a = byId(current);
+  const list = [
+    {label:"New task", keys:"N", run:() => openNew()},
+    {label:"Race 3 agents on one task", keys:"", run:() => openNew(3)},
+    {label:"Message every working agent", keys:"@working", run:() => { closePal(); prefill("@working "); }},
+    {label: view === "board" ? "Show queue" : "Show board", keys:"B", run:() => { closePal(); setView(view === "board" ? "queue" : "board"); }},
+    {label:"Keyboard shortcuts", keys:"?", run:() => { closePal(); openKeys(); }},
+    {label:"Read the design notes", keys:"", run:() => { closePal(); openNotes(); }}
+  ];
+  if (a && a.state === "review") list.unshift({label:`Merge ${a.name}'s branch into main`, keys:"M", run:() => { closePal(); merge(a); }});
+  if (a && a.race) list.unshift({label:`Compare the race: ${races[a.race].task}`, keys:"C", run:() => { closePal(); openCompare(a.race); }});
+  if (a && a.state === "working") list.unshift({label:`Stop ${a.name}`, keys:"S", run:() => { closePal(); stop(a); }});
+  return list.map(c => ({...c, sec:"Commands"}));
+}
+function prefill(t){ if (view !== "queue") setView("queue"); const m = $("#msg"); if (m) { m.value = t; m.focus(); } }
+function palRender(){
+  const q = $("#palInput").value.trim().toLowerCase();
+  const ag = sorted().map(a => ({sec:"Agents", label:`${a.name} · ${titleOf(a)}`, keys:LABEL[a.state], glyph:a.state, run:() => { closePal(); if (view === "board") setView("queue"); select(a.id); }}));
+  palItems = [...ag, ...commands()].filter(i => !q || i.label.toLowerCase().includes(q) || (i.keys || "").toLowerCase().includes(q));
+  if (palSel >= palItems.length) palSel = 0;
+  let sec = "";
+  $("#palList").innerHTML = palItems.length ? palItems.map((it,i) => {
+    const h = it.sec !== sec ? `<div class="psec" role="presentation">${it.sec}</div>` : ""; sec = it.sec;
+    const right = it.glyph ? `<span class="sub">${esc(it.keys)}</span>` : it.keys ? `<kbd>${esc(it.keys)}</kbd>` : "";
+    return h + `<button class="pitem" role="option" id="pi${i}" aria-selected="${i===palSel}" data-i="${i}">${it.glyph ? `<i class="g ${it.glyph}" aria-hidden="true"></i>` : `<span aria-hidden="true" style="width:12px;color:var(--ink-3)">›</span>`}<span class="sp">${esc(it.label)}</span>${right}</button>`;
+  }).join("") : `<p class="pnone">No agent or command matches “${esc(q)}”. Press <kbd>N</kbd> to start it as a new task.</p>`;
+  $("#palInput").setAttribute("aria-activedescendant", palItems.length ? "pi" + palSel : "");
+  $("#palList").querySelectorAll(".pitem").forEach(b => b.onclick = () => palItems[+b.dataset.i].run());
+  const s = $("#palList [aria-selected='true']"); if (s) s.scrollIntoView({block:"nearest"});
+}
+function openPal(){ palReturn = document.activeElement; $("#palBack").hidden = false; $("#palInput").value = ""; palSel = 0; palRender(); $("#palInput").focus(); }
+function closePal(){ $("#palBack").hidden = true; giveBack(palReturn); }
+$("#openPalette").onclick = openPal;
+$("#palInput").oninput = () => { palSel = 0; palRender(); };
+$("#palInput").onkeydown = e => {
+  if (e.key === "ArrowDown") { e.preventDefault(); palSel = Math.min(palItems.length - 1, palSel + 1); palRender(); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); palSel = Math.max(0, palSel - 1); palRender(); }
+  else if (e.key === "Enter") { e.preventDefault(); if (palItems[palSel]) palItems[palSel].run(); }
+};
+$("#palBack").onclick = e => { if (e.target.id === "palBack") closePal(); };
+
+// ---------- new task ----------
+let nfCount = 1, newReturn = null;
+$("#nfProject").innerHTML = PROJECTS.map(p => `<option>${esc(p)}</option>`).join("");
+$("#nfCli").innerHTML = Object.entries(CLIS).map(([k,c]) => `<option value="${k}">${c.label}</option>`).join("");
+function nfHelp(){
+  const flow = $("#nfFlow").value, wt = $("#nfWt").checked;
+  const who = nfCount === 1 ? "One agent" : `${nfCount} agents race`;
+  const where = wt ? (nfCount === 1 ? "on its own branch" : "on separate branches, then you compare the diffs and keep one") : "in your checkout (no isolation)";
+  const how = flow === "plan" ? " It writes a plan and waits for your go-ahead." : flow === "relay" ? " It moves through build, test and review stages." : "";
+  $("#nfHelp").textContent = `${who} ${where}.${how}`;
+  if (nfCount > 1 && !wt) $("#nfHelp").textContent = `${nfCount} agents in one checkout will overwrite each other. Turn on Own worktree.`;
+}
+function setCount(n){ nfCount = Math.max(1, Math.min(4, n)); $("#nfCount").textContent = nfCount; $("#nfCountLbl").textContent = nfCount === 1 ? "agent" : "agents"; nfHelp(); }
+$("#nfMinus").onclick = () => setCount(nfCount - 1);
+$("#nfPlus").onclick = () => setCount(nfCount + 1);
+["#nfFlow","#nfWt"].forEach(s => $(s).onchange = nfHelp);
+$("#nfProject").onchange = () => { $("#newCrumb").textContent = $("#nfProject").value; };
+function openNew(n){
+  if (!$("#palBack").hidden) { $("#palBack").hidden = true; newReturn = palReturn; } else newReturn = document.activeElement;
+  if (filter !== "all") $("#nfProject").value = filter;
+  $("#newCrumb").textContent = $("#nfProject").value;
+  setCount(n || 1);
+  $("#newBack").hidden = false; $("#nfPrompt").focus();
+}
+function closeNew(){ $("#newBack").hidden = true; giveBack(newReturn); }
+$("#openNew").onclick = () => openNew();
+$("#nfClose").onclick = closeNew;
+$("#newBack").onclick = e => { if (e.target.id === "newBack") closeNew(); };
+const NAMES = ["Jo","Nia","Oz","Pia","Rex","Sol","Tam","Uma","Vic","Wes","Yul","Zed"];
+$("#newForm").onsubmit = e => {
+  e.preventDefault();
+  const p = $("#nfPrompt"), text = p.value.trim();
+  if (!text) { p.placeholder = "Write what should get done first."; p.focus(); return; }
+  if (nfCount > 1 && !$("#nfWt").checked) { $("#nfWt").focus(); return; }
+  const project = $("#nfProject").value, cli = $("#nfCli").value, flow = $("#nfFlow").value;
+  const raceId = nfCount > 1 ? "r" + Date.now() : null;
+  if (raceId) races[raceId] = { task: text.length > 70 ? text.slice(0,68) + "…" : text, project };
+  const clis = Object.keys(CLIS), made = [];
+  for (let i = 0; i < nfCount; i++) {
+    const name = NAMES.shift() || ("A" + agents.length);
+    const useCli = raceId ? clis[(clis.indexOf(cli) + i) % clis.length] : cli;
+    const slug = text.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,22) || "task";
+    const a = {id:name.toLowerCase() + Date.now() + i, name, cli:useCli, project, race:raceId || undefined,
+      branch: $("#nfWt").checked ? `${name.toLowerCase()}/${slug}` : "main", task: text.length > 70 ? text.slice(0,68) + "…" : text,
+      state:"working", since:Date.now(), cost:0,
+      log:[["you", text],["gap"],["dim", flow === "relay" ? "Flow: build → test → review." : flow === "plan" ? "Flow: plan first, then wait for you." : $("#nfWt").checked ? "Started on a fresh worktree." : "Started in your checkout."],["thinking","Reading the codebase…"]]};
+    agents.push(a); made.push(a);
+    if (flow === "plan") setTimeout(() => {
+      if (a.state !== "working") return;
+      a.log = a.log.filter(l => l[0] !== "thinking");
+      a.log.push(["say","Here's my plan: find the handler, add the check, add a test. Should I go ahead?"]);
+      a.state = "needs"; a.since = Date.now();
+      a.ask = {kind:"question", q:"Go ahead with this plan?", why:"You chose Plan first for this task.", options:["Go ahead","Also update the docs","Stop, I'll rewrite the task"]};
+      render();
+    }, 6000);
+    else finishLater(a, 9000 + i * 3000, [["ok","└ Tests pass"],["say","Finished. Ready for review."]]);
+  }
+  toast(made.length > 1 ? `${made.length} agents are racing on ${project}. Compare them when they finish.` : `${made[0].name} started on ${project}.`);
+  p.value = "";
+  if ($("#nfMore").checked) { setCount(1); p.focus(); render(); return; }
+  closeNew(); current = made[0].id; fileIdx = 0;
+  if (view === "board") setView("queue"); else render();
+};
+$("#nfPrompt").onkeydown = e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("#newForm").requestSubmit(); } };
+
+// ---------- sheets ----------
+let keysReturn = null, notesReturn = null;
+function openKeys(){ keysReturn = document.activeElement; $("#keys").hidden = false; $("#closeKeys").focus(); }
+function closeKeys(){ $("#keys").hidden = true; giveBack(keysReturn); }
+function openNotes(){ notesReturn = document.activeElement; $("#notes").hidden = false; $("#closeNotes").focus(); }
+function closeNotes(){ $("#notes").hidden = true; giveBack(notesReturn); }
+$("#openKeys").onclick = () => $("#keys").hidden ? openKeys() : closeKeys();
+$("#closeKeys").onclick = closeKeys;
+$("#openNotes").onclick = openNotes;
+$("#closeNotes").onclick = closeNotes;
+
+// ---------- keyboard ----------
+document.addEventListener("keydown", e => {
+  const el = document.activeElement;
+  // judge by where the key was pressed, not where focus ends up: a field handler may have closed its overlay already
+  const isField = n => n && /INPUT|TEXTAREA|SELECT/.test(n.tagName) && n.type !== "checkbox";
+  const typing = isField(el) || isField(e.target);
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("#palBack").hidden ? openPal() : closePal(); return; }
+  if (e.key === "Escape") {
+    if (!$("#palBack").hidden) return closePal();
+    if (!$("#newBack").hidden) return closeNew();
+    if (!$("#cmpBack").hidden) return closeCompare();
+    if (!$("#notes").hidden) return closeNotes();
+    if (!$("#keys").hidden) return closeKeys();
+    if (typing) { el.blur(); return; }
+    if (selected.size) { selected.clear(); queue(); }
+    return;
+  }
+  const modal = !$("#palBack").hidden || !$("#newBack").hidden || !$("#cmpBack").hidden || !$("#notes").hidden;
+  if (typing || modal || e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key.toLowerCase(), a = byId(current);
+  if (e.key === "?") { $("#keys").hidden ? openKeys() : closeKeys(); return; }
+  if (k === "n") { e.preventDefault(); openNew(); return; }
+  if (k === "b") { setView(view === "board" ? "queue" : "board"); return; }
+  if (view !== "queue") return;
+  if (k === "j" || k === "k") {
+    const s = sorted(), i = s.findIndex(x => x.id === current);
+    const ni = Math.max(0, Math.min(s.length - 1, (i < 0 ? 0 : i) + (k === "j" ? 1 : -1)));
+    if (s[ni]) { current = s[ni].id; fileIdx = 0; render(); const r = document.querySelector(`.row[data-id="${current}"]`); if (r) r.scrollIntoView({block:"nearest"}); }
+    return;
+  }
+  if (k === "x" && a) { selected.has(a.id) ? selected.delete(a.id) : selected.add(a.id); queue(); return; }
+  if (!a) return;
+  if (a.state === "needs" && a.ask.kind === "run") { if (k === "a") return allow(a); if (k === "d") return deny(a); }
+  if (a.state === "needs" && a.ask.kind === "question" && /^[1-9]$/.test(k)) { const o = a.ask.options[+k - 1]; if (o) answer(a, o); return; }
+  if (k === "m" && a.state === "review") return merge(a);
+  if (k === "c" && a.race) return openCompare(a.race);
+  if (k === "s" && a.state === "working") return stop(a);
+  if (k === "v" && a.diff) {
+    a.viewed = a.viewed || [];
+    if (!a.viewed.includes(fileIdx)) a.viewed.push(fileIdx);
+    const next = a.diff.files.findIndex((_, i) => !a.viewed.includes(i));
+    if (next >= 0) fileIdx = next;
+    $("#rpanel").hidden = false; review(); return;
+  }
+  if (k === "i" || (e.key === "Enter" && el === document.body)) { e.preventDefault(); const t = $("#msg") || $("#replyIn"); if (t) t.focus(); }
+});
+
+setInterval(() => { if (view === "queue") { pulse(); queue(); } else board(); }, 15000);
+window.addEventListener("resize", () => { if (window.innerWidth > 1100 && view === "queue") $("#rpanel").hidden = false; });
+
+// deep link for screenshots and demos: #bo, #cy, #kai, #compare, #new, #board, #palette, #keys
+const h = location.hash.slice(1);
+if (byId(h)) { current = h; $("#app").classList.add("show-stage"); }
+if (window.innerWidth <= 1100) $("#rpanel").hidden = !(byId(current) && byId(current).state === "review");
+render();
+if (h === "compare") { current = "kai"; render(); openCompare("r1"); }
+if (h === "new") openNew(3);
+if (h === "board") setView("board");
+if (h === "palette") openPal();
+if (h === "keys") openKeys();
+if (h === "notes") openNotes();
+})();
+</script>
+</body>
+</html>

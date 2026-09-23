@@ -14,7 +14,6 @@ import {
 import { parseLayout } from "./canvas";
 import { type Workspace, type AgentSpec } from "./panetypes";
 import { layoutGrid } from "./panelayout";
-import { updateBcast } from "./broadcast";
 import { saveSession } from "./session";
 import { workspaces, activeWs, setActiveWs, nextWsId } from "./appstate";
 import { nextWorkspaceName, pickNextActive } from "./workspaces";
@@ -135,7 +134,6 @@ export function activateWorkspace(ws: Workspace) {
     w.tabEl.classList.toggle("active", w === ws);
   }
   onShowWorkspace();
-  updateBcast();
   onSyncResumeAll(); // the newly-active tab may have its own parked panes
   // Re-scope the tool dock (board / timer / diff) to this workspace's folder.
   dockSetContext({ key: ws.dir || ws.id, dir: ws.dir });

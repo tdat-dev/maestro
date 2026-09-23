@@ -10,10 +10,8 @@ import { paneFont } from "./zoom";
 import { basename } from "./workspaces";
 import { type Pane, type Workspace } from "./panetypes";
 
-let onBcastChange: () => void = () => {};
 let onSessionChange: () => void = () => {};
-export function configurePaneLayout(deps: { updateBcast: () => void; saveSession: () => void }): void {
-  onBcastChange = deps.updateBcast;
+export function configurePaneLayout(deps: { saveSession: () => void }): void {
   onSessionChange = deps.saveSession;
 }
 
@@ -125,7 +123,6 @@ export function wirePaneRename(_ws: Workspace, pane: Pane): void {
     const v = nameEl.textContent?.trim();
     pane.spec.name = v && v.length ? v : pane.spec.name;
     nameEl.textContent = pane.spec.name;
-    onBcastChange();
     onSessionChange();
   };
   nameEl.addEventListener("blur", commit);

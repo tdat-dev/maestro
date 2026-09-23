@@ -4,15 +4,13 @@ import { resizePty, killAll, setTrayTooltip } from "./ipc";
 import { CLI_PRESETS } from "./crew";
 import { type Pane } from "./panetypes";
 import { configurePaneLayout } from "./panelayout";
-import { configureBroadcast, initBroadcast, updateBcast, focusBroadcast } from "./broadcast";
 import { configureRecents, getRecents, renderRecents } from "./recents";
 import { configureUsage, initUsage } from "./usage";
 import { configureReplay, initReplay } from "./replay";
 import { configureDashboard, initDashboard } from "./dashboard";
 import { configureSpawnModal, initSpawnModal, openModal, spawnCrew, loadCrew, renderCrew, loadTemplates, saveTemplates, templateSummary } from "./spawnmodal";
-import { configureSpawnMenu, initSpawnMenu } from "./spawnmenu";
 import { configureWizard, initWizard, openWizard, isPresetAvailable, refreshCliAvailability, launchPreset } from "./wizard_ui";
-import { closeSettings, initSettingsModal, openSettings } from "./settingsmodal";
+import { closeSettings, initSettingsModal } from "./settingsmodal";
 import { configureSession, saveSession, restoreSession } from "./session";
 import { configureScheduler, initScheduler } from "./scheduler";
 import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setStatus, clearAttention, updateAttention, retheme, applyZoom } from "./pane";
@@ -23,14 +21,10 @@ import { getPref } from "./prefs";
 import { confirmModal } from "./confirmmodal";
 import { wirePaneSearch } from "./panesearch";
 import { initMascotView } from "./mascotview";
-import { initVoice } from "./voice";
 import { configureBackground, initBackground, applyBackground } from "./background";
 import { configureZoomUi, initZoomUi } from "./zoomui";
 import { initHint, topNote } from "./hint";
 import { configureBridges, initBridges } from "./bridges";
-import { initConsole, clearConsole } from "./console";
-import { initComposerActions } from "./composeractions";
-import { clearFlow } from "./flow";
 import { initQuitLife } from "./quitlife";
 import { workspaces, activeWs } from "./appstate";
 import { basename } from "./workspaces";
@@ -190,7 +184,6 @@ function updateCount() {
     if (c) c.textContent = w.panes.size ? String(w.panes.size) : "";
     w.tabEl.classList.toggle("live", run > 0);
   }
-  updateBcast();
   syncResumeAll(); // parked/exited count may have changed
   // Keep the tray tooltip in sync so a hidden window still shows it's alive.
   // The tray belongs to the main window; detached windows leave it alone.
@@ -209,10 +202,7 @@ function updateCount() {
 
 document.getElementById("btnNewWorkspace")?.addEventListener("click", () => openWizard());
 document.getElementById("btnNewAgent")?.addEventListener("click", () => openModal("current"));
-configurePaneLayout({ updateBcast, saveSession });
-configureBroadcast({ getActiveWs: () => activeWs });
-initBroadcast();
-initVoice();
+configurePaneLayout({ saveSession });
 configureRecents({ openWizard });
 configureUsage({ getActiveWs: () => activeWs, closeSettings });
 initUsage();
@@ -228,7 +218,6 @@ configurePane({ errMsg, updateCount, showWorkspace, wirePaneSearch });
 configureWorkspace({ createAgent, removeAgent, updateCount, showWorkspace, showView, syncResumeAll, setFileTreeRoot: (dir) => fileTree?.setRoot(dir), applyBackground });
 configureBackground({ toast: paneToast, onLookChange: retheme });
 configureZoomUi({ getActiveWs: () => activeWs, applyZoom: (ws, z) => void applyZoom(ws, z), note: topNote });
-configureSpawnMenu({ spawnCrew, isPresetAvailable, refreshCliAvailability });
 configureBridges({ activateWorkspace, clearAttention, setStatus, updateCount, stopRecording });
 initSpawnModal();
 initWizard();
@@ -237,20 +226,10 @@ initInbox(); // the Agent Inbox interface
 initScheduler();
 initWorkspace();
 initBackground();
-initSpawnMenu();
 initZoomUi();
 initHint();
 initMascotView();
 initBridges();
-initConsole();
-initComposerActions({
-  onSpawn: () => openModal("current"),
-  onSettings: openSettings,
-  onClear: () => {
-    clearFlow();
-    clearConsole();
-  },
-});
 initQuitLife();
 tabAdd?.addEventListener("click", () => openWizard());
 
@@ -416,9 +395,6 @@ document.addEventListener("keydown", (e) => {
   } else if (k === "f") {
     e.preventDefault();
     focusedPane()?.toggleFind?.();
-  } else if (k === "b") {
-    e.preventDefault();
-    focusBroadcast();
   } else if (k === "k") {
     e.preventDefault();
     dockToggle("kanban");

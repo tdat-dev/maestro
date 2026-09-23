@@ -459,7 +459,7 @@ function mount(): void {
   statsEl.className = "inbox-stats";
   document.querySelector(".topbar .tb-right")?.prepend(statsEl);
 
-  // The floating dock at the bottom: views, the command bar, New task, tools.
+  // The floating dock at the bottom: views, the command bar, New agent, tools.
   dockEl = document.createElement("nav");
   dockEl.className = "inbox-dock";
   dockEl.setAttribute("aria-label", "Maestro");
@@ -473,7 +473,7 @@ function mount(): void {
     <button class="id-search" data-dock="search">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
       <span>Jump to an agent or run a command</span><kbd>Ctrl K</kbd></button>
-    <button class="id-new" data-dock="new">New task</button>
+    <button class="id-new" data-dock="new">New agent</button>
     <div class="id-seg">
       <button data-dock="files" title="Files and editor (Ctrl+Shift+E)">Files</button>
       <button data-dock="settings">Settings</button>

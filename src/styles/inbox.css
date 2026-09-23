@@ -551,6 +551,7 @@ body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .term-host .xterm { paddi
 /* fewer things on screen: the counts live in the headline, "back to canvas"
    means nothing here */
 body.inbox-ui .tb-right .stats,
+body.inbox-ui .tbc-live,
 body.inbox-ui .pane .pctrl[data-max] { display: none !important; }
 .id-new { white-space: nowrap; }
 .ib-acts { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); }

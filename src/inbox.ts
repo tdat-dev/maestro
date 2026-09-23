@@ -13,6 +13,7 @@ import { revealPane } from "./agentbridge";
 import { tileToFit, type Area, type Tile } from "./canvas";
 import { resizePty } from "./ipc";
 import { paneFont } from "./zoom";
+import { createReviewDrawer } from "./inboxreview";
 import { getInboxUi, setInboxUi } from "./settings";
 import { allTasks, answerOption, answerText, onTasksChange, type Task } from "./tasks";
 import type { AskOption } from "./askparse";
@@ -105,6 +106,8 @@ let pins: string[] = [];
 let splitSig = "";
 let splitWs: Workspace | null = null;
 let splitBtn: HTMLButtonElement | null = null;
+let reviewBtn: HTMLButtonElement | null = null;
+let reviewer: ReturnType<typeof createReviewDrawer> | null = null;
 
 function paneOf(t: Task): Pane | undefined {
   return workspaces.get(t.wsId)?.panes.get(t.paneId);
@@ -256,6 +259,17 @@ function renderAsk(list: Task[], pane: Pane | undefined): void {
   // Forget answers and tucked-away cards for questions no longer on screen.
   for (const k of answered) if (k !== key) answered.delete(k);
   for (const k of hidden) if (k !== key) hidden.delete(k);
+  // An agent that finished with changes gets a quiet chip that opens Review.
+  if (t && t.status.state === "review" && reviewer?.paneId !== t.paneId) {
+    const sig = `review|${t.paneId}|${t.changedFiles ?? 0}`;
+    if (askEl.dataset.sig === sig && !askEl.hidden) return;
+    askEl.dataset.sig = sig;
+    askEl.dataset.key = "";
+    askEl.hidden = false;
+    askEl.className = "inbox-ask min review";
+    askEl.innerHTML = `<button class="ia-chip" data-act="review"><i class="ia-dot" aria-hidden="true"></i>${esc(t.name)} is ready · ${esc(rowLine(t))} · Review</button>`;
+    return;
+  }
   if (!t || !a || answered.has(key)) { askEl.hidden = true; askEl.innerHTML = ""; askEl.dataset.sig = ""; return; }
   // Rebuild only when the question changes: the tick re-renders every second
   // and would otherwise wipe what the user is typing in the answer field.
@@ -324,10 +338,19 @@ function onKey(e: KeyboardEvent): void {
   const k = e.key.toLowerCase();
   if (k === "s") { e.preventDefault(); setSplit(!splitOn); return; }
   if (k === "p") { e.preventDefault(); pinCurrent(); return; }
+  if (k === "r") { e.preventDefault(); if (reviewer?.paneId) reviewer.close(); else openReview(); return; }
   if (/^[1-9]$/.test(e.key)) {
     const o = currentAsk()?.options.find((x) => x.n === Number(e.key));
     if (o) { e.preventDefault(); void pick(o); }
   }
+}
+
+function openReview(): void {
+  const pane = stagePane();
+  if (!pane || !reviewer) return;
+  reviewer.open(pane);
+  reviewBtn?.setAttribute("aria-pressed", "true");
+  render();
 }
 
 /** Clicking into another terminal in Split makes it the current one. */
@@ -363,6 +386,14 @@ function mount(): void {
   splitBtn.setAttribute("aria-pressed", String(splitOn));
   splitBtn.addEventListener("click", () => setSplit(!splitOn));
   headEl.after(splitBtn);
+  reviewBtn = document.createElement("button");
+  reviewBtn.className = "inbox-split-btn";
+  reviewBtn.textContent = "Review";
+  reviewBtn.title = "See what the agent on the stage changed (Alt+R)";
+  reviewBtn.setAttribute("aria-pressed", "false");
+  reviewBtn.addEventListener("click", () => (reviewer?.paneId ? reviewer.close() : openReview()));
+  splitBtn.after(reviewBtn);
+  reviewer = createReviewDrawer(app, () => { reviewBtn?.setAttribute("aria-pressed", "false"); render(); });
 
   queueEl.addEventListener("click", (e) => {
     const row = (e.target as HTMLElement).closest<HTMLElement>(".iq-row");
@@ -375,6 +406,7 @@ function mount(): void {
     const key = askEl.dataset.key ?? "";
     if (b.dataset.act === "hide") { hidden.add(key); render(); stagePane()?.term.focus(); return; }
     if (b.dataset.act === "show") { hidden.clear(); render(); return; }
+    if (b.dataset.act === "review") { openReview(); return; }
     const o = currentAsk()?.options.find((x) => x.n === Number(b.dataset.n));
     if (o) void pick(o);
   });
@@ -400,8 +432,9 @@ function unmount(): void {
   document.body.classList.remove("inbox-ui");
   if (splitWs) clearSplit(splitWs);
   splitOn = false; pins = []; splitSig = ""; splitWs = null;
-  queueEl?.remove(); askEl?.remove(); headEl?.remove(); splitBtn?.remove();
-  queueEl = askEl = headEl = null; splitBtn = null;
+  if (reviewer?.paneId) reviewer.close();
+  queueEl?.remove(); askEl?.remove(); headEl?.remove(); splitBtn?.remove(); reviewBtn?.remove();
+  queueEl = askEl = headEl = null; splitBtn = reviewBtn = null; reviewer = null;
   if (timer !== null) { clearInterval(timer); timer = null; }
   offTasks?.(); offTasks = null;
   document.removeEventListener("keydown", onKey, true);

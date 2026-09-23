@@ -11,6 +11,14 @@ const state = vi.hoisted(() => ({
   texts: [] as Array<[string, string]>,
   focused: [] as string[],
   listeners: [] as Array<() => void>,
+  reviewed: [] as Array<string | null>,
+}));
+vi.mock("./diffview", () => ({
+  createDiffView: () => ({
+    mount: (body: HTMLElement) => { body.innerHTML = '<div class="dv-root"></div>'; },
+    setContext: (ctx: { dir: string | null }) => { state.reviewed.push(ctx.dir); },
+    show: () => {},
+  }),
 }));
 vi.mock("./tasks", () => ({
   allTasks: () => state.tasks,
@@ -86,9 +94,10 @@ describe("inbox DOM", () => {
     document.body.innerHTML = `<div id="app"><header class="topbar"><div class="tb-center"></div></header></div>
       <input type="checkbox" id="setInboxUi">`;
     localStorage.clear();
-    state.tasks = []; state.answered = []; state.texts = []; state.focused = []; state.listeners = [];
+    state.tasks = []; state.answered = []; state.texts = []; state.focused = []; state.listeners = []; state.reviewed = [];
     panes = ["a", "e"].map((id) => ({
       id, el: document.createElement("div"), color: "#f2b27a", running: false,
+      spec: { name: id === "a" ? "Ana" : "Eli", cwd: "D:/maestro", worktree: `D:/wt/${id}`, branch: `maestro/${id}` },
       term: { focus: () => {}, setFontSize: () => {}, fit: () => ({ cols: 80, rows: 24 }) },
     } as unknown as Pane));
     const gridEl = document.createElement("div");
@@ -180,6 +189,22 @@ describe("inbox DOM", () => {
     (document.querySelector(".inbox-split-btn") as HTMLButtonElement).click();
     expect(document.querySelectorAll(".split-pin")).toHaveLength(0);
     expect(panes[0].el.style.getPropertyValue("--sw")).toBe("");
+  });
+
+  it("offers Review when an agent is done, and sends it back with feedback", async () => {
+    state.tasks = [task("e", "Eli", "review", { changedFiles: 3 })];
+    setInbox(true);
+    const chip = document.querySelector('.inbox-ask [data-act="review"]') as HTMLButtonElement;
+    expect(chip.textContent).toContain("Eli is ready · 3 files changed");
+    chip.click();
+    expect(state.reviewed).toEqual(["D:/wt/e"]);
+    expect(document.querySelector(".inbox-review")!.getAttribute("aria-label")).toBe("Review Eli's changes");
+    expect((document.querySelector(".inbox-ask") as HTMLElement).hidden).toBe(true);
+    (document.getElementById("irBack") as HTMLInputElement).value = "add a test for the empty case";
+    document.querySelector(".ir-back")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await Promise.resolve();
+    expect(state.texts).toEqual([["e", "add a test for the empty case"]]);
+    expect(document.querySelector(".inbox-review")).toBeNull();
   });
 
   it("does not wipe what you are typing when the tick re-renders", () => {

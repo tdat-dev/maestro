@@ -12,6 +12,7 @@ const state = vi.hoisted(() => ({
   focused: [] as string[],
   listeners: [] as Array<() => void>,
   reviewed: [] as Array<string | null>,
+  settings: 0,
 }));
 vi.mock("./diffview", () => ({
   createDiffView: () => ({
@@ -38,7 +39,7 @@ vi.mock("./agentbridge", () => ({ revealPane: () => true }));
 vi.mock("./zoom", () => ({ paneFont: (_ws: unknown, bump = 0) => 13 + bump }));
 vi.mock("./ipc", () => ({ resizePty: async () => {} }));
 vi.mock("./spawnmodal", () => ({ openModal: () => {} }));
-vi.mock("./settingsmodal", () => ({ openSettings: () => {} }));
+vi.mock("./settingsmodal", () => ({ openSettings: () => { state.settings++; } }));
 vi.mock("./dock", () => ({ dockToggle: () => {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
@@ -131,6 +132,14 @@ describe("inbox DOM", () => {
     const ws = { id: "ws-1", name: "maestro", gridEl, panes: new Map(panes.map((p) => [p.id, p])) } as unknown as Workspace;
     workspaces.clear(); workspaces.set("ws-1", ws); setActiveWs(ws);
     setInbox(false);
+  });
+
+  it("opens Settings from the gear in the dock and with Ctrl+,", () => {
+    state.settings = 0;
+    initInbox();
+    (document.querySelector('[data-dock="settings"]') as HTMLButtonElement).click();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: ",", ctrlKey: true }));
+    expect(state.settings).toBe(2);
   });
 
   it("mounts at startup", () => {

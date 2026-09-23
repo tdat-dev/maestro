@@ -258,6 +258,15 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
   box-shadow: var(--ib-float);
 }
 .id-new:hover { background: #e9e9ec; }
+.id-gear {
+  width: 40px; height: 40px;
+  display: grid; place-items: center;
+  border-radius: 999px;
+  background: var(--ib-raise);
+  box-shadow: var(--ib-float);
+  color: var(--ib-ink-2);
+}
+.id-gear:hover { color: var(--ib-ink); background: #1d1e23; }
 .inbox-dock button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 /* ---------- decision card, floating over the bottom of the stage ---------- */

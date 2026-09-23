@@ -4,7 +4,7 @@
 
 import { CLI_PRESETS, type CliPreset } from "./crew";
 import { activeWs } from "./appstate";
-import { loadCrew, presetAvailable, spawnAgents } from "./spawnmodal";
+import { loadCrew, presetAvailable, refreshCliAvailability, saveTemplate, spawnAgents } from "./spawnmodal";
 import { getPref } from "./prefs";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -72,6 +72,8 @@ export function openNewAgent(opts: { count?: number } = {}): void {
       </div>
       <label class="im-check"><input type="checkbox" id="naSkip"${loadCrew().skipPerms ? " checked" : ""}> Don't ask before running commands or editing files</label>
       <footer class="im-foot">
+        <button type="button" class="im-btn quiet" data-save title="Keep this setup so Settings → Sessions → Scheduled agents can start it at a set time">Save as preset</button>
+        <span class="im-sp"></span>
         <button type="button" class="im-btn" data-close>Cancel</button>
         <button type="submit" class="im-btn primary" data-start>${startLabel(preset)}</button>
       </footer>
@@ -87,7 +89,17 @@ export function openNewAgent(opts: { count?: number } = {}): void {
   });
   el.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
-    if (t === el || t.closest("[data-close]")) closeNewAgent();
+    if (t === el || t.closest("[data-close]")) { closeNewAgent(); return; }
+    if (t.closest("[data-save]")) {
+      const cli = form.querySelector<HTMLInputElement>('input[name="naCli"]:checked')?.value;
+      if (!cli) return;
+      const label = agentPresets().find((p) => p.id === cli)?.label ?? cli;
+      const n = count();
+      saveTemplate(`${n > 1 ? `${n}× ` : ""}${label} · ${ws.name}`, { [cli]: n }, ws.dir ?? "", el?.querySelector<HTMLInputElement>("#naSkip")?.checked ?? false);
+      const b = t.closest<HTMLButtonElement>("[data-save]")!;
+      b.textContent = "Saved";
+      b.disabled = true;
+    }
   });
   el.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { e.stopPropagation(); closeNewAgent(); }
@@ -107,4 +119,17 @@ export function openNewAgent(opts: { count?: number } = {}): void {
     void spawnAgents(ws, cli, n, job, skip);
   });
   task.focus();
+  // Grey out CLIs that aren't installed once the probe answers.
+  void refreshCliAvailability().then(() => {
+    el?.querySelectorAll<HTMLInputElement>('input[name="naCli"]').forEach((input) => {
+      const p = presets.find((x) => x.id === input.value);
+      const missing = !!p && !presetAvailable(p.program);
+      input.disabled = missing;
+      input.closest(".im-choice")?.classList.toggle("missing", missing);
+      if (missing && input.checked) {
+        input.checked = false;
+        el?.querySelector<HTMLInputElement>('input[name="naCli"]:not(:disabled)')?.click();
+      }
+    });
+  });
 }

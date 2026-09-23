@@ -7,8 +7,8 @@ import { configurePaneLayout } from "./panelayout";
 import { configureUsage, initUsage } from "./usage";
 import { configureReplay, initReplay } from "./replay";
 import { configureDashboard, initDashboard } from "./dashboard";
-import { configureSpawnModal, initSpawnModal, openModal, spawnCrew, loadCrew, renderCrew, loadTemplates, saveTemplates, templateSummary } from "./spawnmodal";
-import { configureWizard, initWizard, openWizard, isPresetAvailable, refreshCliAvailability, launchPreset } from "./wizard_ui";
+import { configureSpawnModal, spawnCrew, loadTemplates, refreshCliAvailability } from "./spawnmodal";
+import { addRecent } from "./recents";
 import { closeSettings, initSettingsModal } from "./settingsmodal";
 import { configureSession, saveSession, restoreSession } from "./session";
 import { configureScheduler, initScheduler } from "./scheduler";
@@ -16,8 +16,8 @@ import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setS
 import { configureWorkspace, initWorkspace, createWorkspace, activateWorkspace, bootDetached } from "./workspace";
 import { updateTasks } from "./tasks";
 import { initInbox } from "./inbox";
+import { openNewAgent } from "./inboxnew";
 import { getPref } from "./prefs";
-import { confirmModal } from "./confirmmodal";
 import { wirePaneSearch } from "./panesearch";
 import { configureBackground, initBackground, applyBackground } from "./background";
 import { configureZoomUi, initZoomUi } from "./zoomui";
@@ -194,8 +194,6 @@ function updateCount() {
 // (cluster extracted to its own module)
 /* ---------------- home + workspace triggers ---------------- */
 
-document.getElementById("btnNewWorkspace")?.addEventListener("click", () => openWizard());
-document.getElementById("btnNewAgent")?.addEventListener("click", () => openModal("current"));
 configurePaneLayout({ saveSession });
 configureUsage({ getActiveWs: () => activeWs, closeSettings });
 initUsage();
@@ -203,17 +201,23 @@ configureReplay({ paneToast, errMsg, closeSettings });
 initReplay();
 configureDashboard({ errMsg });
 initDashboard();
-configureSpawnModal({ createAgent, createWorkspace, cliLook, confirmModal, isPresetAvailable, refreshCliAvailability });
-configureWizard({ loadCrew, spawnCrew, loadTemplates, saveTemplates, templateSummary, confirmModal, renderCrew });
+configureSpawnModal({ createAgent, createWorkspace, cliLook });
+void refreshCliAvailability(); // which CLIs New agent can offer
 configureSession({ createWorkspace, createAgent });
-configureScheduler({ closeSettings, loadTemplates, launchPreset });
+configureScheduler({
+  closeSettings,
+  loadTemplates,
+  // A scheduled preset opens as its own project and starts its crew.
+  launchPreset: (state, dir, skipPerms) => {
+    if (dir) addRecent(dir);
+    void spawnCrew(state, dir || null, skipPerms, "new");
+  },
+});
 configurePane({ errMsg, updateCount, showWorkspace, wirePaneSearch });
 configureWorkspace({ createAgent, removeAgent, updateCount, showWorkspace, showView, syncResumeAll, setFileTreeRoot: (dir) => fileTree?.setRoot(dir), applyBackground });
 configureBackground({ toast: paneToast, onLookChange: retheme });
 configureZoomUi({ getActiveWs: () => activeWs, applyZoom: (ws, z) => void applyZoom(ws, z), note: topNote });
 configureBridges({ activateWorkspace, clearAttention, setStatus, updateCount, stopRecording });
-initSpawnModal();
-initWizard();
 initSettingsModal();
 initInbox(); // the Agent Inbox interface
 initScheduler();
@@ -307,11 +311,11 @@ initIdleAnimationPause(repaintAfterResume);
 
 /* ---------------- keyboard shortcuts ---------------- */
 // Windows-Terminal-ish chords, chosen to avoid keys the CLIs themselves use
-// (no bare Ctrl+letter). All shortcuts are inert while a modal/wizard is open.
+// (no bare Ctrl+letter). All shortcuts are inert while a modal is open.
 //   Alt+1..9            focus the nth pane (DOM order) of the active workspace
 //   Ctrl+Tab            next workspace tab (cycles)
 //   Ctrl+Shift+Tab      previous workspace tab (cycles)
-//   Ctrl+Shift+T        open the new-workspace wizard
+//   Ctrl+Shift+T        New agent
 //   Ctrl+Shift+F        toggle the find bar of the focused pane
 //   Ctrl+Shift+B        focus the broadcast input
 //   Ctrl+K              open the fleet switcher (jump to any agent) — see switcher.ts
@@ -337,7 +341,7 @@ function focusedPane(): Pane | null {
 }
 
 document.addEventListener("keydown", (e) => {
-  // Any open backdrop (spawn / wizard / confirm / settings) swallows shortcuts.
+  // Any open backdrop (confirm / settings / …) swallows shortcuts.
   if (document.querySelector(".backdrop.open")) return;
 
   // Alt+1..9 → focus that pane (no other modifiers).
@@ -368,7 +372,7 @@ document.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   if (k === "t") {
     e.preventDefault();
-    openWizard();
+    openNewAgent();
   } else if (k === "f") {
     e.preventDefault();
     focusedPane()?.toggleFind?.();

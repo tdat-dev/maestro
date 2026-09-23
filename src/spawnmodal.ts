@@ -1,9 +1,9 @@
-// Spawn-setup modal (the quick "+ Spawn agents" crew picker) + saved crew
-// templates. Split from main.ts; workspace/pane creation and a few other
-// main-side helpers are injected via configureSpawnModal to avoid a circular
-// import.
+// Starting agents: New agent (spawnAgents), the Director's agent_spawn over
+// MCP (spawnForConductor), scheduled crews (spawnCrew + saved templates), a
+// plain terminal, and which CLIs are installed. Workspace/pane creation is
+// injected via configureSpawnModal to avoid a circular import with main.ts.
 
-import { gitRepoRoot, pickFolder, sendMessage } from "./ipc";
+import { gitRepoRoot, programsOnPath, sendMessage } from "./ipc";
 import { getPref } from "./prefs";
 import {
   CLI_PRESETS,
@@ -18,7 +18,6 @@ import {
 import { type Workspace, type AgentSpec } from "./panetypes";
 import { workspaces, activeWs } from "./appstate";
 import { basename } from "./workspaces";
-import { addRecent } from "./recents";
 import { DIRECTOR_LAWS } from "./laws";
 
 let onCreateAgent: (
@@ -34,17 +33,6 @@ let onCliLook: (badge: string, label: string) => { color: string; mono: string }
   color: "#c6f135",
   mono: "?",
 });
-let onConfirmModal: (opts: {
-  title: string;
-  message: string;
-  okLabel?: string;
-  dontAsk?: boolean;
-  input?: { placeholder?: string; value?: string };
-}) => Promise<{ ok: boolean; dontAsk: boolean; value: string }> = () =>
-  Promise.resolve({ ok: false, dontAsk: false, value: "" });
-let onIsPresetAvailable: (program: string) => boolean = () => true;
-let onRefreshCliAvailability: () => void = () => {};
-
 export function configureSpawnModal(deps: {
   createAgent: (
     ws: Workspace,
@@ -54,41 +42,37 @@ export function configureSpawnModal(deps: {
   ) => () => Promise<void>;
   createWorkspace: (dir: string | null, name?: string) => Workspace;
   cliLook: (badge: string, label: string) => { color: string; mono: string };
-  confirmModal: (opts: {
-    title: string;
-    message: string;
-    okLabel?: string;
-    dontAsk?: boolean;
-    input?: { placeholder?: string; value?: string };
-  }) => Promise<{ ok: boolean; dontAsk: boolean; value: string }>;
-  isPresetAvailable: (program: string) => boolean;
-  refreshCliAvailability: () => void;
 }): void {
   onCreateAgent = deps.createAgent;
   onCreateWorkspace = deps.createWorkspace;
   onCliLook = deps.cliLook;
-  onConfirmModal = deps.confirmModal;
-  onIsPresetAvailable = deps.isPresetAvailable;
-  onRefreshCliAvailability = deps.refreshCliAvailability;
+}
+
+/* ---------------- which CLIs are installed ---------------- */
+
+// Which preset binaries resolve on PATH. Null until the first probe lands.
+let cliAvailable: Record<string, boolean> | null = null;
+
+/** Probe every preset's binary once. Fire-and-forget: a failed probe leaves
+ *  everything treated as installed. Call at startup and when New agent opens. */
+export function refreshCliAvailability(): Promise<void> {
+  const programs = CLI_PRESETS.map((p) => p.program);
+  return programsOnPath(programs)
+    .then((results) => {
+      const map: Record<string, boolean> = {};
+      programs.forEach((prog, i) => { map[prog] = results[i] ?? true; });
+      cliAvailable = map;
+    })
+    .catch(() => { /* leave everything as installed */ });
 }
 
 const STORE_KEY = "maestro.crew";
 const MAX_CONCURRENT_BOOT = 3;
-const modal = document.getElementById("spawnModal") as HTMLElement;
-const mDir = document.getElementById("mDir") as HTMLInputElement;
-const mCustom = document.getElementById("mCustom") as HTMLInputElement;
-const crewGrid = document.getElementById("crewGrid") as HTMLElement;
-const crewTotalEl = document.getElementById("crewTotal") as HTMLElement;
-const spawnLabel = document.getElementById("mSpawnLabel") as HTMLElement;
-const mSkipPerms = document.getElementById("mSkipPerms") as HTMLInputElement;
-const mConductor = document.getElementById("mConductor") as HTMLInputElement | null;
 
 interface SavedCrew extends CrewState {
   dir: string;
   skipPerms: boolean;
 }
-
-let crew: CrewState = { counts: {}, custom: "", customCount: 0 };
 
 export function loadCrew(): SavedCrew {
   try {
@@ -112,79 +96,6 @@ export function loadCrew(): SavedCrew {
 export function saveSkipPerms(skipPerms: boolean): void {
   const saved = loadCrew();
   localStorage.setItem(STORE_KEY, JSON.stringify({ ...saved, skipPerms }));
-}
-
-export function renderCrew() {
-  // Conductor converts the first agent (doesn't add) — with no workers it's a
-  // lone conductor, so total is at least 1 when the toggle is on.
-  const workers = expandCrew(crew).length;
-  const total = mConductor?.checked && workers === 0 ? 1 : workers;
-  crewTotalEl.textContent = String(total);
-  spawnLabel.textContent = total > 0 ? `Spawn ${total} agent${total > 1 ? "s" : ""}` : "Spawn";
-  (document.getElementById("mSpawn") as HTMLButtonElement).disabled = total === 0;
-  crewGrid.querySelectorAll<HTMLElement>(".crew-card").forEach((card) => {
-    const id = card.dataset.id!;
-    const preset = CLI_PRESETS.find((p) => p.id === id);
-    const missing = preset ? !onIsPresetAvailable(preset.program) : false;
-    card.classList.toggle("missing", missing);
-    if (missing && preset) card.title = `${preset.program} not found on PATH`;
-    else card.removeAttribute("title");
-    const n = crew.counts[id] ?? 0;
-    card.classList.toggle("on", n > 0);
-    const nEl = card.querySelector<HTMLElement>("[data-n]");
-    if (nEl) nEl.textContent = String(n);
-  });
-  const cn = document.querySelector<HTMLElement>("[data-custom-n]");
-  if (cn) cn.textContent = String(crew.customCount);
-}
-
-function buildCrewGrid() {
-  crewGrid.replaceChildren();
-  for (const p of CLI_PRESETS) {
-    const card = document.createElement("div");
-    card.className = "crew-card";
-    card.dataset.id = p.id;
-    const cmd = [p.program, ...p.args].join(" ");
-    card.innerHTML = `
-      <div class="cc-meta">
-        <span class="cc-name">${p.label}</span>
-        <span class="cc-badge" title="${cmd}">${cmd}</span>
-      </div>
-      <div class="stepper">
-        <button type="button" data-dec aria-label="One fewer">−</button>
-        <span class="n" data-n>0</span>
-        <button type="button" data-inc aria-label="One more">+</button>
-      </div>`;
-    card.querySelector("[data-dec]")?.addEventListener("click", () => {
-      crew.counts[p.id] = Math.max(0, (crew.counts[p.id] ?? 0) - 1);
-      renderCrew();
-    });
-    card.querySelector("[data-inc]")?.addEventListener("click", () => {
-      if (!onIsPresetAvailable(p.program)) return; // can't add an uninstalled CLI
-      crew.counts[p.id] = Math.min(32, (crew.counts[p.id] ?? 0) + 1);
-      renderCrew();
-    });
-    crewGrid.appendChild(card);
-  }
-}
-
-// "new" → spawn into a fresh workspace tab; "current" → add to the active one.
-let modalTarget: "new" | "current" = "new";
-export function openModal(mode: "new" | "current" = "new") {
-  modalTarget = mode;
-  const saved = loadCrew();
-  crew = { counts: saved.counts, custom: saved.custom, customCount: saved.customCount };
-  mDir.value = mode === "current" && activeWs ? activeWs.dir ?? "" : saved.dir;
-  mCustom.value = crew.custom;
-  mSkipPerms.checked = saved.skipPerms;
-  renderCrew();
-  modal.classList.add("open");
-  mDir.focus();
-  mDir.select();
-  onRefreshCliAvailability(); // gray out CLIs that aren't installed
-}
-function closeModal() {
-  modal.classList.remove("open");
 }
 
 /** Core spawn: expand a crew → choose/create a workspace → mount & boot the
@@ -334,9 +245,10 @@ export function quickTerminal(dir: string | null): void {
   })();
 }
 
-/** True when a preset's program is installed (resolves on PATH). */
+/** True unless the probe found this program missing from PATH (unknown counts
+ *  as installed, so nothing dims before the probe lands). */
 export function presetAvailable(program: string): boolean {
-  return onIsPresetAvailable(program);
+  return cliAvailable === null || cliAvailable[program] !== false;
 }
 
 /** New agent (the Agent Inbox form): start `count` agents of one CLI in `ws`,
@@ -389,28 +301,6 @@ export async function spawnAgents(
   return names;
 }
 
-async function spawnFromModal() {
-  const dir = mDir.value.trim() || null;
-  crew.custom = mCustom.value;
-  const skipPerms = mSkipPerms.checked;
-  if (expandCrew(crew).length === 0) return;
-
-  localStorage.setItem(
-    STORE_KEY,
-    JSON.stringify({
-      counts: crew.counts,
-      custom: crew.custom,
-      customCount: crew.customCount,
-      dir: dir ?? "",
-      skipPerms,
-    }),
-  );
-  if (dir) addRecent(dir);
-  closeModal();
-
-  await spawnCrew(crew, dir, skipPerms, modalTarget, mConductor?.checked ?? false);
-}
-
 /* ---------------- crew templates ---------------- */
 
 export interface Template {
@@ -455,69 +345,7 @@ export function templateSummary(t: Template): string {
   return parts.join(" · ");
 }
 
-// (The standalone Templates modal was retired — presets in the workspace
-// wizard are the one place to save, launch, and delete crew configurations.)
-
-/** Wire the spawn modal's controls + build the crew grid. Call once at startup. */
-export function initSpawnModal(): void {
-  buildCrewGrid();
-
-  mConductor?.addEventListener("change", () => renderCrew());
-
-  mCustom.addEventListener("input", () => {
-    crew.custom = mCustom.value;
-    renderCrew();
-  });
-  document.querySelector("[data-custom-stepper] [data-dec]")?.addEventListener("click", () => {
-    crew.customCount = Math.max(0, crew.customCount - 1);
-    renderCrew();
-  });
-  document.querySelector("[data-custom-stepper] [data-inc]")?.addEventListener("click", () => {
-    crew.customCount = Math.min(32, crew.customCount + 1);
-    renderCrew();
-  });
-
-  document.getElementById("mBrowse")?.addEventListener("click", async () => {
-    const picked = await pickFolder(mDir.value || undefined);
-    if (picked) {
-      mDir.value = picked;
-      mDir.focus();
-    }
-  });
-
-  document.getElementById("mSpawn")?.addEventListener("click", () => void spawnFromModal());
-  document.getElementById("mCancel")?.addEventListener("click", closeModal);
-  document.getElementById("mClose")?.addEventListener("click", closeModal);
-  modal.addEventListener("mousedown", (e) => {
-    if (e.target === modal) closeModal();
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && modal.classList.contains("open")) closeModal();
-  });
-
-  document.getElementById("mSaveTpl")?.addEventListener("click", async () => {
-    const dir = mDir.value.trim();
-    crew.custom = mCustom.value;
-    const skipPerms = mSkipPerms.checked;
-    if (expandCrew(crew).length === 0) return;
-    const defName = (dir ? basename(dir) : "") || "Crew preset";
-    const { ok, value } = await onConfirmModal({
-      title: "Save preset",
-      message: "Name this crew preset — it shows up under PRESETS in the workspace wizard.",
-      okLabel: "Save",
-      input: { placeholder: "Preset name", value: defName },
-    });
-    if (!ok) return;
-    const name = value.trim() || defName;
-    const tpl: Template = {
-      id: "tpl-" + Math.random().toString(36).slice(2, 9),
-      name,
-      counts: { ...crew.counts },
-      custom: crew.custom,
-      customCount: crew.customCount,
-      dir,
-      skipPerms,
-    };
-    saveTemplates([...loadTemplates(), tpl]);
-  });
+/** Save a crew as a preset that Settings → Sessions → Scheduled agents can launch. */
+export function saveTemplate(name: string, counts: Record<string, number>, dir: string, skipPerms: boolean): void {
+  saveTemplates([...loadTemplates(), { id: "tpl-" + Math.random().toString(36).slice(2, 9), name, counts, custom: "", customCount: 0, dir, skipPerms }]);
 }

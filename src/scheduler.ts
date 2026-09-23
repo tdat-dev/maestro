@@ -1,6 +1,6 @@
 // Scheduled agents: fire a saved crew template at a time of day, once or
 // daily. Split from main.ts; the schedule engine lives in schedule.ts (pure,
-// no DOM/timers). Templates are owned by main.ts (the wizard's preset store),
+// no DOM/timers). Templates are saved presets (New agent → Save as preset),
 // so loading one and launching it are injected.
 
 import { type CrewState, expandCrew } from "./crew";
@@ -12,7 +12,7 @@ import {
   type Schedule,
 } from "./schedule";
 
-/** Shape of a saved crew template (owned by main.ts's preset wizard); only the
+/** Shape of a saved crew template (saved from New agent); only the
  *  fields the scheduler reads. */
 interface TemplateLite {
   id: string;

@@ -737,3 +737,8 @@ body.inbox-ui .set-shell .sbtn:hover { background: rgba(255, 255, 255, 0.14); }
 }
 .set-select option { background: #15161a; }
 .set-select:focus-visible, body.inbox-ui .set-shell button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+.im-sp { flex: 1; }
+.im-btn.quiet { background: transparent; color: var(--ib-ink-3); }
+.im-btn.quiet:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.06); }
+.im-btn:disabled { opacity: 0.6; cursor: default; }

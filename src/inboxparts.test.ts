@@ -2,9 +2,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const spawned = vi.hoisted(() => [] as Array<[string, string, number, string | null, boolean]>);
+const saved = vi.hoisted(() => [] as Array<[string, Record<string, number>, string, boolean]>);
 vi.mock("./spawnmodal", () => ({
   loadCrew: () => ({ skipPerms: false }),
   presetAvailable: (program: string) => program !== "goose",
+  refreshCliAvailability: async () => {},
+  saveTemplate: (name: string, counts: Record<string, number>, dir: string, skip: boolean) => { saved.push([name, counts, dir, skip]); },
   spawnAgents: async (ws: { id: string }, cli: string, n: number, task: string | null, skip: boolean) => {
     spawned.push([ws.id, cli, n, task, skip]);
     return [];
@@ -62,6 +65,7 @@ describe("New agent", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
     spawned.length = 0;
+    saved.length = 0;
     localStorage.clear();
     setActiveWs({ id: "ws-1", name: "maestro", dir: "D:/maestro", panes: new Map() } as unknown as Workspace);
   });
@@ -87,6 +91,18 @@ describe("New agent", () => {
     expect(spawned).toEqual([["ws-1", "codex", 2, "fix the upload test", false]]);
     expect(document.querySelector(".inbox-modal")).toBeNull();
     expect(localStorage.getItem("maestro.inbox.lastCli")).toBe("codex");
+  });
+});
+
+describe("New agent presets", () => {
+  it("saves the setup as a preset Schedule can start", () => {
+    document.body.innerHTML = "";
+    localStorage.clear();
+    setActiveWs({ id: "ws-1", name: "maestro", dir: "D:/maestro", panes: new Map() } as unknown as Workspace);
+    openNewAgent({ count: 2 });
+    (document.querySelector("[data-save]") as HTMLButtonElement).click();
+    expect(saved).toEqual([["2× Claude Code · maestro", { claude: 2 }, "D:/maestro", false]]);
+    expect(document.querySelector("[data-save]")!.textContent).toBe("Saved");
   });
 });
 

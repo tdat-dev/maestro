@@ -17,6 +17,7 @@ import { configureSession, saveSession, restoreSession } from "./session";
 import { configureScheduler, initScheduler } from "./scheduler";
 import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setStatus, clearAttention, updateAttention, retheme, applyZoom } from "./pane";
 import { configureWorkspace, initWorkspace, createWorkspace, activateWorkspace, bootDetached } from "./workspace";
+import { updateTasks } from "./tasks";
 import { confirmModal } from "./confirmmodal";
 import { wirePaneSearch } from "./panesearch";
 import { initMascotView } from "./mascotview";
@@ -459,6 +460,7 @@ function tick() {
   if (clk) clk.textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
   // Live uptime + active/idle activity on every running pane, across all workspaces.
   const now = Date.now();
+  updateTasks(now); // derived task state first, so attention notifications can say what the agent wants
   updateAttention(now);
   for (const w of workspaces.values())
     for (const pane of w.panes.values()) {

@@ -24,6 +24,7 @@ import { layoutGrid, wirePaneDrag, wirePaneRename, toggleMax } from "./panelayou
 import { saveSession } from "./session";
 import { openReplays, REC_DIR_REL } from "./replay";
 import { workspaces, newId } from "./appstate";
+import { taskLine, taskOf } from "./tasks";
 import { basename } from "./workspaces";
 import { paneLook } from "./background";
 import { MAESTRO_LAWS, DIRECTOR_LAWS } from "./laws";
@@ -491,7 +492,9 @@ function setAttention(pane: Pane, ws: Workspace) {
   // Notify only while the window is unattended, once per flag.
   if (!pane.attentionNotified && (document.hidden || !document.hasFocus())) {
     pane.attentionNotified = true;
-    void notify(`${pane.spec.name} needs you`, ws.name).catch(() => {});
+    // Say what it wants when the screen shows it ("Ana wants to run npm test").
+    const line = taskOf(pane.id)?.status.state === "needs" ? taskLine(pane.id) : null;
+    void notify(line ?? `${pane.spec.name} needs you`, ws.name).catch(() => {});
   }
 }
 

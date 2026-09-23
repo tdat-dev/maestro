@@ -401,7 +401,7 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
       acts.dataset.mode = mode;
       acts.innerHTML = pinned
         ? `<button class="ib-icon" data-stage="full" title="Open full size" aria-label="Open ${esc(t.name)} full size">⤢</button><button class="ib-icon" data-stage="close" title="Take out of Split" aria-label="Take ${esc(t.name)} out of Split">✕</button>`
-        : `<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>`;
+        : `<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
       pill.after(acts);
     }
     acts.querySelector('[data-stage="review"]')?.setAttribute("aria-pressed", String(reviewer?.paneId === p.id));
@@ -590,6 +590,48 @@ function openHistory(): void {
   render();
 }
 
+/** Agents racing on one job, in their slot order. */
+export function raceOf(list: Task[], id: string): Task[] {
+  return list.filter((t) => t.race?.id === id).sort((a, b) => a.race!.n - b.race!.n);
+}
+
+/** Compare a race: every agent on the job with how far it got and what it
+ *  changed; Review opens that agent's diff, where you merge the one you keep. */
+function openCompare(raceId: string): void {
+  const racers = raceOf(allTasks(), raceId);
+  if (!racers.length) return;
+  document.querySelector(".cmp-back")?.remove();
+  const back = document.createElement("div");
+  back.className = "inbox-modal-back cmp-back";
+  back.innerHTML = `<div class="inbox-modal cmp" role="dialog" aria-modal="true" aria-labelledby="cmpTitle">
+    <header class="im-head"><div><h2 id="cmpTitle">${esc(racers[0].title ?? "Same job")}</h2><p class="im-sub">${racers.length} agents on the same job. Review each one, merge the best, discard the rest.</p></div>
+      <button type="button" class="im-x" data-close aria-label="Close">✕</button></header>
+    <div class="cmp-grid">${racers.map((t) => {
+      const p = paneOf(t);
+      return `<section class="cmp-col">
+        <div class="cmp-h"><span class="iq-mk" style="background:${esc(p?.color ?? "#888")}" aria-hidden="true">${esc((t.name.trim()[0] ?? "?").toUpperCase())}</span><b>${esc(t.name)}</b><span class="ib-pill st-${t.status.state}">${GROUP_LABEL[t.status.state]}</span></div>
+        <p class="cmp-n">${t.changedFiles == null ? "Changes unknown" : `${t.changedFiles} file${t.changedFiles === 1 ? "" : "s"} changed`}${lineCounts(t)}</p>
+        <p class="cmp-l">${esc(rowLine(t))}</p>
+        <button class="im-btn${t.status.state === "review" ? " primary" : ""}" data-review="${esc(t.paneId)}">Review</button>
+      </section>`;
+    }).join("")}</div></div>`;
+  document.body.appendChild(back);
+  const close = () => back.remove();
+  back.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement;
+    if (t === back || t.closest("[data-close]")) { close(); return; }
+    const id = t.closest<HTMLElement>("[data-review]")?.dataset.review;
+    const task = id && allTasks().find((x) => x.paneId === id);
+    if (!task) return;
+    close();
+    if (splitOn) setSplit(false);
+    openTask(task);
+    openReview();
+  });
+  back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } });
+  back.querySelector<HTMLElement>("[data-review]")?.focus();
+}
+
 /** Everything Ctrl K can reach: every agent (in queue order), then actions. */
 export function paletteItems(): PaletteItem[] {
   const agents: PaletteItem[] = allTasks().map((t) => {
@@ -649,6 +691,7 @@ function onStageButton(e: MouseEvent): void {
   switch (b.dataset.stage) {
     case "review": if (reviewer?.paneId) reviewer.close(); else openReview(); break;
     case "history": if (historian?.paneId) historian.close(); else openHistory(); break;
+    case "compare": { const r = pane && allTasks().find((x) => x.paneId === pane.id)?.race; if (r) openCompare(r.id); break; }
     case "close": if (pane) closeFromSplit(pane.id); break;
     case "full": {
       const t = pane && allTasks().find((x) => x.paneId === pane.id);

@@ -302,6 +302,22 @@ describe("inbox DOM", () => {
     expect(qEl.classList.contains("split-pin")).toBe(false);
   });
 
+  it("compares agents racing on one job and opens the one you pick in Review", () => {
+    const race = (n: number) => ({ id: "r1", n, of: 2 });
+    state.tasks = [
+      task("a", "Ana", "review", { title: "Fix upload", race: race(1), changedFiles: 2, added: 10, removed: 1 }),
+      task("e", "Eli", "working", { title: "Fix upload", race: race(2) }),
+    ];
+    setInbox(true);
+    (panes[0].el.querySelector('[data-stage="compare"]') as HTMLButtonElement).click();
+    const cols = [...document.querySelectorAll(".cmp-col")];
+    expect(cols.map((c) => c.querySelector("b")!.textContent)).toEqual(["Ana", "Eli"]);
+    expect(cols[0].querySelector(".cmp-n")!.textContent).toBe("2 files changed+10 −1");
+    (cols[1].querySelector("[data-review]") as HTMLButtonElement).click();
+    expect(document.querySelector(".cmp-back")).toBeNull();
+    expect(state.reviewed).toEqual(["D:/wt/e"]);
+  });
+
   it("does not wipe what you are typing when the tick re-renders", () => {
     state.tasks = [task("a", "Ana", "needs")];
     setInbox(true);

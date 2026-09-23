@@ -132,16 +132,17 @@ describe("inbox DOM", () => {
     setInbox(false);
   });
 
-  it("stays off until turned on, and remembers the choice", () => {
+  it("is on for a fresh install, and remembers turning it off", () => {
+    setInbox(false);
+    localStorage.clear();
     initInbox();
-    expect(document.querySelector(".inbox-queue")).toBeNull();
-    const toggle = document.getElementById("setInboxUi") as HTMLInputElement;
-    toggle.checked = true; toggle.dispatchEvent(new Event("change"));
     expect(document.body.classList.contains("inbox-ui")).toBe(true);
-    expect(localStorage.getItem("maestro.inboxUi")).toBe("1");
+    const toggle = document.getElementById("setInboxUi") as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
     toggle.checked = false; toggle.dispatchEvent(new Event("change"));
     expect(document.querySelector(".inbox-queue")).toBeNull();
     expect(document.body.classList.contains("inbox-ui")).toBe(false);
+    expect(localStorage.getItem("maestro.inboxUi")).toBe("0");
   });
 
   it("puts the agent that needs you on the stage and answers it with a button", async () => {

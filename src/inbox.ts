@@ -18,6 +18,7 @@ import { openSettings } from "./settingsmodal";
 import { openNewAgent } from "./inboxnew";
 import { openPalette, closePalette, paletteOpen, type PaletteItem } from "./inboxpalette";
 import { createHistoryDrawer } from "./inboxhistory";
+import { mountStart, renderStart, unmountStart } from "./inboxstart";
 import { dockToggle } from "./dock";
 import { getInboxUi, setInboxUi } from "./settings";
 import { allTasks, answerOption, answerText, onTasksChange, type Task } from "./tasks";
@@ -527,6 +528,7 @@ function render(): void {
   renderHead(list);
   renderHeaders(list, pane);
   renderAsk(list, pane);
+  renderStart();
   // History follows the stage: switch agents and it shows the new one's.
   if (historian?.paneId && pane && historian.paneId !== pane.id) historian.open(pane);
   historian?.refresh();
@@ -670,6 +672,7 @@ function mount(): void {
   const app = document.getElementById("app");
   if (!app || queueEl) return;
   document.body.classList.add("inbox-ui");
+  mountStart();
   queueEl = document.createElement("aside");
   queueEl.className = "inbox-queue";
   queueEl.setAttribute("aria-label", "Agents");
@@ -749,6 +752,7 @@ function mount(): void {
 
 function unmount(): void {
   document.body.classList.remove("inbox-ui");
+  unmountStart();
   if (splitWs) clearSplit(splitWs);
   splitOn = false; pins = []; splitSig = ""; splitWs = null;
   if (reviewer?.paneId) reviewer.close();

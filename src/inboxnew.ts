@@ -33,7 +33,8 @@ export function closeNewAgent(): void {
   returnTo = null;
 }
 
-export function openNewAgent(): void {
+export function openNewAgent(opts: { count?: number } = {}): void {
+  const preset = Math.min(3, Math.max(1, opts.count ?? 1));
   const ws = activeWs;
   if (!ws) return;
   el?.remove();
@@ -61,14 +62,14 @@ export function openNewAgent(): void {
       <div class="im-row">
         <fieldset class="im-field">
           <legend class="im-label">How many</legend>
-          <div class="im-seg">${[1, 2, 3].map((n) => `<label><input type="radio" name="naCount" value="${n}"${n === 1 ? " checked" : ""}><span>${n}</span></label>`).join("")}</div>
+          <div class="im-seg">${[1, 2, 3].map((n) => `<label><input type="radio" name="naCount" value="${n}"${n === preset ? " checked" : ""}><span>${n}</span></label>`).join("")}</div>
         </fieldset>
-        <p class="im-hint" data-race hidden>They all get the same job. Compare their changes in Review and keep the best.</p>
+        <p class="im-hint" data-race${preset > 1 ? "" : " hidden"}>They all get the same job. Compare their changes in Review and keep the best.</p>
       </div>
       <label class="im-check"><input type="checkbox" id="naSkip"${loadCrew().skipPerms ? " checked" : ""}> Don't ask before running commands or editing files</label>
       <footer class="im-foot">
         <button type="button" class="im-btn" data-close>Cancel</button>
-        <button type="submit" class="im-btn primary" data-start>${startLabel(1)}</button>
+        <button type="submit" class="im-btn primary" data-start>${startLabel(preset)}</button>
       </footer>
     </form>`;
   document.body.appendChild(el);

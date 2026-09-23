@@ -163,7 +163,7 @@ body.inbox-ui .grid.canvas .pane.split-pin[data-role="director"] .pb-cli { color
 body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .pane-bar,
 body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused[data-role="director"] .pane-bar {
   display: grid;
-  grid-template-columns: 40px auto auto minmax(0, 1fr) auto auto;
+  grid-template-columns: 40px auto auto minmax(0, 1fr) auto auto auto;
   grid-template-rows: auto auto;
   column-gap: 8px;
   row-gap: 2px;
@@ -193,7 +193,8 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused[data-role="director"]
 body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .pb-role { font-size: 12.5px; color: var(--ib-ink-3); background: none; padding: 0; text-transform: none; letter-spacing: 0; font-family: var(--sans); font-weight: 400; }
 body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .pb-sp { display: none; }
 body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .ib-pill { grid-row: 1 / 3; grid-column: 5; }
-body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .pb-ctrls { grid-row: 1 / 3; grid-column: 6; }
+body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .ib-acts { grid-row: 1 / 3; grid-column: 6; }
+body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .pb-ctrls { grid-row: 1 / 3; grid-column: 7; }
 body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .pctrl,
 body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused[data-role="director"] .pctrl { color: var(--ib-ink-3); }
 body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused[data-role="director"] { border-color: transparent; }
@@ -546,3 +547,72 @@ body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .term-host .xterm { paddi
 .ih-ev.k-answer i { background: #fff; }
 .ih-ev.k-answer span { color: var(--ib-ink-2); }
 .ih-empty { margin: 18px 0; font-size: 13px; color: var(--ib-ink-3); }
+
+/* fewer things on screen: the counts live in the headline, "back to canvas"
+   means nothing here */
+body.inbox-ui .tb-right .stats,
+body.inbox-ui .pane .pctrl[data-max] { display: none !important; }
+.id-new { white-space: nowrap; }
+.ib-acts { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); }
+.ib-act { height: 26px; padding: 0 12px; border-radius: 999px; font: 500 12.5px var(--sans); color: var(--ib-ink-2); }
+.ib-act:hover { color: var(--ib-ink); }
+.ib-act[aria-pressed="true"] { background: rgba(255, 255, 255, 0.12); color: var(--ib-ink); }
+.ib-act:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+body.inbox-ui .grid.canvas.inbox-split .ib-acts { display: none; }
+
+/* ---------- Split cards (as in the design): name · CLI over a quiet second
+   line, state pill, open full size and close; amber edge when it needs you;
+   its own answer box at the bottom ---------- */
+body.inbox-ui .grid.canvas.has-focus.inbox-split .pane.split-pin {
+  border-radius: 18px;
+  box-shadow: inset 0 0 0 1px var(--ib-line);
+}
+body.inbox-ui .grid.canvas.has-focus.inbox-split .pane.split-pin.focused { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.24); }
+body.inbox-ui .grid.canvas.has-focus.inbox-split .pane.split-pin.ib-needs { box-shadow: inset 0 0 0 1px var(--ib-needs-line), 0 20px 50px rgba(255, 190, 110, 0.05); }
+body.inbox-ui .grid.canvas.has-focus.inbox-split .pane.split-pin.ib-needs.focused { box-shadow: inset 0 0 0 1px var(--ib-needs), 0 20px 50px rgba(255, 190, 110, 0.07); }
+body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pane-bar {
+  display: grid;
+  grid-template-columns: 24px auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto;
+  column-gap: 6px;
+  row-gap: 1px;
+  align-items: center;
+  height: auto;
+  padding: 12px 12px 8px 14px;
+}
+body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pb-av { grid-row: 1 / 3; grid-column: 1; margin-right: 4px; }
+body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pb-name { grid-row: 1; grid-column: 2; font-size: 13.5px; font-weight: 600; }
+body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pb-cli { grid-row: 1; grid-column: 3; font-size: 13px; color: var(--ib-ink-2); }
+body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pb-cli::before { content: "· "; }
+body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pb-role { display: none; }
+body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pb-where {
+  display: block; grid-row: 2; grid-column: 2 / 5;
+  font: 12.5px var(--sans); color: var(--ib-ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pb-sp { display: none; }
+body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .ib-pill { grid-row: 1 / 3; grid-column: 5; }
+body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .ib-acts { display: inline-flex; grid-row: 1 / 3; grid-column: 6; background: none; padding: 0; }
+body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pb-ctrls { display: none; }
+.ib-icon { width: 30px; height: 30px; border-radius: 8px; color: var(--ib-ink-3); font-size: 14px; }
+.ib-icon:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.06); }
+.ib-icon:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.ib-mini {
+  position: absolute;
+  left: 12px; right: 12px; bottom: 12px;
+  z-index: 5;
+  padding: 12px 12px 10px;
+  border-radius: 12px;
+  background: var(--ib-raise);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 16px 40px rgba(0, 0, 0, 0.6);
+  font: 13px var(--sans);
+  color: var(--ib-ink);
+}
+.ib-mini p { margin: 0 0 10px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.ib-mini .lb { font-size: 12.5px; color: var(--ib-needs); }
+.ib-mini code { padding: 4px 8px; border-radius: 6px; background: #0a0a0c; font: 12.5px var(--mono); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ib-mini-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.ib-mini .ia-opt { width: auto; height: 30px; padding: 0 12px; border-radius: 999px; font: 600 12.5px var(--sans); background: rgba(255, 255, 255, 0.07); color: var(--ib-ink); }
+.ib-mini .ia-opt.always { background: transparent; color: var(--ib-ink-2); }
+.ib-mini .ia-opt.deny { background: oklch(0.72 0.15 25 / 0.12); color: var(--ib-del); }
+.ib-mini .ia-opt.allow { background: #fff; color: #000; }

@@ -101,9 +101,20 @@ export function togglePin(pins: string[], id: string, keep?: string): string[] {
   return next;
 }
 
-/** Where each pinned terminal sits in Split: an even grid with a gap. */
+/** Where each terminal sits in Split: an even grid with a gap. */
 export function splitTiles(n: number, area: Area): Tile[] {
-  return tileToFit(n, area, { gap: 12, margin: 0, top: 0, bottom: 0 });
+  return tileToFit(n, area, { gap: 16, margin: 0, top: 0, bottom: 0 });
+}
+
+/** Who is in Split: the agents already there (so nobody jumps around), topped
+ *  up from the queue order until there are four, skipping the ones you closed. */
+export function fillPins(pins: string[], order: string[], closed: Set<string>, max: number = MAX_SPLIT): string[] {
+  const out = pins.filter((id) => order.includes(id) && !closed.has(id));
+  for (const id of order) {
+    if (out.length >= max) break;
+    if (!out.includes(id) && !closed.has(id)) out.push(id);
+  }
+  return out.slice(-max);
 }
 
 /* ---------------- DOM ---------------- */
@@ -125,13 +136,14 @@ let splitOn = false;
 let pins: string[] = [];
 let splitSig = "";
 let splitWs: Workspace | null = null;
+/** Agents closed out of Split with ✕; they stay out until Split is turned off. */
+const splitClosed = new Set<string>();
+/** Per-pane answer box in Split: which question it shows, and answered ones. */
+const miniAnswered = new Map<string, string>();
 let splitBtn: HTMLButtonElement | null = null;
-let reviewBtn: HTMLButtonElement | null = null;
 let reviewer: ReturnType<typeof createReviewDrawer> | null = null;
 let historian: ReturnType<typeof createHistoryDrawer> | null = null;
-let historyBtn: HTMLButtonElement | null = null;
 let dockEl: HTMLElement | null = null;
-let statsEl: HTMLElement | null = null;
 /** Queue filter: one project's id, or null for all of them. */
 let projectFilter: string | null = null;
 
@@ -153,6 +165,7 @@ export function openTask(t: Task): void {
   // In Split, picking an agent of the shown project pins it next to the others
   // instead of replacing the whole view.
   if (splitOn && ws === activeWs && stagePane()) {
+    splitClosed.delete(pane.id);
     if (!pins.includes(pane.id)) pins = togglePin(pins, pane.id, stagePane()?.id);
     setCurrent(ws, pane);
     return;
@@ -195,8 +208,14 @@ function clearSplit(ws: Workspace): void {
 function layoutSplit(): void {
   const ws = activeWs;
   if (!ws) return;
-  const stage = stagePane();
-  if (splitOn && stage && !pins.includes(stage.id)) pins = togglePin(pins, stage.id, stage.id);
+  if (splitOn) {
+    const order = allTasks().filter((t) => t.wsId === ws.id).map((t) => t.paneId);
+    pins = fillPins(pins, order, splitClosed);
+    // The agent you talk to must be on screen.
+    const stage = stagePane();
+    const first = pins.length ? ws.panes.get(pins[0]) : undefined;
+    if (first && (!stage || !pins.includes(stage.id))) for (const p of ws.panes.values()) p.el.classList.toggle("focused", p === first);
+  }
   const shown = pins.map((id) => ws.panes.get(id)).filter((p): p is Pane => !!p);
   const area = { width: ws.gridEl.clientWidth, height: ws.gridEl.clientHeight };
   const on = splitOn && shown.length > 1;
@@ -224,8 +243,22 @@ function layoutSplit(): void {
 
 export function setSplit(on: boolean): void {
   splitOn = on;
+  if (!on) { splitClosed.clear(); miniAnswered.clear(); }
   splitBtn?.setAttribute("aria-pressed", String(on));
   dockEl?.querySelector('[data-dock="queue"]')?.setAttribute("aria-pressed", String(!on));
+  render();
+}
+
+/** ✕ on a Split card: take that agent out, hand the focus to another one. */
+function closeFromSplit(id: string): void {
+  splitClosed.add(id);
+  pins = pins.filter((x) => x !== id);
+  const ws = activeWs;
+  const cur = stagePane();
+  if (ws && cur?.id === id) {
+    const next = pins.map((x) => ws.panes.get(x)).find(Boolean);
+    if (next) { setCurrent(ws, next); return; }
+  }
   render();
 }
 
@@ -288,30 +321,73 @@ function renderHead(list: Task[]): void {
   if (!headEl) return;
   const h = headline(list);
   headEl.innerHTML = `<b>${esc(h.lead)}</b>${esc(h.rest)}`;
-  if (statsEl) {
-    const projects = new Set(list.map((t) => t.wsId)).size;
-    statsEl.textContent = `${list.length} agent${list.length === 1 ? "" : "s"} · ${projects} project${projects === 1 ? "" : "s"}`;
-  }
 }
 
-/** The state pill in the stage header ("Needs you", "Ready to review", …). */
-function renderStagePill(list: Task[], pane: Pane | undefined): void {
+/** Headers of the agents on screen: the state pill everywhere; Changes and
+ *  History on the stage; open-full-size and close on each Split card, plus
+ *  the card's own answer box when that agent needs you. */
+function renderHeaders(list: Task[], pane: Pane | undefined): void {
   for (const ws of workspaces.values()) for (const p of ws.panes.values()) {
-    const onScreen = p === pane || p.el.classList.contains("split-pin");
-    const t = onScreen ? list.find((x) => x.paneId === p.id) : undefined;
+    const pinned = p.el.classList.contains("split-pin");
+    const t = p === pane || pinned ? list.find((x) => x.paneId === p.id) : undefined;
     let pill = p.el.querySelector<HTMLElement>(".ib-pill");
-    if (!t) { pill?.remove(); continue; }
+    let acts = p.el.querySelector<HTMLElement>(".ib-acts");
+    p.el.classList.toggle("ib-needs", !!t && pinned && t.status.state === "needs");
+    if (!t) { pill?.remove(); acts?.remove(); p.el.querySelector(".ib-mini")?.remove(); continue; }
     if (!pill) {
       pill = document.createElement("span");
       p.el.querySelector(".pane-bar .pb-sp")?.after(pill);
     }
     pill.className = `ib-pill st-${t.status.state}`;
     pill.textContent = GROUP_LABEL[t.status.state];
+    const mode = pinned ? "split" : "stage";
+    if (!acts || acts.dataset.mode !== mode) {
+      acts?.remove();
+      acts = document.createElement("span");
+      acts.className = `ib-acts ${mode}`;
+      acts.dataset.mode = mode;
+      acts.innerHTML = pinned
+        ? `<button class="ib-icon" data-stage="full" title="Open full size" aria-label="Open ${esc(t.name)} full size">⤢</button><button class="ib-icon" data-stage="close" title="Take out of Split" aria-label="Take ${esc(t.name)} out of Split">✕</button>`
+        : `<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>`;
+      pill.after(acts);
+    }
+    acts.querySelector('[data-stage="review"]')?.setAttribute("aria-pressed", String(reviewer?.paneId === p.id));
+    acts.querySelector('[data-stage="history"]')?.setAttribute("aria-pressed", String(historian?.paneId === p.id));
+    // Just the branch: the project is already in the queue and the headline.
+    const where = p.el.querySelector<HTMLElement>("[data-where]");
+    if (where) where.textContent = p.spec.branch ?? (pinned ? t.project : "");
+    renderMini(p, t, pinned);
   }
+}
+
+const askKey = (a: NonNullable<Task["status"]["ask"]>) => `${a.prompt}|${a.detail ?? ""}|${a.options.map((o) => o.label).join("/")}`;
+
+/** A Split card answers its own agent, right under that agent's terminal. */
+function renderMini(p: Pane, t: Task, pinned: boolean): void {
+  let mini = p.el.querySelector<HTMLElement>(".ib-mini");
+  const a = pinned && t.status.state === "needs" ? t.status.ask : null;
+  if (!a) { mini?.remove(); miniAnswered.delete(p.id); return; }
+  const key = askKey(a);
+  if (miniAnswered.get(p.id) === key) { mini?.remove(); return; }
+  if (mini?.dataset.sig === key) return;
+  if (!mini) {
+    mini = document.createElement("div");
+    mini.className = "ib-mini";
+    p.el.appendChild(mini);
+  }
+  mini.dataset.sig = key;
+  const btns = isYesNo(a)
+    ? [...a.options].sort((x, y) => rank(x) - rank(y)).map((o) =>
+        `<button class="ia-opt ${o.deny ? "deny" : o.always ? "always" : "allow"}" data-n="${o.n}" title="${esc(o.label)}">${esc(shortLabel(o))}</button>`)
+    : a.options.map((o) => `<button class="ia-opt" data-n="${o.n}">${o.n}. ${esc(o.label)}</button>`);
+  const lead = a.kind === "run" ? `${t.name} wants to run` : a.kind === "edit" ? `${t.name} wants to edit` : `${t.name} asks`;
+  mini.innerHTML = `<p><span class="lb">${esc(lead)}</span>${a.kind !== "question" && a.detail ? `<code>${esc(a.detail)}</code>` : esc(a.prompt)}</p><div class="ib-mini-opts">${btns.join("")}</div>`;
 }
 
 function renderAsk(list: Task[], pane: Pane | undefined): void {
   if (!askEl) return;
+  // In Split every card carries its own answer box.
+  if (splitSig) { askEl.hidden = true; askEl.innerHTML = ""; askEl.dataset.sig = ""; return; }
   const t = pane ? list.find((x) => x.paneId === pane.id) : undefined;
   const a = t?.status.state === "needs" ? t.status.ask : null;
   // The command is part of the identity: Claude asks "Do you want to proceed?"
@@ -383,7 +459,7 @@ function render(): void {
   const pane = stagePane();
   renderQueue(list, pane?.id, Date.now());
   renderHead(list);
-  renderStagePill(list, pane);
+  renderHeaders(list, pane);
   renderAsk(list, pane);
   // History follows the stage: switch agents and it shows the new one's.
   if (historian?.paneId && pane && historian.paneId !== pane.id) historian.open(pane);
@@ -434,7 +510,6 @@ function openReview(): void {
   if (!pane || !reviewer) return;
   if (historian?.paneId) historian.close();
   reviewer.open(pane);
-  reviewBtn?.setAttribute("aria-pressed", "true");
   render();
 }
 
@@ -444,7 +519,7 @@ function openHistory(): void {
   if (reviewer?.paneId) reviewer.close();
   if (historian?.paneId) historian.close();
   historian.open(pane);
-  historyBtn?.setAttribute("aria-pressed", "true");
+  render();
 }
 
 /** Everything Ctrl K can reach: every agent (in queue order), then actions. */
@@ -484,6 +559,38 @@ function onCtrlK(e: KeyboardEvent): void {
   if (paletteOpen()) closePalette(); else openPalette(paletteItems());
 }
 
+function onStageButton(e: MouseEvent): void {
+  const target = e.target as HTMLElement;
+  const paneEl = target.closest<HTMLElement>(".pane");
+  const ws = activeWs;
+  const pane = ws && paneEl ? [...ws.panes.values()].find((p) => p.el === paneEl) : undefined;
+  const opt = target.closest<HTMLElement>(".ib-mini [data-n]");
+  if (opt && pane) {
+    e.stopPropagation();
+    const a = allTasks().find((x) => x.paneId === pane.id)?.status.ask;
+    const o = a?.options.find((x) => x.n === Number(opt.dataset.n));
+    if (!a || !o) return;
+    miniAnswered.set(pane.id, askKey(a));
+    pane.el.querySelector(".ib-mini")?.remove();
+    void answerOption(pane.id, o).then(() => pane.term.focus());
+    return;
+  }
+  const b = target.closest<HTMLElement>("[data-stage]");
+  if (!b) return;
+  e.stopPropagation();
+  switch (b.dataset.stage) {
+    case "review": if (reviewer?.paneId) reviewer.close(); else openReview(); break;
+    case "history": if (historian?.paneId) historian.close(); else openHistory(); break;
+    case "close": if (pane) closeFromSplit(pane.id); break;
+    case "full": {
+      const t = pane && allTasks().find((x) => x.paneId === pane.id);
+      setSplit(false);
+      if (t) openTask(t);
+      break;
+    }
+  }
+}
+
 /** Clicking into another terminal in Split makes it the current one. */
 function onFocusIn(e: FocusEvent): void {
   if (!splitOn || !activeWs) return;
@@ -510,10 +617,6 @@ function mount(): void {
   headEl.className = "inbox-head";
   headEl.setAttribute("aria-live", "polite");
   document.querySelector(".topbar .tb-center")?.prepend(headEl);
-  statsEl = document.createElement("span");
-  statsEl.className = "inbox-stats";
-  document.querySelector(".topbar .tb-right")?.prepend(statsEl);
-
   // The floating dock at the bottom: views, the command bar, New agent, tools.
   dockEl = document.createElement("nav");
   dockEl.className = "inbox-dock";
@@ -522,38 +625,25 @@ function mount(): void {
     <div class="id-seg">
       <button data-dock="queue" aria-pressed="true" title="One agent at a time">Queue</button>
       <button data-dock="split" aria-pressed="false" title="Pinned agents side by side (Alt+S; Alt+P pins)">Split</button>
-      <button data-dock="review" aria-pressed="false" title="What the agent on the stage changed (Alt+R)">Review</button>
-      <button data-dock="history" aria-pressed="false" title="What the agent on the stage has done (Alt+H)">History</button>
-      <button data-dock="board" title="The project's board">Board</button>
     </div>
     <button class="id-search" data-dock="search">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
       <span>Jump to an agent or run a command</span><kbd>Ctrl K</kbd></button>
-    <button class="id-new" data-dock="new">New agent</button>
-    <div class="id-seg">
-      <button data-dock="files" title="Files and editor (Ctrl+Shift+E)">Files</button>
-      <button data-dock="settings">Settings</button>
-    </div>`;
+    <button class="id-new" data-dock="new">New agent</button>`;
   app.appendChild(dockEl);
   splitBtn = dockEl.querySelector<HTMLButtonElement>('[data-dock="split"]');
-  reviewBtn = dockEl.querySelector<HTMLButtonElement>('[data-dock="review"]');
-  historyBtn = dockEl.querySelector<HTMLButtonElement>('[data-dock="history"]');
   dockEl.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>("[data-dock]");
     switch (b?.dataset.dock) {
       case "queue": reviewer?.close(); setSplit(false); break;
       case "split": setSplit(!splitOn); break;
-      case "review": if (reviewer?.paneId) reviewer.close(); else openReview(); break;
-      case "board": dockToggle("kanban"); break;
-      case "history": if (historian?.paneId) historian.close(); else openHistory(); break;
       case "search": openPalette(paletteItems()); break;
       case "new": openNewAgent(); break;
-      case "files": document.getElementById("btnToggleCode")?.click(); break;
-      case "settings": openSettings(); break;
     }
   });
-  historian = createHistoryDrawer(app, () => historyBtn?.setAttribute("aria-pressed", "false"));
-  reviewer = createReviewDrawer(app, () => { reviewBtn?.setAttribute("aria-pressed", "false"); render(); });
+  document.getElementById("workspaces")?.addEventListener("click", onStageButton);
+  historian = createHistoryDrawer(app, render);
+  reviewer = createReviewDrawer(app, render);
 
   queueEl.addEventListener("click", (e) => {
     const chipEl = (e.target as HTMLElement).closest<HTMLElement>(".iq-chip");
@@ -596,14 +686,15 @@ function unmount(): void {
   if (splitWs) clearSplit(splitWs);
   splitOn = false; pins = []; splitSig = ""; splitWs = null;
   if (reviewer?.paneId) reviewer.close();
-  for (const ws of workspaces.values()) for (const p of ws.panes.values()) p.el.querySelector(".ib-pill")?.remove();
-  queueEl?.remove(); askEl?.remove(); headEl?.remove(); dockEl?.remove(); statsEl?.remove();
-  queueEl = askEl = headEl = dockEl = statsEl = null; splitBtn = reviewBtn = historyBtn = null; reviewer = null; historian = null;
+  for (const ws of workspaces.values()) for (const p of ws.panes.values()) { p.el.querySelector(".ib-pill")?.remove(); p.el.querySelector(".ib-acts")?.remove(); p.el.querySelector(".ib-mini")?.remove(); p.el.classList.remove("ib-needs"); }
+  queueEl?.remove(); askEl?.remove(); headEl?.remove(); dockEl?.remove();
+  queueEl = askEl = headEl = dockEl = null; splitBtn = null; reviewer = null; historian = null;
   projectFilter = null;
   if (timer !== null) { clearInterval(timer); timer = null; }
   offTasks?.(); offTasks = null;
   document.removeEventListener("keydown", onKey, true);
   document.removeEventListener("focusin", onFocusIn);
+  document.getElementById("workspaces")?.removeEventListener("click", onStageButton);
   window.removeEventListener("keydown", onCtrlK, true);
   closePalette();
   window.removeEventListener("resize", render);

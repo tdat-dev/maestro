@@ -42,7 +42,7 @@ vi.mock("./settingsmodal", () => ({ openSettings: () => {} }));
 vi.mock("./dock", () => ({ dockToggle: () => {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
-import { groupTasks, headline, rowLine, ago, togglePin, splitTiles, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
+import { groupTasks, headline, rowLine, ago, togglePin, splitTiles, fillPins, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
 import type { Workspace, Pane } from "./panetypes";
 
 const RUN_ASK: Ask = {
@@ -91,9 +91,15 @@ describe("inbox helpers", () => {
     expect(isYesNo({ kind: "question", options: RUN_ASK.options })).toBe(false);
   });
 
+  it("fills Split from the queue without moving the agents already there", () => {
+    expect(fillPins([], ["a", "b", "c", "d", "e"], new Set())).toEqual(["a", "b", "c", "d"]);
+    expect(fillPins(["c", "a"], ["a", "b", "c"], new Set())).toEqual(["c", "a", "b"]);
+    expect(fillPins(["a", "gone"], ["a", "b", "c"], new Set(["b"]))).toEqual(["a", "c"]);
+  });
+
   it("lays two terminals side by side", () => {
     const [l, r] = splitTiles(2, { width: 1012, height: 600 });
-    expect([l.x, l.w, r.x, r.w, l.h]).toEqual([0, 500, 512, 500, 600]);
+    expect([l.x, l.w, r.x, r.w, l.h]).toEqual([0, 498, 514, 498, 600]);
   });
 });
 
@@ -111,8 +117,15 @@ describe("inbox DOM", () => {
       term: { focus: () => {}, setFontSize: () => {}, fit: () => ({ cols: 80, rows: 24 }) },
     } as unknown as Pane));
     const gridEl = document.createElement("div");
-    panes.forEach((p) => { p.el.className = "pane"; gridEl.appendChild(p.el); });
-    document.getElementById("app")!.appendChild(gridEl);
+    panes.forEach((p) => {
+      p.el.className = "pane";
+      p.el.innerHTML = '<div class="pane-bar"><span class="pb-sp"></span><span data-where></span></div>';
+      gridEl.appendChild(p.el);
+    });
+    const main = document.createElement("main");
+    main.id = "workspaces";
+    main.appendChild(gridEl);
+    document.getElementById("app")!.appendChild(main);
     const ws = { id: "ws-1", name: "maestro", gridEl, panes: new Map(panes.map((p) => [p.id, p])) } as unknown as Workspace;
     workspaces.clear(); workspaces.set("ws-1", ws); setActiveWs(ws);
     setInbox(false);
@@ -140,7 +153,8 @@ describe("inbox DOM", () => {
     // Allow sits last and brightest, as in the design.
     expect([...document.querySelectorAll(".ia-acts .ia-opt")].map((b) => b.querySelector("span")!.textContent))
       .toEqual(["Always allow here", "Deny", "Allow"]);
-    expect(document.querySelector(".ib-pill")).toBeNull(); // no pane bar in this fake pane
+    expect(panes[0].el.querySelector(".ib-pill")!.textContent).toBe("Needs you");
+    expect([...panes[0].el.querySelectorAll(".ib-act")].map((b) => b.textContent)).toEqual(["Changes", "History"]);
     (document.querySelector('.ia-opt[data-n="3"]') as HTMLButtonElement).click();
     await Promise.resolve();
     expect(state.answered).toEqual([["a", "\x1b"]]);
@@ -185,23 +199,30 @@ describe("inbox DOM", () => {
     expect(document.querySelector(".ia-code")!.textContent).toBe("npm test");
   });
 
-  it("puts pinned agents side by side in Split and lets you leave it", () => {
+  it("lays every agent of the project out in Split, each answering on its own card", async () => {
     state.tasks = [task("a", "Ana", "needs"), task("e", "Eli", "working")];
     setInbox(true);
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true }));
     expect(document.querySelector('[data-dock="split"]')!.getAttribute("aria-pressed")).toBe("true");
-    // Only one pin yet: still a single stage.
-    expect(document.querySelectorAll(".split-pin")).toHaveLength(0);
-    (document.querySelector('.iq-row[data-id="e"]') as HTMLButtonElement).click();
-    expect([...document.querySelectorAll(".split-pin")].length).toBe(2);
-    expect(panes[1].el.classList.contains("focused")).toBe(true);
-    expect(panes[0].el.classList.contains("focused")).toBe(false);
+    expect(document.querySelectorAll(".split-pin")).toHaveLength(2);
     expect(panes[1].el.style.getPropertyValue("--sw")).not.toBe("");
-    // Clicking into the other terminal makes it the current one again.
-    panes[0].el.appendChild(document.createElement("textarea")).dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
-    expect(panes[0].el.classList.contains("focused")).toBe(true);
-    (document.querySelector('[data-dock="split"]') as HTMLButtonElement).click();
+    // The floating card steps aside; Ana's card carries her question.
+    expect((document.querySelector(".inbox-ask") as HTMLElement).hidden).toBe(true);
+    expect(panes[0].el.classList.contains("ib-needs")).toBe(true);
+    expect(panes[0].el.querySelector(".ib-mini code")!.textContent).toBe("npm run build");
+    (panes[0].el.querySelector('.ib-mini [data-n="1"]') as HTMLButtonElement).click();
+    await Promise.resolve();
+    expect(state.answered).toEqual([["a", "1"]]);
+    expect(panes[0].el.querySelector(".ib-mini")).toBeNull();
+    // Clicking into the other terminal makes it the current one.
+    panes[1].el.appendChild(document.createElement("textarea")).dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    expect(panes[1].el.classList.contains("focused")).toBe(true);
+    // ✕ takes Eli out; with one agent left it is a single stage again.
+    (panes[1].el.querySelector('[data-stage="close"]') as HTMLButtonElement).click();
     expect(document.querySelectorAll(".split-pin")).toHaveLength(0);
+    expect(panes[0].el.classList.contains("focused")).toBe(true);
+    (document.querySelector('[data-dock="queue"]') as HTMLButtonElement).click();
+    expect(document.querySelector('[data-dock="split"]')!.getAttribute("aria-pressed")).toBe("false");
     expect(panes[0].el.style.getPropertyValue("--sw")).toBe("");
   });
 
@@ -221,13 +242,12 @@ describe("inbox DOM", () => {
     expect(document.querySelector(".inbox-review")).toBeNull();
   });
 
-  it("filters the queue by project and counts agents in the top bar", () => {
+  it("filters the queue by project", () => {
     const other = { id: "ws-2", name: "quy", gridEl: document.createElement("div"), panes: new Map() } as unknown as Workspace;
     workspaces.set("ws-2", other);
     document.querySelector(".topbar")!.insertAdjacentHTML("beforeend", '<div class="tb-right"></div>');
     state.tasks = [task("a", "Ana", "needs"), task("q", "Quinn", "working", { wsId: "ws-2", project: "quy" })];
     setInbox(true);
-    expect(document.querySelector(".inbox-stats")!.textContent).toBe("2 agents · 2 projects");
     expect([...document.querySelectorAll(".iq-chip")].map((c) => c.textContent)).toEqual(["All projects · 2", "maestro · 1", "quy · 1"]);
     (document.querySelector('.iq-chip[data-ws="ws-2"]') as HTMLButtonElement).click();
     expect([...document.querySelectorAll(".iq-row")].map((r) => (r as HTMLElement).dataset.id)).toEqual(["q"]);

@@ -36,9 +36,13 @@ vi.mock("./panelayout", () => ({
 vi.mock("./agentbridge", () => ({ revealPane: () => true }));
 vi.mock("./zoom", () => ({ paneFont: (_ws: unknown, bump = 0) => 13 + bump }));
 vi.mock("./ipc", () => ({ resizePty: async () => {} }));
+vi.mock("./switcher", () => ({ openSwitcher: () => {} }));
+vi.mock("./spawnmodal", () => ({ openModal: () => {} }));
+vi.mock("./settingsmodal", () => ({ openSettings: () => {} }));
+vi.mock("./dock", () => ({ dockToggle: () => {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
-import { groupTasks, headline, rowLine, ago, togglePin, splitTiles, initInbox, setInbox } from "./inbox";
+import { groupTasks, headline, rowLine, ago, togglePin, splitTiles, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
 import type { Workspace, Pane } from "./panetypes";
 
 const RUN_ASK: Ask = {
@@ -79,6 +83,12 @@ describe("inbox helpers", () => {
     expect(togglePin(["a", "b"], "b")).toEqual(["a"]);
     expect(togglePin(["a", "b", "c", "d"], "e", "a")).toEqual(["a", "c", "d", "e"]);
     expect(togglePin(["a", "b", "c", "d"], "e", "b")).toEqual(["b", "c", "d", "e"]);
+  });
+
+  it("puts a plain permission prompt on one row with short button words", () => {
+    expect(isYesNo(RUN_ASK)).toBe(true);
+    expect(RUN_ASK.options.map(shortLabel)).toEqual(["Allow", "Always allow here", "Deny"]);
+    expect(isYesNo({ kind: "question", options: RUN_ASK.options })).toBe(false);
   });
 
   it("lays two terminals side by side", () => {
@@ -127,6 +137,10 @@ describe("inbox DOM", () => {
     expect(document.querySelector(".inbox-head")!.textContent).toBe("1 agent needs you. 0 are ready to review, 1 is working.");
     expect(document.querySelectorAll(".iq-row")).toHaveLength(2);
     expect(document.querySelector(".ia-code")!.textContent).toBe("npm run build");
+    // Allow sits last and brightest, as in the design.
+    expect([...document.querySelectorAll(".ia-acts .ia-opt")].map((b) => b.querySelector("span")!.textContent))
+      .toEqual(["Always allow here", "Deny", "Allow"]);
+    expect(document.querySelector(".ib-pill")).toBeNull(); // no pane bar in this fake pane
     (document.querySelector('.ia-opt[data-n="3"]') as HTMLButtonElement).click();
     await Promise.resolve();
     expect(state.answered).toEqual([["a", "\x1b"]]);
@@ -175,7 +189,7 @@ describe("inbox DOM", () => {
     state.tasks = [task("a", "Ana", "needs"), task("e", "Eli", "working")];
     setInbox(true);
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true }));
-    expect(document.querySelector(".inbox-split-btn")!.getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelector('[data-dock="split"]')!.getAttribute("aria-pressed")).toBe("true");
     // Only one pin yet: still a single stage.
     expect(document.querySelectorAll(".split-pin")).toHaveLength(0);
     (document.querySelector('.iq-row[data-id="e"]') as HTMLButtonElement).click();
@@ -186,7 +200,7 @@ describe("inbox DOM", () => {
     // Clicking into the other terminal makes it the current one again.
     panes[0].el.appendChild(document.createElement("textarea")).dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
     expect(panes[0].el.classList.contains("focused")).toBe(true);
-    (document.querySelector(".inbox-split-btn") as HTMLButtonElement).click();
+    (document.querySelector('[data-dock="split"]') as HTMLButtonElement).click();
     expect(document.querySelectorAll(".split-pin")).toHaveLength(0);
     expect(panes[0].el.style.getPropertyValue("--sw")).toBe("");
   });
@@ -205,6 +219,18 @@ describe("inbox DOM", () => {
     await Promise.resolve();
     expect(state.texts).toEqual([["e", "add a test for the empty case"]]);
     expect(document.querySelector(".inbox-review")).toBeNull();
+  });
+
+  it("filters the queue by project and counts agents in the top bar", () => {
+    const other = { id: "ws-2", name: "quy", gridEl: document.createElement("div"), panes: new Map() } as unknown as Workspace;
+    workspaces.set("ws-2", other);
+    document.querySelector(".topbar")!.insertAdjacentHTML("beforeend", '<div class="tb-right"></div>');
+    state.tasks = [task("a", "Ana", "needs"), task("q", "Quinn", "working", { wsId: "ws-2", project: "quy" })];
+    setInbox(true);
+    expect(document.querySelector(".inbox-stats")!.textContent).toBe("2 agents · 2 projects");
+    expect([...document.querySelectorAll(".iq-chip")].map((c) => c.textContent)).toEqual(["All projects · 2", "maestro · 1", "quy · 1"]);
+    (document.querySelector('.iq-chip[data-ws="ws-2"]') as HTMLButtonElement).click();
+    expect([...document.querySelectorAll(".iq-row")].map((r) => (r as HTMLElement).dataset.id)).toEqual(["q"]);
   });
 
   it("does not wipe what you are typing when the tick re-renders", () => {

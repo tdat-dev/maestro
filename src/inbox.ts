@@ -14,6 +14,10 @@ import { tileToFit, type Area, type Tile } from "./canvas";
 import { resizePty } from "./ipc";
 import { paneFont } from "./zoom";
 import { createReviewDrawer } from "./inboxreview";
+import { openSwitcher } from "./switcher";
+import { openModal } from "./spawnmodal";
+import { openSettings } from "./settingsmodal";
+import { dockToggle } from "./dock";
 import { getInboxUi, setInboxUi } from "./settings";
 import { allTasks, answerOption, answerText, onTasksChange, type Task } from "./tasks";
 import type { AskOption } from "./askparse";
@@ -67,6 +71,21 @@ export function ago(ms: number): string {
   return m < 60 ? `${m}m` : `${Math.round(m / 60)}h`;
 }
 
+/** The short word a permission button wears ("Allow", "Always allow here",
+ *  "Deny"); the CLI's full wording stays in the tooltip. */
+export function shortLabel(o: AskOption): string {
+  if (o.deny) return "Deny";
+  if (o.always) return "Always allow here";
+  return "Allow";
+}
+
+/** Permission prompts (run a command, edit a file) with the usual three
+ *  choices get one row of buttons; anything else keeps the numbered list. */
+export function isYesNo(a: { kind: string; options: AskOption[] }): boolean {
+  return a.kind !== "question" && a.options.length <= 3 &&
+    a.options.filter((o) => !o.deny && !o.always).length === 1;
+}
+
 export const MAX_SPLIT = 4;
 
 /** Pin or unpin an agent for Split. A fifth pin pushes out the oldest one,
@@ -108,6 +127,10 @@ let splitWs: Workspace | null = null;
 let splitBtn: HTMLButtonElement | null = null;
 let reviewBtn: HTMLButtonElement | null = null;
 let reviewer: ReturnType<typeof createReviewDrawer> | null = null;
+let dockEl: HTMLElement | null = null;
+let statsEl: HTMLElement | null = null;
+/** Queue filter: one project's id, or null for all of them. */
+let projectFilter: string | null = null;
 
 function paneOf(t: Task): Pane | undefined {
   return workspaces.get(t.wsId)?.panes.get(t.paneId);
@@ -199,6 +222,7 @@ function layoutSplit(): void {
 export function setSplit(on: boolean): void {
   splitOn = on;
   splitBtn?.setAttribute("aria-pressed", String(on));
+  dockEl?.querySelector('[data-dock="queue"]')?.setAttribute("aria-pressed", String(!on));
   render();
 }
 
@@ -225,8 +249,22 @@ function ensureStage(): void {
 
 function renderQueue(list: Task[], current: string | undefined, now: number): void {
   if (!queueEl) return;
-  const groups = groupTasks(list);
-  queueEl.innerHTML =
+  // Project chips: "All projects · 5", then one per project that has agents.
+  const projects = new Map<string, { name: string; n: number }>();
+  for (const t of list) {
+    const p = projects.get(t.wsId) ?? { name: t.project, n: 0 };
+    p.n++;
+    projects.set(t.wsId, p);
+  }
+  if (projectFilter && !projects.has(projectFilter)) projectFilter = null;
+  const shown = projectFilter ? list.filter((t) => t.wsId === projectFilter) : list;
+  const chip = (id: string, label: string, n: number) =>
+    `<button class="iq-chip" data-ws="${esc(id)}" aria-pressed="${(projectFilter ?? "") === id}">${esc(label)} · ${n}</button>`;
+  const chips = projects.size > 1
+    ? `<div class="iq-chips" role="group" aria-label="Filter by project">${chip("", "All projects", list.length)}${[...projects].map(([id, p]) => chip(id, p.name, p.n)).join("")}</div>`
+    : "";
+  const groups = groupTasks(shown);
+  queueEl.innerHTML = chips +
     `<div class="iq-list" role="list">` +
     groups.map((g) => `<section class="iq-group" aria-label="${GROUP_LABEL[g.state]}">
       <div class="iq-gt"><span>${GROUP_LABEL[g.state]}</span><span class="iq-n">${g.tasks.length}</span></div>
@@ -247,6 +285,25 @@ function renderHead(list: Task[]): void {
   if (!headEl) return;
   const h = headline(list);
   headEl.innerHTML = `<b>${esc(h.lead)}</b>${esc(h.rest)}`;
+  if (statsEl) {
+    const projects = new Set(list.map((t) => t.wsId)).size;
+    statsEl.textContent = `${list.length} agent${list.length === 1 ? "" : "s"} · ${projects} project${projects === 1 ? "" : "s"}`;
+  }
+}
+
+/** The state pill in the stage header ("Needs you", "Ready to review", …). */
+function renderStagePill(list: Task[], pane: Pane | undefined): void {
+  for (const ws of workspaces.values()) for (const p of ws.panes.values()) {
+    const t = p === pane ? list.find((x) => x.paneId === p.id) : undefined;
+    let pill = p.el.querySelector<HTMLElement>(".ib-pill");
+    if (!t) { pill?.remove(); continue; }
+    if (!pill) {
+      pill = document.createElement("span");
+      p.el.querySelector(".pane-bar .pb-sp")?.after(pill);
+    }
+    pill.className = `ib-pill st-${t.status.state}`;
+    pill.textContent = GROUP_LABEL[t.status.state];
+  }
 }
 
 function renderAsk(list: Task[], pane: Pane | undefined): void {
@@ -284,6 +341,23 @@ function renderAsk(list: Task[], pane: Pane | undefined): void {
   }
   askEl.className = "inbox-ask";
   const lead = a.kind === "run" ? `${t.name} wants to run a command` : a.kind === "edit" ? `${t.name} wants to edit a file` : `${t.name} has a question`;
+  askEl.dataset.key = key;
+  if (isYesNo(a)) {
+    // One row, as in the design: say what to do instead on the left, the
+    // three choices on the right with Allow last and brightest.
+    const order = [...a.options].sort((x, y) => rank(x) - rank(y));
+    askEl.innerHTML = `
+    <div class="ia-top"><i class="ia-dia" aria-hidden="true"></i><span>${esc(lead)}</span>${a.title ? `<span class="ia-title">${esc(a.title)}</span>` : ""}
+      <button class="ia-min" data-act="hide" title="Type in the terminal instead">Hide · type in terminal</button></div>
+    ${a.detail ? `<p class="ia-why">${esc(a.prompt)}</p><code class="ia-code">${esc(a.detail)}</code>` : `<p class="ia-q">${esc(a.prompt)}</p>`}
+    <div class="ia-row">
+      <form class="ia-free"><label class="ia-sr" for="iaFree">Tell ${esc(t.name)} what to do instead</label>
+        <input id="iaFree" autocomplete="off" placeholder="Or tell ${esc(t.name)} what to do instead…"></form>
+      <div class="ia-acts">${order.map((o) => `<button class="ia-opt ${o.deny ? "deny" : o.always ? "always" : "allow"}" data-n="${o.n}" title="${esc(o.label)} (Alt+${o.n})">
+        <span>${esc(shortLabel(o))}</span><kbd class="ia-k">${o.n}</kbd></button>`).join("")}</div>
+    </div>`;
+    return;
+  }
   askEl.innerHTML = `
     <div class="ia-top"><i class="ia-dia" aria-hidden="true"></i><span>${esc(lead)}</span>${a.title ? `<span class="ia-title">${esc(a.title)}</span>` : ""}
       <button class="ia-min" data-act="hide" title="Type in the terminal instead">Hide · type in terminal</button></div>
@@ -293,8 +367,9 @@ function renderAsk(list: Task[], pane: Pane | undefined): void {
     <form class="ia-free"><label class="ia-sr" for="iaFree">Answer ${esc(t.name)} in your own words</label>
       <input id="iaFree" autocomplete="off" placeholder="${a.kind === "question" ? "Something else…" : `Or tell ${esc(t.name)} what to do instead…`}"><button type="submit">Send</button></form>
     <p class="ia-hint">Alt+1…${a.options.length} picks an option · Alt+↑/↓ moves through the queue</p>`;
-  askEl.dataset.key = key;
 }
+
+const rank = (o: AskOption) => (o.always ? 0 : o.deny ? 1 : 2);
 
 function render(): void {
   if (!document.body.classList.contains("inbox-ui")) return;
@@ -304,6 +379,7 @@ function render(): void {
   const pane = stagePane();
   renderQueue(list, pane?.id, Date.now());
   renderHead(list);
+  renderStagePill(list, pane);
   renderAsk(list, pane);
 }
 
@@ -379,23 +455,50 @@ function mount(): void {
   headEl.className = "inbox-head";
   headEl.setAttribute("aria-live", "polite");
   document.querySelector(".topbar .tb-center")?.prepend(headEl);
-  splitBtn = document.createElement("button");
-  splitBtn.className = "inbox-split-btn";
-  splitBtn.textContent = "Split";
-  splitBtn.title = "Watch pinned agents side by side (Alt+S; Alt+P pins the current one)";
-  splitBtn.setAttribute("aria-pressed", String(splitOn));
-  splitBtn.addEventListener("click", () => setSplit(!splitOn));
-  headEl.after(splitBtn);
-  reviewBtn = document.createElement("button");
-  reviewBtn.className = "inbox-split-btn";
-  reviewBtn.textContent = "Review";
-  reviewBtn.title = "See what the agent on the stage changed (Alt+R)";
-  reviewBtn.setAttribute("aria-pressed", "false");
-  reviewBtn.addEventListener("click", () => (reviewer?.paneId ? reviewer.close() : openReview()));
-  splitBtn.after(reviewBtn);
+  statsEl = document.createElement("span");
+  statsEl.className = "inbox-stats";
+  document.querySelector(".topbar .tb-right")?.prepend(statsEl);
+
+  // The floating dock at the bottom: views, the command bar, New task, tools.
+  dockEl = document.createElement("nav");
+  dockEl.className = "inbox-dock";
+  dockEl.setAttribute("aria-label", "Maestro");
+  dockEl.innerHTML = `
+    <div class="id-seg">
+      <button data-dock="queue" aria-pressed="true" title="One agent at a time">Queue</button>
+      <button data-dock="split" aria-pressed="false" title="Pinned agents side by side (Alt+S; Alt+P pins)">Split</button>
+      <button data-dock="review" aria-pressed="false" title="What the agent on the stage changed (Alt+R)">Review</button>
+      <button data-dock="board" title="The project's board">Board</button>
+    </div>
+    <button class="id-search" data-dock="search">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <span>Jump to an agent or run a command</span><kbd>Ctrl K</kbd></button>
+    <button class="id-new" data-dock="new">New task</button>
+    <div class="id-seg">
+      <button data-dock="files" title="Files and editor (Ctrl+Shift+E)">Files</button>
+      <button data-dock="settings">Settings</button>
+    </div>`;
+  app.appendChild(dockEl);
+  splitBtn = dockEl.querySelector<HTMLButtonElement>('[data-dock="split"]');
+  reviewBtn = dockEl.querySelector<HTMLButtonElement>('[data-dock="review"]');
+  dockEl.addEventListener("click", (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>("[data-dock]");
+    switch (b?.dataset.dock) {
+      case "queue": reviewer?.close(); setSplit(false); break;
+      case "split": setSplit(!splitOn); break;
+      case "review": if (reviewer?.paneId) reviewer.close(); else openReview(); break;
+      case "board": dockToggle("kanban"); break;
+      case "search": openSwitcher(); break;
+      case "new": openModal("current"); break;
+      case "files": document.getElementById("btnToggleCode")?.click(); break;
+      case "settings": openSettings(); break;
+    }
+  });
   reviewer = createReviewDrawer(app, () => { reviewBtn?.setAttribute("aria-pressed", "false"); render(); });
 
   queueEl.addEventListener("click", (e) => {
+    const chipEl = (e.target as HTMLElement).closest<HTMLElement>(".iq-chip");
+    if (chipEl) { projectFilter = chipEl.dataset.ws || null; render(); return; }
     const row = (e.target as HTMLElement).closest<HTMLElement>(".iq-row");
     const t = row && allTasks().find((x) => x.paneId === row.dataset.id);
     if (t) openTask(t);
@@ -433,8 +536,10 @@ function unmount(): void {
   if (splitWs) clearSplit(splitWs);
   splitOn = false; pins = []; splitSig = ""; splitWs = null;
   if (reviewer?.paneId) reviewer.close();
-  queueEl?.remove(); askEl?.remove(); headEl?.remove(); splitBtn?.remove(); reviewBtn?.remove();
-  queueEl = askEl = headEl = null; splitBtn = reviewBtn = null; reviewer = null;
+  for (const ws of workspaces.values()) for (const p of ws.panes.values()) p.el.querySelector(".ib-pill")?.remove();
+  queueEl?.remove(); askEl?.remove(); headEl?.remove(); dockEl?.remove(); statsEl?.remove();
+  queueEl = askEl = headEl = dockEl = statsEl = null; splitBtn = reviewBtn = null; reviewer = null;
+  projectFilter = null;
   if (timer !== null) { clearInterval(timer); timer = null; }
   offTasks?.(); offTasks = null;
   document.removeEventListener("keydown", onKey, true);

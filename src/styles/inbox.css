@@ -32,18 +32,11 @@ body.inbox-ui .app {
 }
 body.inbox-ui .app > .main { grid-column: 2; grid-row: 2; padding: 0 16px var(--ib-dock-h) 0; background: transparent; }
 body.inbox-ui .app > .code-panel { grid-column: 3; grid-row: 2; }
-body.inbox-ui .app > .dock-rail,
-body.inbox-ui .fleet-console,
-body.inbox-ui .tabstrip { display: none !important; }
 body.inbox-ui .topbar { background: transparent; border-bottom: 0; backdrop-filter: none; padding-left: 12px; }
 body.inbox-ui .tb-left { flex: none; }
 body.inbox-ui .tb-center { justify-content: flex-start; gap: 10px; min-width: 0; padding-left: 8px; flex: 1; }
 body.inbox-ui .tb-right { flex: none; }
-/* canvas-only chrome steps aside: New project, zoom, Tidy, the code-panel toggle
-   (Files lives in the dock now) */
-body.inbox-ui #railAdd,
-body.inbox-ui #canvasZoom,
-body.inbox-ui #btnTidy,
+/* the code-panel toggle stays in the DOM (Files in Ctrl K clicks it) but not on screen */
 body.inbox-ui .tb-right .tb-div,
 body.inbox-ui #btnToggleCode { display: none !important; }
 .inbox-stats { font: 12px var(--mono); color: var(--ib-ink-3); white-space: nowrap; margin-right: 6px; }
@@ -122,8 +115,6 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 body.inbox-ui .grid.canvas.has-focus::after { display: none; }
 /* Cinema is a black stage: the canvas wallpaper stays with the canvas UI */
 body.inbox-ui .grid.canvas { background: transparent !important; }
-body.inbox-ui .grid.canvas > canvas.sigil { display: none; }
-body.inbox-ui .cloud-rail { display: none !important; }
 body.inbox-ui .grid.canvas.has-focus .pane.focused {
   left: 0 !important;
   top: 0 !important;
@@ -550,8 +541,6 @@ body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .term-host .xterm { paddi
 
 /* fewer things on screen: the counts live in the headline, "back to canvas"
    means nothing here */
-body.inbox-ui .tb-right .stats,
-body.inbox-ui .tbc-live,
 body.inbox-ui .pane .pctrl[data-max] { display: none !important; }
 .id-new { white-space: nowrap; }
 .ib-acts { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); }
@@ -642,8 +631,6 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused.ib-has-title .ib-ttl 
 
 /* ---------- start screen (Home with the new interface on) ---------- */
 body.inbox-ui .home { background: radial-gradient(1100px 460px at 62% -12%, rgba(255, 196, 120, 0.07), transparent 60%), var(--ib-ground); }
-body.inbox-ui .home .home-inner,
-body.inbox-ui .home .home-mascot { display: none !important; }
 .inbox-start { display: none; }
 body.inbox-ui .inbox-start {
   display: block;

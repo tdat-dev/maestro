@@ -23,26 +23,6 @@
   -webkit-mask: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent);
   mask: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent);
 }
-/* The fleet sigil (sigilcanvas.ts). Above the wallpaper, BELOW every pane —
-   it is scenery seen through the glass, never an overlay on the text. It was
-   briefly moved on top to make it visible and that was the wrong trade: it
-   read as clutter across the terminals. The visibility problem belongs to the
-   glass blur below, not to the stacking order. Never interactive. */
-.grid.canvas > canvas.sigil {
-  position: absolute;
-  /* No `inset: 0` — sigilcanvas.ts parks this over the sigil's own centred
-     square (sigilBox) and sets left/top/width/height in px. Stretching it to
-     the grid would quadruple the pixels cleared and composited every frame,
-     which is what smooth animation is being bought with. */
-  z-index: 1;
-  pointer-events: none;
-}
-/* The focus stage covers the canvas and dims what's left; the sigil would only
-   show up as haze behind the scrim. (The draw loop stops in focus mode too —
-   this is the visual half of the same decision.) */
-.grid.canvas.has-focus > canvas.sigil {
-  display: none;
-}
 .grid.canvas .pane {
   position: absolute;
   z-index: 2;
@@ -159,8 +139,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   /* dots don't breathe */
-  .grid.canvas .pane.run .pb-dot,
-  .cloud-rail .rc .av .s.running {
+  .grid.canvas .pane.run .pb-dot {
     animation: none;
   }
 }
@@ -362,106 +341,6 @@
 .grid.canvas.has-focus .pane.focused .pane-bar { height: 38px; }
 .grid.canvas.has-focus .pane.focused .pb-name { font-size: 14.5px; }
 .grid.canvas.has-focus .pane.focused .pb-dot { width: 9px; height: 9px; }
-.cloud-rail {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: var(--rail-w, 74px);
-  z-index: 8;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  overflow-y: auto;
-  padding: 12px 8px;
-}
-.grid.canvas:not(.has-focus) .cloud-rail {
-  display: none;
-}
-.cloud-rail .rc {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 2px;
-  border-radius: 12px;
-  cursor: pointer;
-  width: 100%;
-  background: none;
-  border: 0;
-}
-.cloud-rail .rc:hover {
-  background: var(--surface-1);
-}
-.cloud-rail .rc .av {
-  width: 36px;
-  height: 36px;
-  border-radius: 11px;
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  font-weight: 800;
-  color: #0a0d07;
-  position: relative;
-  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px color-mix(in oklab, var(--hue) 55%, transparent);
-  transition: transform 0.15s;
-}
-.cloud-rail .rc:hover .av {
-  transform: scale(1.08);
-}
-.rail-lbl {
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  font-weight: 700;
-  color: #5a6472;
-  text-align: center;
-}
-.cloud-rail .rc .av .s {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  border: 2px solid var(--surface-0);
-}
-.cloud-rail .rc .av .s.running {
-  background: var(--run);
-  animation: breathe 2.4s ease-in-out infinite;
-}
-.cloud-rail .rc .av .s.idle {
-  background: var(--idle);
-}
-.cloud-rail .rc .av .s.attention {
-  background: #ffb84c;
-  box-shadow: 0 0 7px #ffb84c;
-}
-/* The director in the rail: the same filled accent plate, so "accent = the one
-   who dispatches" holds in focus mode too. */
-.cloud-rail .rc[data-role="director"],
-.cloud-rail .rc[data-role="director"]:hover {
-  background: var(--accent);
-}
-.cloud-rail .rc[data-role="director"] .n {
-  color: var(--accent-ink);
-  font-weight: 700;
-}
-.cloud-rail .rc[data-role="director"] .av {
-  /* the ring's outer stop is --bg elsewhere; on the plate it has to be the plate */
-  box-shadow: 0 0 0 2px var(--accent), 0 0 0 3px color-mix(in oklab, var(--accent-ink) 45%, transparent);
-}
-.cloud-rail .rc .n {
-  font-size: 9.5px;
-  font-weight: 600;
-  color: var(--muted);
-  max-width: 66px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* ---------- focus-stage identity ----------
    When a pane fills the stage it must SHOUT whose it is (the whole point of
    opening it large): a bigger avatar that carries a live status ring, the name
@@ -500,57 +379,6 @@
 }
 .grid.canvas .pane[data-role="director"] .pb-where {
   color: color-mix(in oklab, var(--accent-ink) 78%, transparent);
-}
-
-/* ---------- rail head + fleet-switcher entry ---------- */
-.rail-head {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  width: 100%;
-  padding: 2px 0 2px;
-}
-.rail-needs {
-  min-width: 15px;
-  height: 15px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background: var(--amber);
-  color: #241a00;
-  font-size: 9.5px;
-  font-weight: 800;
-  display: grid;
-  place-items: center;
-}
-/* an agent waiting on you gets an amber ring in the rail too, not just a dot */
-.cloud-rail .rc:has(.s.attention) .av {
-  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px color-mix(in oklab, var(--amber) 80%, transparent);
-}
-.rail-all {
-  margin-top: 4px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  width: 100%;
-  padding: 9px 2px;
-  border: 0;
-  border-radius: 12px;
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-  transition: background 0.14s, color 0.14s;
-}
-.rail-all:hover {
-  background: var(--surface-1);
-  color: var(--text);
-}
-.rail-all-k {
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
 }
 
 /* scrollbars: slim, hidden until the area is scrolled or hovered */

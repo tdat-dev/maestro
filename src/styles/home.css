@@ -1,4 +1,4 @@
-/* Home / launcher screen. */
+/* Home: the frame the start screen (inboxstart.ts) draws into. */
 /* "Back to workspace" pill — only on Home when tabs are still alive. */
 .home-resume{position:fixed;top:9px;left:50%;transform:translateX(-50%);z-index:260;
   display:inline-flex;align-items:center;gap:8px;padding:8px 13px;border-radius:9px;
@@ -11,78 +11,3 @@
     radial-gradient(820px 440px at 50% 20%, var(--accent-glow), transparent 62%),
     radial-gradient(560px 560px at 86% 96%, rgba(56,189,248,.04), transparent 60%),
     var(--bg);}
-.home-inner{width:min(660px,92vw);padding:44px 0 56px;display:flex;flex-direction:column;align-items:stretch}
-.hero{text-align:center;margin-bottom:34px}
-.logo-glow{width:104px;height:104px;margin:0 auto 16px;display:grid;place-items:center;position:relative;isolation:isolate}
-.logo-glow svg{filter:drop-shadow(0 0 16px rgba(198,241,53,.2))}
-/* Living logo — perpetual gentle breathe + glow pulse. transform/opacity only,
-   GPU-composited (will-change caches the drop-shadow layer), so it's negligible
-   on CPU/battery. The logo is display:none off-screen, so it costs nothing then. */
-.logo-glow::before{content:"";position:absolute;top:50%;left:50%;width:150px;height:150px;
-  transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;z-index:-1;
-  background:radial-gradient(circle, rgba(163,230,53,.15), transparent 65%);
-  opacity:.5;animation:logoGlowPulse 4.2s ease-in-out infinite}
-.logo-glow svg{will-change:transform;animation:logoBreathe 4.2s ease-in-out infinite}
-@keyframes logoBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
-@keyframes logoGlowPulse{
-  0%,100%{opacity:.30;transform:translate(-50%,-50%) scale(.95)}
-  50%{opacity:.62;transform:translate(-50%,-50%) scale(1.06)}}
-/* a bright highlight runs continuously along the M stroke (a short bright dash
-   travels the path). This is paint-based, but the logo is tiny so it's light;
-   it costs nothing while Home is off-screen (display:none). */
-.logo-glow .mFlow{stroke-dasharray:.16 .84;stroke-dashoffset:1;opacity:.85;animation:mFlow 3.2s linear infinite}
-@keyframes mFlow{to{stroke-dashoffset:0}}
-.hero h1{font-family:var(--display);font-style:italic;font-weight:800;font-size:52px;letter-spacing:-.03em;line-height:1}
-.hero p{margin:14px auto 0;color:var(--muted);font-size:13.5px;max-width:430px;line-height:1.65}
-
-.card-primary{display:flex;align-items:center;gap:16px;text-align:left;padding:21px 22px;border-radius:14px;
-  background:linear-gradient(180deg,var(--surface-1),var(--surface-0));
-  border:1px solid var(--line-strong);box-shadow:inset 0 1px 0 rgba(255,255,255,.04), 0 4px 12px rgba(0,0,0,.25);
-  transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
-.card-primary:hover{transform:translateY(-1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 8px 24px rgba(0,0,0,.4);border-color:var(--accent-dim)}
-.cp-ic{width:46px;height:46px;border-radius:12px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
-.cp-text{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
-.cp-text b{font-size:17px;font-weight:700}
-.cp-text span{font-size:12.5px;color:var(--muted)}
-.cp-arrow{color:var(--accent);flex:none}
-
-.card-row{display:flex;gap:13px;margin-top:13px}
-.card{flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:5px;text-align:left;padding:17px 17px 16px;border-radius:12px;
-  background:var(--surface-1);border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.02), 0 2px 6px rgba(0,0,0,.15);transition:border-color .18s ease,background .18s ease,transform .18s ease,box-shadow .18s ease}
-.card:not(.disabled):hover{border-color:var(--line-strong);background:var(--surface-2);transform:translateY(-1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.04), 0 6px 16px rgba(0,0,0,.25)}
-.card.disabled{opacity:.55;cursor:default}
-.card .c-ic{width:34px;height:34px;border-radius:9px;background:var(--surface-3);color:var(--text-2);display:grid;place-items:center;margin-bottom:5px}
-.card b{font-size:13.5px;font-weight:600}
-.card b em{font-style:normal;font-size:8.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent-dim);border:1px solid var(--accent-dim);border-radius:4px;padding:1px 5px;margin-left:7px;vertical-align:middle}
-.card>span{font-size:11.5px;color:var(--muted)}
-
-.recents{margin-top:26px;display:flex;flex-direction:column;gap:10px}
-.recents-label{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-2);font-weight:600}
-.recents-list{display:flex;flex-wrap:wrap;gap:8px}
-.recent-chip{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:8px;background:var(--surface-1);border:1px solid var(--line);color:var(--text-2);font-size:12px;max-width:100%}
-.recent-chip:hover{border-color:var(--accent-dim);color:var(--text)}
-.recent-chip svg{color:var(--muted-2)}
-.recent-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.home-foot{margin-top:30px;text-align:center;font-size:10.5px;color:var(--muted-2)}
-.home-foot b{color:var(--muted)}
-
-/* Mascot companion — anchored to the home floor; the controller (main.ts) slides
-   this wrapper left/right while the sprite plays its walk cycle. The inner
-   .mascot element manages its own scale + horizontal flip, so we only ever
-   translate the wrapper here (no transform clash). */
-/* Fixed-size box, bottom-center anchored: the idle/walk cells differ in width
-   (121 vs 165px) so a shrink-wrapped box would shift the figure sideways on every
-   swap. A constant box + grid centering keeps the feet pinned. main.ts animates
-   only this wrapper's translateX (via the Web Animations API). */
-.home-mascot{position:absolute;left:0;top:0;width:180px;height:262px;
-  display:grid;place-items:end center;z-index:6;pointer-events:none;will-change:transform}
-/* Only the character itself is interactive (grab to drag-place); the rest of the
-   box stays click-through so it never blocks the Home buttons behind it. */
-.home-mascot .mascot{position:relative;z-index:1;pointer-events:auto;cursor:grab;
-  touch-action:none;user-select:none;-webkit-user-drag:none}
-.home-mascot.dragging .mascot{cursor:grabbing}
-/* Contact shadow — a separate element so it never gets re-rasterised per sprite
-   frame (a filter on the animated .mascot caused paint jank). */
-.home-mascot .hm-shadow{position:absolute;left:50%;bottom:-4px;width:86px;height:16px;
-  transform:translateX(-50%);border-radius:50%;z-index:0;
-  background:radial-gradient(ellipse at center, rgba(0,0,0,.42), transparent 70%)}

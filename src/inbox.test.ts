@@ -278,6 +278,29 @@ describe("inbox DOM", () => {
     expect(panes[1].el.querySelector(".ib-ttl")!.textContent).toBe("Fix the flaky upload test");
   });
 
+  it("brings agents of other projects into Split and gives them back after", () => {
+    const qEl = document.createElement("div");
+    qEl.className = "pane";
+    qEl.innerHTML = '<div class="pane-bar"><span class="pb-sp"></span><span data-where></span></div>';
+    const qGrid = document.createElement("div");
+    qGrid.appendChild(qEl);
+    const q = { id: "q", el: qEl, color: "#8fb3ff", running: false, spec: { name: "Quinn", cwd: "D:/quy" },
+      term: { focus: () => {}, setFontSize: () => {}, fit: () => ({ cols: 80, rows: 24 }) } } as unknown as Pane;
+    workspaces.set("ws-2", { id: "ws-2", name: "quy", gridEl: qGrid, panes: new Map([["q", q]]) } as unknown as Workspace);
+    state.tasks = [task("a", "Ana", "needs"), task("q", "Quinn", "working", { wsId: "ws-2", project: "quy" })];
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true }));
+    const grid = panes[0].el.parentElement!;
+    expect(qEl.parentElement).toBe(grid);
+    expect(qEl.classList.contains("split-pin")).toBe(true);
+    // Clicking into Quinn's terminal makes Quinn the current agent.
+    qEl.appendChild(document.createElement("textarea")).dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    expect(qEl.classList.contains("focused")).toBe(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true }));
+    expect(qEl.parentElement).toBe(qGrid);
+    expect(qEl.classList.contains("split-pin")).toBe(false);
+  });
+
   it("does not wipe what you are typing when the tick re-renders", () => {
     state.tasks = [task("a", "Ana", "needs")];
     setInbox(true);

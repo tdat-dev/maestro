@@ -142,6 +142,8 @@ let splitOn = false;
 let pins: string[] = [];
 let splitSig = "";
 let splitWs: Workspace | null = null;
+/** Agents of other projects shown in Split, with the project they belong to. */
+const borrowed = new Map<string, Workspace>();
 /** Agents closed out of Split with ✕; they stay out until Split is turned off. */
 const splitClosed = new Set<string>();
 /** Per-pane answer box in Split: which question it shows, and answered ones. */
@@ -157,10 +159,30 @@ function paneOf(t: Task): Pane | undefined {
   return workspaces.get(t.wsId)?.panes.get(t.paneId);
 }
 
-/** The pane on the stage: the focused pane of the workspace being shown. */
+function wsOf(id: string): Workspace | undefined {
+  for (const ws of workspaces.values()) if (ws.panes.has(id)) return ws;
+  return undefined;
+}
+
+function paneById(id: string): Pane | undefined {
+  return wsOf(id)?.panes.get(id);
+}
+
+/** Panes on screen: the shown project's own, plus agents of other projects
+ *  that Split has borrowed onto this screen. */
+function screenPanes(): Pane[] {
+  if (!activeWs) return [];
+  const out = [...activeWs.panes.values()];
+  for (const id of borrowed.keys()) {
+    const p = paneById(id);
+    if (p && !out.includes(p)) out.push(p);
+  }
+  return out;
+}
+
+/** The pane on the stage: the focused one on screen. */
 function stagePane(): Pane | undefined {
-  if (!activeWs) return undefined;
-  return [...activeWs.panes.values()].find((p) => p.el.classList.contains("focused"));
+  return screenPanes().find((p) => p.el.classList.contains("focused"));
 }
 
 /** Put a task's agent on the stage (switching project if needed). */
@@ -168,12 +190,13 @@ export function openTask(t: Task): void {
   const ws = workspaces.get(t.wsId);
   const pane = ws?.panes.get(t.paneId);
   if (!ws || !pane) return;
-  // In Split, picking an agent of the shown project pins it next to the others
+  // In Split, picking an agent (from any project) adds it next to the others
   // instead of replacing the whole view.
-  if (splitOn && ws === activeWs && stagePane()) {
+  if (splitOn && stagePane()) {
     splitClosed.delete(pane.id);
     if (!pins.includes(pane.id)) pins = togglePin(pins, pane.id, stagePane()?.id);
-    setCurrent(ws, pane);
+    render(); // borrows it onto this screen if it lives in another project
+    setCurrent(pane);
     return;
   }
   revealPane(t.wsId, t.paneId);
@@ -183,8 +206,8 @@ export function openTask(t: Task): void {
 
 /** Make a pane the one the decision card and Alt+number talk to, without
  *  moving or refitting anything (Split keeps every terminal where it is). */
-function setCurrent(ws: Workspace, pane: Pane): void {
-  for (const p of ws.panes.values()) p.el.classList.toggle("focused", p === pane);
+function setCurrent(pane: Pane): void {
+  for (const p of screenPanes()) p.el.classList.toggle("focused", p === pane);
   render();
   pane.term.focus();
 }
@@ -197,54 +220,78 @@ function refit(pane: Pane, font: number): void {
   if (pane.running) void resizePty(pane.id, s.cols, s.rows).catch(() => {});
 }
 
+const SPLIT_VARS = ["--sx", "--sy", "--sw", "--sh"];
+
+/** Give a borrowed pane back to its own project's canvas. */
+function giveBack(id: string): void {
+  const home = borrowed.get(id);
+  borrowed.delete(id);
+  const p = paneById(id);
+  if (!home || !p) return;
+  p.el.classList.remove("split-pin", "ib-needs");
+  for (const v of SPLIT_VARS) p.el.style.removeProperty(v);
+  // Its project may already have a pane on its own stage.
+  if ([...home.panes.values()].some((x) => x !== p && x.el.classList.contains("focused"))) p.el.classList.remove("focused");
+  home.gridEl.appendChild(p.el);
+}
+
 function clearSplit(ws: Workspace): void {
   ws.gridEl.classList.remove("inbox-split");
+  for (const id of [...borrowed.keys()]) giveBack(id);
   for (const p of ws.panes.values()) {
     if (!p.el.classList.contains("split-pin")) continue;
     p.el.classList.remove("split-pin");
-    for (const v of ["--sx", "--sy", "--sw", "--sh"]) p.el.style.removeProperty(v);
+    for (const v of SPLIT_VARS) p.el.style.removeProperty(v);
   }
   const stage = [...ws.panes.values()].find((p) => p.el.classList.contains("focused"));
   requestAnimationFrame(() => { if (stage) refit(stage, paneFont(ws, 2)); });
 }
 
-/** Lay the pinned terminals of the shown project out side by side. Runs on
+/** Lay the agents in Split out side by side, from every project. Runs on
  *  every render but only touches the DOM (and resizes PTYs) when the set of
  *  panes or the space they share changed. */
 function layoutSplit(): void {
   const ws = activeWs;
   if (!ws) return;
-  if (splitOn) {
-    const order = allTasks().filter((t) => t.wsId === ws.id).map((t) => t.paneId);
-    pins = fillPins(pins, order, splitClosed);
-    // The agent you talk to must be on screen.
-    const stage = stagePane();
-    const first = pins.length ? ws.panes.get(pins[0]) : undefined;
-    if (first && (!stage || !pins.includes(stage.id))) for (const p of ws.panes.values()) p.el.classList.toggle("focused", p === first);
-  }
-  const shown = pins.map((id) => ws.panes.get(id)).filter((p): p is Pane => !!p);
+  if (splitOn) pins = fillPins(pins, allTasks().map((t) => t.paneId), splitClosed);
+  const shown = splitOn ? pins.map(paneById).filter((p): p is Pane => !!p) : [];
+  const on = shown.length > 1;
   const area = { width: ws.gridEl.clientWidth, height: ws.gridEl.clientHeight };
-  const on = splitOn && shown.length > 1;
   const sig = on ? `${ws.id}|${shown.map((p) => p.id).join(",")}|${area.width}x${area.height}` : "";
-  if (sig === splitSig) return;
-  splitSig = sig;
-  // Leaving Split, or moving to another project, puts the old canvas back.
-  if (splitWs && (!on || splitWs !== ws)) clearSplit(splitWs);
-  splitWs = on ? ws : null;
-  if (!on) return;
-  ws.gridEl.classList.add("inbox-split");
-  const tiles = splitTiles(shown.length, area);
-  for (const p of ws.panes.values()) {
-    const i = shown.indexOf(p);
-    p.el.classList.toggle("split-pin", i >= 0);
-    if (i < 0) continue;
-    const t = tiles[i];
-    p.el.style.setProperty("--sx", `${t.x}px`);
-    p.el.style.setProperty("--sy", `${t.y}px`);
-    p.el.style.setProperty("--sw", `${t.w}px`);
-    p.el.style.setProperty("--sh", `${t.h}px`);
+  if (sig !== splitSig) {
+    splitSig = sig;
+    // Leaving Split, or moving to another project, puts the old canvas back.
+    if (splitWs && (!on || splitWs !== ws)) clearSplit(splitWs);
+    splitWs = on ? ws : null;
+    if (on) {
+      for (const id of [...borrowed.keys()]) if (!shown.some((p) => p.id === id)) giveBack(id);
+      for (const p of shown) {
+        if (ws.panes.has(p.id) || borrowed.has(p.id)) continue;
+        const home = wsOf(p.id);
+        if (!home) continue;
+        borrowed.set(p.id, home);
+        ws.gridEl.appendChild(p.el);
+      }
+      ws.gridEl.classList.add("inbox-split", "has-focus");
+      const tiles = splitTiles(shown.length, area);
+      for (const p of screenPanes()) {
+        const i = shown.indexOf(p);
+        p.el.classList.toggle("split-pin", i >= 0);
+        if (i < 0) continue;
+        const t = tiles[i];
+        p.el.style.setProperty("--sx", `${t.x}px`);
+        p.el.style.setProperty("--sy", `${t.y}px`);
+        p.el.style.setProperty("--sw", `${t.w}px`);
+        p.el.style.setProperty("--sh", `${t.h}px`);
+      }
+      requestAnimationFrame(() => shown.forEach((p) => refit(p, paneFont(ws))));
+    }
   }
-  requestAnimationFrame(() => shown.forEach((p) => refit(p, paneFont(ws))));
+  // The agent you talk to must be one of the cards on screen.
+  if (on) {
+    const cur = stagePane();
+    if (!cur || !shown.includes(cur)) for (const p of screenPanes()) p.el.classList.toggle("focused", p === shown[0]);
+  }
 }
 
 export function setSplit(on: boolean): void {
@@ -259,11 +306,9 @@ export function setSplit(on: boolean): void {
 function closeFromSplit(id: string): void {
   splitClosed.add(id);
   pins = pins.filter((x) => x !== id);
-  const ws = activeWs;
-  const cur = stagePane();
-  if (ws && cur?.id === id) {
-    const next = pins.map((x) => ws.panes.get(x)).find(Boolean);
-    if (next) { setCurrent(ws, next); return; }
+  if (stagePane()?.id === id) {
+    const next = pins.map(paneById).find(Boolean);
+    if (next) { render(); setCurrent(next); return; }
   }
   render();
 }
@@ -273,9 +318,10 @@ function pinCurrent(): void {
   if (!cur) return;
   pins = togglePin(pins, cur.id, cur.id);
   if (!pins.includes(cur.id) && splitOn) {
-    // Unpinning the agent on the stage hands the stage to another pin.
-    const next = pins.map((id) => activeWs?.panes.get(id)).find(Boolean);
-    if (next && activeWs) { setCurrent(activeWs, next); return; }
+    splitClosed.add(cur.id);
+    // Taking the agent on the stage out hands the stage to another card.
+    const next = pins.map(paneById).find(Boolean);
+    if (next) { render(); setCurrent(next); return; }
   }
   render();
 }
@@ -583,7 +629,7 @@ function onStageButton(e: MouseEvent): void {
   const target = e.target as HTMLElement;
   const paneEl = target.closest<HTMLElement>(".pane");
   const ws = activeWs;
-  const pane = ws && paneEl ? [...ws.panes.values()].find((p) => p.el === paneEl) : undefined;
+  const pane = ws && paneEl ? screenPanes().find((p) => p.el === paneEl) : undefined;
   const opt = target.closest<HTMLElement>(".ib-mini [data-n]");
   if (opt && pane) {
     e.stopPropagation();
@@ -616,8 +662,8 @@ function onFocusIn(e: FocusEvent): void {
   if (!splitOn || !activeWs) return;
   const el = (e.target as HTMLElement | null)?.closest<HTMLElement>(".pane.split-pin");
   if (!el || el.classList.contains("focused")) return;
-  const pane = [...activeWs.panes.values()].find((p) => p.el === el);
-  if (pane) setCurrent(activeWs, pane);
+  const pane = screenPanes().find((p) => p.el === el);
+  if (pane) setCurrent(pane);
 }
 
 function mount(): void {

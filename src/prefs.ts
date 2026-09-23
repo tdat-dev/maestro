@@ -22,12 +22,16 @@ export interface Prefs {
   /** Show the answer box over the terminal (off: a small chip you open when ready). */
   askCard: boolean;
   /** Most terminals Split lays out side by side. */
-  splitMax: 2 | 3 | 4;
+  splitMax: SplitMax;
   /** Open Changes on its own when the agent on screen finishes with changes. */
   reviewOnDone: boolean;
   /** Reopen last session's projects and agents (stopped) when Maestro starts. */
   restore: boolean;
 }
+
+/** How many terminals Split may lay out: 2 side by side up to a 3 × 3 grid. */
+export const SPLIT_SIZES = [2, 3, 4, 6, 9] as const;
+export type SplitMax = (typeof SPLIT_SIZES)[number];
 
 export const DEFAULTS: Prefs = {
   defaultCli: "last",
@@ -38,7 +42,7 @@ export const DEFAULTS: Prefs = {
   notifyNeeds: true,
   jumpToNeeds: false,
   askCard: true,
-  splitMax: 4,
+  splitMax: 6,
   reviewOnDone: false,
   restore: true,
 };
@@ -54,14 +58,29 @@ function clamp(p: Partial<Prefs>): Prefs {
     (out as Record<string, unknown>)[k] = v;
   }
   out.defaultCount = ([1, 2, 3] as const).includes(out.defaultCount) ? out.defaultCount : 1;
-  out.splitMax = ([2, 3, 4] as const).includes(out.splitMax) ? out.splitMax : 4;
+  out.splitMax = SPLIT_SIZES.includes(out.splitMax) ? out.splitMax : DEFAULTS.splitMax;
   out.jobDelay = Math.min(20, Math.max(1, Math.round(out.jobDelay)));
   return out;
 }
 
+/** Split used to stop at 4, the old default, which a saved copy of the prefs
+ *  keeps; lift it to the new default once. */
+const SPLIT_LIFTED = "maestro.prefs.split6";
+function lift(raw: Partial<Prefs>): Partial<Prefs> {
+  try {
+    if (localStorage.getItem(SPLIT_LIFTED)) return raw;
+    localStorage.setItem(SPLIT_LIFTED, "1");
+    if ((raw.splitMax as number) === 4) {
+      raw = { ...raw, splitMax: DEFAULTS.splitMax };
+      localStorage.setItem(KEY, JSON.stringify(raw));
+    }
+  } catch { /* storage blocked */ }
+  return raw;
+}
+
 export function getPrefs(): Prefs {
   try {
-    return clamp(JSON.parse(localStorage.getItem(KEY) || "{}"));
+    return clamp(lift(JSON.parse(localStorage.getItem(KEY) || "{}")));
   } catch {
     return { ...DEFAULTS };
   }

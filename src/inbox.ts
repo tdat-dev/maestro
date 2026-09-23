@@ -96,7 +96,7 @@ export function isYesNo(a: { kind: string; options: AskOption[] }): boolean {
     a.options.filter((o) => !o.deny && !o.always).length === 1;
 }
 
-export const MAX_SPLIT = 4;
+export const MAX_SPLIT = 9;
 
 /** Pin or unpin an agent for Split. A fifth pin pushes out the oldest one,
  *  never `keep` (the agent on the stage). */
@@ -116,7 +116,7 @@ export function splitTiles(n: number, area: Area): Tile[] {
 }
 
 /** Who is in Split: the agents already there (so nobody jumps around), topped
- *  up from the queue order until there are four, skipping the ones you closed. */
+ *  up from the queue order to the Split size in Settings, skipping the ones you closed. */
 export function fillPins(pins: string[], order: string[], closed: Set<string>, max: number = MAX_SPLIT): string[] {
   const out = pins.filter((id) => order.includes(id) && !closed.has(id));
   for (const id of order) {

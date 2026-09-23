@@ -82,10 +82,12 @@ describe("inbox helpers", () => {
     expect(ago(90_000)).toBe("2m");
   });
 
-  it("pins up to four agents for Split and never pushes out the one on the stage", () => {
+  it("pins up to the Split size and never pushes out the one on the stage", () => {
     expect(togglePin(["a", "b"], "b")).toEqual(["a"]);
-    expect(togglePin(["a", "b", "c", "d"], "e", "a")).toEqual(["a", "c", "d", "e"]);
-    expect(togglePin(["a", "b", "c", "d"], "e", "b")).toEqual(["b", "c", "d", "e"]);
+    expect(togglePin(["a", "b", "c", "d"], "e", "a", 4)).toEqual(["a", "c", "d", "e"]);
+    expect(togglePin(["a", "b", "c", "d"], "e", "b", 4)).toEqual(["b", "c", "d", "e"]);
+    // up to a 3 x 3 grid
+    expect(togglePin(["a", "b", "c", "d", "e"], "f")).toEqual(["a", "b", "c", "d", "e", "f"]);
   });
 
   it("puts a plain permission prompt on one row with short button words", () => {
@@ -95,7 +97,8 @@ describe("inbox helpers", () => {
   });
 
   it("fills Split from the queue without moving the agents already there", () => {
-    expect(fillPins([], ["a", "b", "c", "d", "e"], new Set())).toEqual(["a", "b", "c", "d"]);
+    expect(fillPins([], ["a", "b", "c", "d", "e"], new Set(), 4)).toEqual(["a", "b", "c", "d"]);
+    expect(fillPins([], ["a", "b", "c", "d", "e", "f", "g"], new Set(), 6)).toEqual(["a", "b", "c", "d", "e", "f"]);
     expect(fillPins(["c", "a"], ["a", "b", "c"], new Set())).toEqual(["c", "a", "b"]);
     expect(fillPins(["a", "gone"], ["a", "b", "c"], new Set(["b"]))).toEqual(["a", "c"]);
   });

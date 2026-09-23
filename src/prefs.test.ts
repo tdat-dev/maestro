@@ -15,12 +15,19 @@ import type { Workspace } from "./panetypes";
 beforeEach(() => localStorage.clear());
 
 describe("prefs", () => {
+  it("lifts a saved Split size of 4, the old cap, to the new default once", () => {
+    localStorage.setItem("maestro.prefs", JSON.stringify({ splitMax: 4, jobDelay: 7 }));
+    expect(getPrefs()).toMatchObject({ splitMax: 6, jobDelay: 7 });
+    setPref("splitMax", 4);
+    expect(getPref("splitMax")).toBe(4);
+  });
+
   it("ships with defaults and keeps values in range", () => {
     expect(getPrefs()).toEqual(DEFAULTS);
     setPref("jobDelay", 99);
     expect(getPref("jobDelay")).toBe(20);
     setPref("splitMax", 7 as never);
-    expect(getPref("splitMax")).toBe(4);
+    expect(getPref("splitMax")).toBe(6);
     localStorage.setItem("maestro.prefs", "{broken");
     expect(getPrefs()).toEqual(DEFAULTS);
   });
@@ -54,7 +61,7 @@ describe("Settings rows", () => {
     document.body.innerHTML = `
       <select id="prefDefaultCli"></select>
       <div id="prefDefaultCount"><button data-v="1"></button><button data-v="2"></button><button data-v="3"></button></div>
-      <div id="prefSplitMax"><button data-v="2"></button><button data-v="3"></button><button data-v="4"></button></div>
+      <div id="prefSplitMax"><button data-v="2"></button><button data-v="3"></button><button data-v="4"></button><button data-v="6"></button><button data-v="9"></button></div>
       <div id="prefJobDelay"><button data-dec></button><span data-n></span><button data-inc></button></div>
       <input type="checkbox" id="prefAsk"><input type="checkbox" id="prefWorktree"><input type="checkbox" id="prefNotify">
       <input type="checkbox" id="prefDirector"><input type="checkbox" id="prefJump"><input type="checkbox" id="prefAskCard">
@@ -70,7 +77,7 @@ describe("Settings rows", () => {
     expect($<HTMLInputElement>("prefWorktree").checked).toBe(true);
     expect($<HTMLInputElement>("prefAsk").checked).toBe(true);
     expect($("prefJobDelay").querySelector("[data-n]")!.textContent).toBe("4 s");
-    expect($("prefSplitMax").querySelector(".on")!.getAttribute("data-v")).toBe("4");
+    expect($("prefSplitMax").querySelector(".on")!.getAttribute("data-v")).toBe("6");
   });
 
   it("saves every change straight away", () => {

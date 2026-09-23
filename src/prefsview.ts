@@ -3,7 +3,7 @@
 // values when Settings opens, and saves each change the moment it is made.
 
 import { CLI_PRESETS } from "./crew";
-import { getPrefs, setPref, resetPrefs, type Prefs } from "./prefs";
+import { getPrefs, setPref, resetPrefs, SPLIT_SIZES, type Prefs } from "./prefs";
 import { loadCrew, saveSkipPerms } from "./spawnmodal";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
@@ -58,7 +58,8 @@ export function initPrefsView(): void {
   });
   $("prefSplitMax")?.addEventListener("click", (e) => {
     const v = Number((e.target as HTMLElement).closest<HTMLElement>("[data-v]")?.dataset.v);
-    if (v === 2 || v === 3 || v === 4) { setPref("splitMax", v); markSeg("prefSplitMax", v); }
+    const size = SPLIT_SIZES.find((n) => n === v);
+    if (size) { setPref("splitMax", size); markSeg("prefSplitMax", size); }
   });
   const delay = $("prefJobDelay");
   const step = (d: number) => { setPref("jobDelay", getPrefs().jobDelay + d); syncPrefsView(); };

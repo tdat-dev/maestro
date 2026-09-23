@@ -222,7 +222,7 @@ export function initFileTree(opts: FileTreeOpts): FileTreeApi {
     const frag = document.createDocumentFragment();
 
     if (!root) {
-      host.innerHTML = `<div class="tw-msg">No folder for this workspace</div>`;
+      host.innerHTML = `<div class="tw-msg">This project has no folder</div>`;
       return;
     }
     if (!rows.length) {
@@ -993,7 +993,7 @@ export function initFileTree(opts: FileTreeOpts): FileTreeApi {
     syncToolbar();
     if (!dir) {
       host.replaceChildren();
-      host.innerHTML = `<div class="tw-msg">No folder for this workspace</div>`;
+      host.innerHTML = `<div class="tw-msg">This project has no folder</div>`;
       void watchStop().catch(() => {});
       return;
     }

@@ -1020,7 +1020,7 @@ export function createKanban() {
     openCardId = null;
     root.replaceChildren();
     if (!ctx) {
-      root.appendChild(el("div", "kb-empty", "<p>Open a workspace to start a board.</p>"));
+      root.appendChild(el("div", "kb-empty", "<p>Open a project to start its board.</p>"));
       return;
     }
 

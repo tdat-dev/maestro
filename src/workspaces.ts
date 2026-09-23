@@ -4,12 +4,12 @@ export function basename(p: string): string {
   return parts[parts.length - 1] || p;
 }
 
-/** Workspace label: the dir basename, else the first free "Workspace N". */
+/** Workspace label: the dir basename, else the first free "Project N". */
 export function nextWorkspaceName(dir: string | null, taken: string[]): string {
   if (dir) return basename(dir);
   let n = 1;
-  while (taken.includes(`Workspace ${n}`)) n++;
-  return `Workspace ${n}`;
+  while (taken.includes(`Project ${n}`)) n++;
+  return `Project ${n}`;
 }
 
 /** Which workspace id to activate after `closingId` is removed (neighbour to

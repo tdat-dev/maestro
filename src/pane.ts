@@ -144,7 +144,7 @@ function buildPaneEl(
           </div>
         </div>
         <button class="pctrl" data-edit aria-label="Rename agent" title="Rename">${EDIT_SVG}</button>
-        <button class="pctrl" data-max aria-label="Focus pane" title="Focus / back to canvas"><span class="ic-max">${MAX_SVG}</span><span class="ic-back">${BACK_SVG}</span></button>
+        <button class="pctrl" data-max aria-label="Focus pane" title="Focus"><span class="ic-max">${MAX_SVG}</span><span class="ic-back">${BACK_SVG}</span></button>
         <button class="pctrl danger" data-kill aria-label="Kill agent (tree)" title="Kill (tree)">${KILL_SVG}</button>
       </div>
     </div>

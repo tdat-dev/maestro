@@ -88,7 +88,7 @@
 /* same overlay, but a Kanban card (a task) is being dropped, not a file */
 .pane.drop-agent::after{content:"Drop to send task to agent"}
 .pane.run::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:linear-gradient(90deg,transparent,var(--run),transparent);opacity:.55;z-index:7;pointer-events:none}
-.pane.err{box-shadow:inset 0 0 0 1px rgba(255,107,107,.4)}
+.pane.err{box-shadow:inset 0 0 0 1px rgba(242,118,107,.4)}
 .pane.stopped{opacity:.66;transition:opacity .15s,box-shadow .15s}
 .pane.stopped:hover{opacity:1}
 .pane-name { font-weight:600; font-size:11.5px; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:none; max-width:130px; margin-left:4px; margin-right:6px; }
@@ -99,7 +99,7 @@
 .pane:hover .ctrls,.ctrls:focus-within{opacity:1}
 .pctrl{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--muted-2);transition:background .14s,color .14s}
 .pctrl:hover{background:rgba(255,255,255,.09);color:var(--text)}
-.pctrl.danger:hover{background:rgba(248,113,113,.16);color:var(--err)}
+.pctrl.danger:hover{background:rgba(242,118,107,.16);color:var(--err)}
 /* The inset lives on .xterm, NOT here. addon-fit derives rows/cols from this
    host's box but only subtracts padding declared on .xterm itself, so padding
    on the host is invisible to it — it proposed ~2 rows and ~2 cols too many and
@@ -160,7 +160,7 @@
 .tile-spawn .t{font-weight:600;font-size:13px}
 .tile-spawn .sub{font-family:var(--mono);font-size:10.5px;color:var(--muted-2)}
 
-@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(58,210,159,.45)}70%{box-shadow:0 0 0 6px rgba(58,210,159,0)}100%{box-shadow:0 0 0 0 rgba(58,210,159,0)}}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(111,214,160,.45)}70%{box-shadow:0 0 0 6px rgba(111,214,160,0)}100%{box-shadow:0 0 0 0 rgba(111,214,160,0)}}
 /* transform-only entrance: opacity here + the anim-paused GPU saver would leave
    panes restored in an unfocused window stuck invisible at opacity 0 */
 @keyframes paneIn{from{transform:translateY(8px) scale(.99)}to{transform:none}}

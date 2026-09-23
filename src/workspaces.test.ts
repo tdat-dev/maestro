@@ -12,9 +12,9 @@ describe("nextWorkspaceName", () => {
   it("uses the directory basename when a dir is given", () => {
     expect(nextWorkspaceName("D:\\projects\\api", [])).toBe("api");
   });
-  it("falls back to the first free 'Workspace N'", () => {
-    expect(nextWorkspaceName(null, [])).toBe("Workspace 1");
-    expect(nextWorkspaceName(null, ["Workspace 1", "Workspace 2"])).toBe("Workspace 3");
+  it("falls back to the first free 'Project N'", () => {
+    expect(nextWorkspaceName(null, [])).toBe("Project 1");
+    expect(nextWorkspaceName(null, ["Project 1", "Project 2"])).toBe("Project 3");
   });
 });
 

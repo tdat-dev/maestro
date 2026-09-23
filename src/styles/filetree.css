@@ -58,7 +58,7 @@ body.tree-dragging .tw-row{cursor:grabbing}
 .tw-input-row{background-color:var(--surface-1)}
 
 /* failure notice (name taken, file locked) — silence would read as "nothing happened" */
-.tw-toast{margin:6px 2px 0;padding:7px 9px;border-radius:var(--r2);background:rgba(255,107,107,.12);border:1px solid rgba(255,107,107,.3);color:var(--text-2);font-size:11px;line-height:1.45;white-space:normal;animation:ctxIn .14s ease}
+.tw-toast{margin:6px 2px 0;padding:7px 9px;border-radius:var(--r2);background:rgba(242,118,107,.12);border:1px solid rgba(242,118,107,.3);color:var(--text-2);font-size:11px;line-height:1.45;white-space:normal;animation:ctxIn .14s ease}
 
 /* explorer header toolbar + filter box */
 .cp-tools{display:flex;align-items:center;gap:1px;margin-left:auto;margin-right:2px}
@@ -76,7 +76,7 @@ body.tree-dragging .tw-row{cursor:grabbing}
 .ctx-item{display:flex;align-items:center;justify-content:space-between;gap:16px;height:30px;padding:0 10px;border-radius:var(--r1);color:var(--text-2);font-size:12.5px;text-align:left;transition:background .12s,color .12s}
 .ctx-item:hover{background:var(--surface-3);color:var(--text)}
 .ctx-item.danger{color:var(--err)}
-.ctx-item.danger:hover{background:rgba(255,107,107,.14)}
+.ctx-item.danger:hover{background:rgba(242,118,107,.14)}
 .ctx-key{font-family:var(--mono);font-size:10px;color:var(--muted-2);letter-spacing:.02em}
 .ctx-sep{height:1px;margin:4px 6px;background:var(--line)}
 @keyframes ctxIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}

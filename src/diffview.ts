@@ -223,7 +223,7 @@ export function createDiffView() {
     root.replaceChildren();
 
     if (!ctx?.dir) {
-      root.appendChild(emptyState("Open a folder workspace to review its git changes."));
+      root.appendChild(emptyState("Open a project folder to see what changed."));
       return;
     }
     if (!repos.length) {

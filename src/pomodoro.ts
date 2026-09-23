@@ -194,7 +194,7 @@ export function createPomodoro() {
     const s = state();
     root.replaceChildren();
     if (!s) {
-      root.appendChild(el("div", "pm-empty", "<p>Open a workspace to start a timer.</p>"));
+      root.appendChild(el("div", "pm-empty", "<p>Open a project to start a timer.</p>"));
       return;
     }
     const total = phaseSeconds(s, s.phase);

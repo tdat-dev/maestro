@@ -4,11 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Maestro</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23c6f135'/%3E%3Cstop offset='.5' stop-color='%2327b9a3'/%3E%3Cstop offset='1' stop-color='%230f7a3e'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='24' height='24' rx='5' fill='%2311161d'/%3E%3Cpath d='M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5' fill='none' stroke='url(%23g)' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='miter'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%23fff'/%3E%3Ctext x='12' y='17' text-anchor='middle' font-family='Segoe UI,Arial' font-weight='700' font-size='14' fill='%23050506'%3EM%3C/text%3E%3C/svg%3E">
 <!-- First-paint guard: dark immediately so there's no white flash before the
      app's CSS loads. The intro splash stays hidden until its real styles apply,
      so it can't render as an unstyled static frame. -->
-<style>html,body{height:100%;margin:0;background:#090a0c;overflow:hidden}</style>
+<style>html,body{height:100%;margin:0;background:#050506;overflow:hidden}</style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -21,36 +21,9 @@
 
 <!-- ===================== INTRO SPLASH ===================== -->
 <div class="intro" id="intro" aria-hidden="true">
-  <span class="intro-grid"></span>
-  <span class="intro-aurora"></span>
   <div class="intro-stage">
-    <span class="intro-burst"></span>
-    <span class="intro-glow"></span>
-    <span class="ring r1"></span>
-    <span class="ring r2"></span>
-    <span class="ring r3"></span>
-    <div class="intro-signals">
-      <span class="sig" style="--tx:0px;--ty:-94px;--d:.60s"></span>
-      <span class="sig" style="--tx:64px;--ty:-70px;--d:.66s"></span>
-      <span class="sig" style="--tx:92px;--ty:-20px;--d:.62s"></span>
-      <span class="sig" style="--tx:88px;--ty:40px;--d:.72s"></span>
-      <span class="sig" style="--tx:40px;--ty:84px;--d:.78s"></span>
-      <span class="sig" style="--tx:-40px;--ty:84px;--d:.74s"></span>
-      <span class="sig" style="--tx:-88px;--ty:40px;--d:.70s"></span>
-      <span class="sig" style="--tx:-92px;--ty:-20px;--d:.64s"></span>
-      <span class="sig" style="--tx:-64px;--ty:-70px;--d:.58s"></span>
-    </div>
-    <svg class="intro-mark" viewBox="0 0 24 24" fill="none">
-      <defs>
-        <linearGradient id="introGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c6f135"/><stop offset=".5" stop-color="#27b9a3"/><stop offset="1" stop-color="#0f7a3e"/></linearGradient>
-        <filter id="introBlur" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="0.35"/></filter>
-      </defs>
-      <path id="mPath" pathLength="1" d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5" stroke="url(#introGrad)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="miter"/>
-      <circle class="comet" r="0.85" fill="#eaffb0" filter="url(#introBlur)">
-        <animateMotion dur="0.56s" begin="0.12s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.65 0 0.35 1"><mpath href="#mPath"/></animateMotion>
-      </circle>
-    </svg>
-    <span class="intro-flash"></span>
+    <span class="intro-mark">M</span>
+    <span class="intro-word">Maestro</span>
   </div>
 </div>
 
@@ -206,9 +179,9 @@
         </section>
         <section class="sec" data-sec="sessions">
           <h3>Sessions</h3>
-          <div class="srow"><div class="sr-txt"><b>Scheduled agents</b><span>Auto-launch a saved crew preset at a set time.</span></div><button class="sbtn" type="button" id="setOpenSched">Manage</button></div>
+          <div class="srow"><div class="sr-txt"><b>Scheduled agents</b><span>Start a saved preset at a set time. Save one from New agent → Save as preset.</span></div><button class="sbtn" type="button" id="setOpenSched">Manage</button></div>
           <div class="srow"><div class="sr-txt"><b>Session replays</b><span>Watch back recorded agent sessions (● on any pane).</span></div><button class="sbtn" type="button" id="setOpenReplays">Open</button></div>
-          <div class="srow"><div class="sr-txt"><b>Token usage &amp; cost</b><span>Total Claude tokens for this workspace, with an estimated cost.</span></div><button class="sbtn" type="button" id="setOpenUsage">View</button></div>
+          <div class="srow"><div class="sr-txt"><b>Token usage &amp; cost</b><span>Claude tokens used in this project, with an estimated cost.</span></div><button class="sbtn" type="button" id="setOpenUsage">View</button></div>
         </section>
         <section class="sec" data-sec="system">
           <h3>System</h3>
@@ -238,7 +211,7 @@
         </select>
         <button class="btn" id="schedAdd">Add</button>
       </div>
-      <p class="sched-empty" id="schedEmpty" hidden>Save a crew preset in the workspace wizard first, then schedule it here.</p>
+      <p class="sched-empty" id="schedEmpty" hidden>No presets yet. In New agent, set up the agent and choose Save as preset, then schedule it here.</p>
       <div class="sched-list" id="schedList"></div>
     </div>
     <div class="modal-foot">
@@ -256,8 +229,8 @@
     </div>
     <div class="modal-body">
       <div class="usage-wrap" id="usageWrap"></div>
-      <p class="replay-empty" id="usageEmpty" hidden>No Claude usage found for this workspace yet. Costs come from Claude Code's own session logs, so they appear once a Claude agent has run here.</p>
-      <p class="usage-note">Estimated from Claude Code's session transcripts. Claude agents only; other CLIs aren't counted. Prices are approximate — treat the total as a guide, not a bill.</p>
+      <p class="replay-empty" id="usageEmpty" hidden>No Claude usage in this project yet. Costs come from Claude Code's own session logs, so they appear once a Claude agent has run here.</p>
+      <p class="usage-note">Estimated from Claude Code's session transcripts. Claude agents only; other CLIs aren't counted. Prices are approximate, so treat the total as a guide, not a bill.</p>
     </div>
     <div class="modal-foot">
       <button class="btn-ghost" id="usageCloseBtn">Close</button>
@@ -274,7 +247,7 @@
     </div>
     <div class="modal-body replay-body">
       <div class="replay-list" id="replayList"></div>
-      <p class="replay-empty" id="replayEmpty" hidden>No recordings yet. Hit the ● button on any running pane to record a session, then it shows up here.</p>
+      <p class="replay-empty" id="replayEmpty" hidden>No recordings yet. Start one from an agent's ⋯ menu (Record), and it shows up here.</p>
       <div class="replay-player" id="replayPlayer" hidden>
         <div class="replay-term" id="replayTerm"></div>
         <div class="replay-ctrls">
@@ -299,12 +272,7 @@
 
 <!-- ===================== UPDATE TOAST ===================== -->
 <div class="upd-toast" id="updToast" role="status" aria-live="polite" hidden>
-  <span class="upd-mark">
-    <svg viewBox="0 0 24 24" fill="none" stroke="url(#updGrad)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="miter">
-      <defs><linearGradient id="updGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c6f135"/><stop offset=".5" stop-color="#27b9a3"/><stop offset="1" stop-color="#0f7a3e"/></linearGradient></defs>
-      <path d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5"/>
-    </svg>
-  </span>
+  <span class="upd-mark" aria-hidden="true">M</span>
   <div class="upd-body">
     <div class="upd-head">
       <b id="updTitle">New version available</b>

@@ -1,68 +1,55 @@
-/* Update toast — a polished "new version available" card that slides up from the
-   bottom-right. Non-blocking; shows a progress bar while the update downloads. */
+/* Update toast: a quiet card that slides up from the bottom-right when a new
+   version is out, with a progress bar while it downloads. Non-blocking. */
 .upd-toast{
   position:fixed;right:18px;bottom:18px;z-index:200;
-  display:flex;gap:12px;width:330px;max-width:calc(100vw - 36px);
-  padding:14px 14px 13px;
-  background:linear-gradient(180deg,var(--surface-1),var(--surface-0));
-  border:1px solid var(--line-strong);border-radius:14px;
-  box-shadow:0 18px 50px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.06),
-             0 0 30px -8px rgba(111,214,160,.35);
-  /* slide-up + fade entrance; .show toggled from JS */
+  display:flex;gap:12px;width:340px;max-width:calc(100vw - 36px);
+  padding:16px;
+  background:var(--surface-2);
+  border:0;border-radius:18px;
+  box-shadow:0 30px 70px rgba(0,0,0,.65),inset 0 0 0 1px rgba(255,255,255,.1);
   transform:translateY(140%);opacity:0;pointer-events:none;
   transition:transform .42s cubic-bezier(.16,1,.3,1),opacity .3s ease;
 }
 .upd-toast.show{transform:translateY(0);opacity:1;pointer-events:auto}
 .upd-toast[hidden]{display:none}
 
-/* gradient logo mark with a soft breathing glow */
+/* the white M, as on the start screen and the intro */
 .upd-mark{
-  flex:none;width:40px;height:40px;border-radius:11px;display:grid;place-items:center;
-  background:radial-gradient(120% 120% at 30% 20%,rgba(255,255,255,.22),rgba(111,214,160,.12) 60%,transparent);
-  border:1px solid var(--accent-dim);
-  box-shadow:0 0 18px -4px rgba(255,255,255,.5);
-  animation:updGlow 3.6s ease-in-out infinite;
+  flex:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;
+  background:#fff;color:#050506;font:700 17px/1 var(--sans);letter-spacing:-.02em;
 }
-@keyframes updGlow{0%,100%{box-shadow:0 0 16px -6px rgba(255,255,255,.45)}50%{box-shadow:0 0 24px -4px rgba(111,214,160,.6)}}
-.upd-mark svg{width:22px;height:22px}
 
 .upd-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
 .upd-head{display:flex;align-items:center;gap:8px}
-.upd-head b{font-size:13px;font-weight:650;letter-spacing:.01em}
+.upd-head b{font-size:14px;font-weight:600;letter-spacing:-.01em}
 .upd-x{
-  margin-left:auto;flex:none;width:20px;height:20px;border-radius:6px;
+  margin-left:auto;flex:none;width:26px;height:26px;border-radius:999px;
   display:grid;place-items:center;color:var(--muted);font-size:15px;line-height:1;
 }
-.upd-x:hover{background:var(--surface-3);color:var(--text)}
-.upd-ver{font-size:11px;color:var(--muted-2);font-family:var(--mono)}
+.upd-x:hover{background:rgba(255,255,255,.08);color:var(--text)}
+.upd-ver{font-size:12px;color:var(--muted);font-family:var(--mono)}
 
-/* download progress bar (hidden until the user starts the update) */
-.upd-bar{height:5px;border-radius:5px;background:var(--surface-3);overflow:hidden;margin:7px 0 2px}
+/* download progress (hidden until the update starts) */
+.upd-bar{height:4px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden;margin:8px 0 2px}
 .upd-bar[hidden]{display:none}
-.upd-bar>span{
-  display:block;height:100%;width:0;border-radius:5px;
-  background:linear-gradient(90deg,var(--accent),#6fd6a0);
-  box-shadow:0 0 12px -2px rgba(255,255,255,.7);
-  transition:width .25s ease;
-}
-.upd-size{
-  font-size:10px;color:var(--muted-2);font-family:var(--mono);
-  text-align:right;margin-top:1px;
-}
+.upd-bar>span{display:block;height:100%;width:0;border-radius:4px;background:var(--run);transition:width .25s ease}
+.upd-size{font-size:11px;color:var(--muted);font-family:var(--mono);text-align:right;margin-top:1px}
 .upd-size[hidden]{display:none}
 
-.upd-actions{display:flex;gap:7px;margin-top:8px}
+.upd-actions{display:flex;gap:8px;margin-top:10px}
 .upd-actions[hidden]{display:none}
 .upd-later{
-  flex:none;padding:6px 12px;border-radius:8px;border:1px solid var(--line-strong);
-  background:transparent;color:var(--text-2);font-size:12px;font-weight:500;
+  flex:none;height:32px;padding:0 14px;border-radius:999px;border:0;
+  background:rgba(255,255,255,.06);color:var(--text-2);font-size:12.5px;font-weight:600;
 }
-.upd-later:hover{border-color:var(--line);color:var(--text);background:var(--surface-3)}
+.upd-later:hover{background:rgba(255,255,255,.12);color:var(--text)}
 .upd-go{
   margin-left:auto;display:inline-flex;align-items:center;gap:6px;
-  padding:6px 14px;border-radius:8px;border:1px solid var(--accent-dim);
-  background:var(--accent);color:var(--accent-ink);font-size:12px;font-weight:650;
+  height:32px;padding:0 14px;border-radius:999px;border:0;
+  background:#fff;color:#000;font-size:12.5px;font-weight:600;
 }
-.upd-go:hover{background:#d3fc4d;box-shadow:0 0 16px -4px rgba(255,255,255,.7)}
-.upd-go:disabled{opacity:.7;cursor:default;box-shadow:none}
+.upd-go:hover{background:#e9e9ec}
+.upd-go:disabled{opacity:.6;cursor:default}
 .upd-go svg{width:13px;height:13px}
+.upd-x:focus-visible,.upd-later:focus-visible,.upd-go:focus-visible{outline:2px solid #fff;outline-offset:2px}
+@media (prefers-reduced-motion: reduce){.upd-toast{transition:opacity .2s ease}}

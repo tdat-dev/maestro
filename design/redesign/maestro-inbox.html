@@ -122,7 +122,7 @@ kbd{font:500 11px/1 var(--mono);color:var(--ink-3);border:1px solid var(--line);
 .row .sub .st{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .row .sub .st.needs{color:var(--needs)} .row .sub .st.review{color:var(--review)}
 .row .dc{grid-column:3/4;font:12px var(--mono);text-align:right;white-space:nowrap}
-.row .tag{font:500 10.5px var(--mono);padding:1px 6px;border-radius:5px;background:rgba(255,255,255,.06);color:var(--ink-2);margin-left:6px;vertical-align:1px}
+.row .tag{white-space:nowrap;flex:none;font:500 10.5px var(--mono);padding:1px 6px;border-radius:5px;background:rgba(255,255,255,.06);color:var(--ink-2);margin-left:6px;vertical-align:1px}
 .row .bar{grid-column:2/4;height:3px;border-radius:2px;background:rgba(255,255,255,.07);overflow:hidden;margin-top:7px}
 .row .bar i{display:block;height:100%;background:linear-gradient(90deg,oklch(0.80 0.13 155 / .2),oklch(0.80 0.13 155 / .9));transition:width .6s var(--ease)}
 .row.merged-row .title,.row.merged-row .sub{opacity:.6}
@@ -389,6 +389,150 @@ kbd{font:500 11px/1 var(--mono);color:var(--ink-3);border:1px solid var(--line);
   *{animation:none!important;transition:none!important}
   .g.working{border-right-color:var(--work)}
 }
+
+/* ---------- the terminal is real: prompt lives inside it, decisions float above ---------- */
+.shead{flex-wrap:wrap}
+.stitle{flex:1 1 380px}
+.sctl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto}
+.twrap{flex:1;min-height:0;position:relative;display:flex;flex-direction:column}
+.twrap .term{flex:1}
+.term .runbar{margin-top:14px;border-radius:10px;font-family:var(--ui)}
+.prompt{display:flex;gap:10px;align-items:flex-start;margin-top:12px}
+.prompt .ps{color:var(--work);font-weight:600;line-height:1.7}
+.prompt textarea{flex:1;border:0;background:transparent;outline:none;resize:none;font:13px/1.7 var(--mono);color:var(--ink);padding:0;min-height:22px;caret-color:var(--work)}
+.prompt textarea::placeholder{color:var(--ink-3)}
+.stage > .chint{margin:4px 24px 16px 74px}
+.decision.float{position:absolute;left:74px;right:24px;bottom:14px;z-index:5;box-shadow:inset 0 0 0 1px var(--needs-line),0 30px 70px rgba(0,0,0,.7)}
+.dmin{margin-left:auto;font-size:12px;color:var(--ink-2);padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.06)}
+.dmin:hover{background:rgba(255,255,255,.12);color:var(--ink)}
+.waitchip{position:absolute;right:24px;bottom:14px;z-index:5;display:flex;gap:8px;align-items:center;padding:8px 14px;border-radius:999px;background:var(--raise);box-shadow:inset 0 0 0 1px var(--needs-line),var(--float);color:var(--needs);font-size:12.5px}
+.stabs{display:flex;gap:3px;padding:3px;border-radius:999px;background:rgba(255,255,255,.04)}
+.stabs button{height:26px;padding:0 11px;border-radius:999px;font-size:12.5px;color:var(--ink-3)}
+.stabs button[aria-selected="true"]{background:rgba(255,255,255,.1);color:var(--ink)}
+
+/* history: replay, schedule, cost, timeline */
+.hist{flex:1;overflow:auto;padding:12px 24px 24px 74px;min-height:0}
+.hcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:20px}
+.hcard{background:var(--raise);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.hcard .k{font-size:12px;color:var(--ink-3)}
+.hcard .v{font-size:19px;font-weight:500;letter-spacing:-.01em}
+.hcard select{background:rgba(0,0,0,.3);border:0;box-shadow:inset 0 0 0 1px var(--line);border-radius:8px;height:30px;padding:0 8px;font-size:12.5px}
+.hcard .btn{height:30px;align-self:flex-start;font-size:12.5px}
+.timeline{list-style:none;margin:0;padding:0}
+.ev{display:grid;grid-template-columns:64px 1fr;gap:12px;padding:9px 0;border-top:1px solid var(--line-soft);font-size:13px}
+.ev time{font:12px var(--mono);color:var(--ink-3);padding-top:1px}
+.ev .who{color:var(--ink-3);margin-right:6px}
+.ev .txt{color:var(--ink-2);font-family:var(--mono);font-size:12.5px;word-break:break-word}
+.ev.you .txt,.ev.say .txt{color:var(--ink);font-family:var(--ui);font-size:13px}
+.ev.ok .txt{color:var(--add)} .ev.err .txt{color:var(--del)}
+
+/* ---------- split: 2 to 4 live terminals side by side ---------- */
+.split{grid-column:2/-1;grid-row:1;display:grid;gap:16px;min-height:0;grid-template-columns:repeat(var(--cols,2),minmax(0,1fr));grid-auto-rows:minmax(0,1fr)}
+.spane{background:var(--panel);border-radius:var(--r-xl);box-shadow:var(--panel-edge);display:flex;flex-direction:column;min-height:0;overflow:hidden;position:relative}
+.spane.cur{box-shadow:inset 0 0 0 1px rgba(255,255,255,.24)}
+.spane.needs{box-shadow:inset 0 0 0 1px var(--needs-line),0 20px 50px rgba(255,190,110,.05)}
+.spane.needs.cur{box-shadow:inset 0 0 0 1px var(--needs),0 20px 50px rgba(255,190,110,.07)}
+.sph{display:flex;align-items:center;gap:10px;padding:12px 12px 6px 14px}
+.sph .mk{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:11px;font-weight:700;color:#050506;flex:none}
+.sph .tt{min-width:0;flex:1;display:flex;flex-direction:column}
+.sph .tt b{font-weight:600;font-size:13px}
+.sph .tt span{font-size:12.5px;color:var(--ink-3)}
+.sph .pill{font-size:12px;padding:4px 9px}
+.sph .ic{width:28px;height:28px;border-radius:999px;color:var(--ink-3);flex:none}
+.sph .ic:hover{background:rgba(255,255,255,.08);color:var(--ink)}
+.term.sterm{flex:1;padding:4px 14px 8px;font-size:12px;line-height:1.6;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
+.sfoot{padding:6px 12px 12px}
+.sprompt{display:flex;gap:8px;align-items:center;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.04)}
+.sprompt .ps{color:var(--work);font:600 12.5px var(--mono)}
+.sprompt input{flex:1;min-width:0;border:0;background:transparent;outline:none;font:12.5px var(--mono);color:var(--ink);caret-color:var(--work)}
+.sprompt input::placeholder{color:var(--ink-3)}
+.sask{border-radius:12px;background:var(--raise);box-shadow:inset 0 0 0 1px var(--needs-line);padding:10px 12px}
+.sask p{margin:0 0 8px;font-size:13px;color:var(--ink)}
+.sask p .lb{display:block;font-size:12px;color:var(--needs);margin-bottom:2px}
+.sask code{font:12px var(--mono);background:var(--well);padding:2px 6px;border-radius:5px}
+.sask .row3{display:flex;gap:6px;flex-wrap:wrap}
+.sask .btn{height:30px;padding:0 11px;font-size:12.5px}
+.sempty{grid-column:1/-1;display:grid;place-items:center}
+.sempty .rempty{max-width:420px;text-align:center}
+.row .pin{font:10.5px var(--mono);color:var(--ink-3);margin-left:6px}
+
+/* ---------- files drawer ---------- */
+.drawer{position:fixed;top:16px;right:16px;bottom:16px;width:min(360px,calc(100% - 32px));background:rgba(20,21,24,.98);border-radius:18px;box-shadow:var(--float);z-index:var(--z-drawer);display:flex;flex-direction:column;overflow:hidden}
+.dh{padding:16px 16px 8px 18px;display:flex;align-items:flex-start;gap:10px}
+.dh h2{margin:0;font-size:15px;font-weight:500}
+.dh p{margin:2px 0 0;font:12px var(--mono);color:var(--ink-3)}
+.dh .btn{margin-left:auto;height:30px}
+.fsearch{margin:4px 14px 8px;height:34px;border-radius:10px;border:0;box-shadow:inset 0 0 0 1px var(--line);background:rgba(0,0,0,.25);padding:0 12px;font-size:13px}
+.fsearch::placeholder{color:var(--ink-3)}
+.tree{flex:1;overflow:auto;padding:2px 8px 12px}
+.tnode{display:flex;gap:8px;align-items:center;width:100%;text-align:left;padding:6px 8px;border-radius:8px;font:12.5px var(--mono);color:var(--ink-2)}
+.tnode:hover{background:rgba(255,255,255,.05);color:var(--ink)}
+.tnode.dir{color:var(--ink-3)}
+.tnode .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tnode .fs{font:600 11px var(--mono);width:14px;text-align:center}
+.tnode .fs.M{color:var(--needs)} .tnode .fs.A{color:var(--add)} .tnode .fs.D{color:var(--del)}
+.dnote{padding:12px 18px 16px;border-top:1px solid var(--line-soft);font-size:12px;color:var(--ink-3)}
+
+/* ---------- settings ---------- */
+.settings{width:min(900px,100%);height:min(620px,calc(100vh - 18vh));display:grid;grid-template-columns:190px minmax(0,1fr);background:rgba(20,21,24,.98);border-radius:20px;box-shadow:var(--float);overflow:hidden}
+.snav{padding:18px 10px;border-right:1px solid var(--line-soft);display:flex;flex-direction:column;gap:2px}
+.snav h2{font-size:15px;font-weight:500;margin:0 10px 12px}
+.snav button{text-align:left;padding:8px 10px;border-radius:10px;color:var(--ink-2);font-size:13px}
+.snav button:hover{color:var(--ink)}
+.snav button[aria-current="true"]{background:rgba(255,255,255,.08);color:var(--ink)}
+.sbody{overflow:auto;padding:22px 24px 40px;position:relative}
+.sclose{float:right;margin:-6px -6px 0 12px}
+.ssec{margin-bottom:26px;scroll-margin-top:16px}
+.ssec h3{font-size:12.5px;font-weight:500;color:var(--ink-3);margin:0 0 8px}
+.set{display:flex;align-items:center;gap:16px;padding:12px 14px;background:var(--raise);border-radius:12px;margin-bottom:6px}
+.set .lab{flex:1;min-width:0}
+.set .lab b{display:block;font-weight:500}
+.set .lab span{font-size:12.5px;color:var(--ink-3)}
+.set select{background:rgba(0,0,0,.3);border:0;box-shadow:inset 0 0 0 1px var(--line);border-radius:8px;height:32px;padding:0 8px;font-size:12.5px}
+.set select option{background:#15161a}
+.set .btn{height:32px}
+
+/* ---------- start: no folder yet ---------- */
+.start{position:fixed;inset:0;z-index:var(--z-backdrop);background:radial-gradient(1100px 460px at 50% -10%, rgba(255,196,120,.08), transparent 60%),var(--ground);overflow:auto;padding:56px 20px 40px}
+.start .in{width:min(860px,100%);margin:0 auto}
+.start .brand{margin-bottom:34px}
+.start h1{font-size:34px;font-weight:500;letter-spacing:-.025em;margin:0 0 6px;color:var(--ink-3)}
+.start h1 b{color:var(--ink);font-weight:600}
+.start .lede{color:var(--ink-3);margin:0 0 26px;max-width:62ch}
+.drop{display:flex;align-items:center;gap:14px;padding:18px 20px;border-radius:18px;background:var(--panel);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);margin-bottom:30px;flex-wrap:wrap}
+.drop .sp{flex:1;min-width:200px;color:var(--ink-2)}
+.drop .sp b{display:block;color:var(--ink);font-weight:500;margin-bottom:2px}
+.start h2{font-size:13px;font-weight:500;color:var(--ink-3);margin:0 0 10px;display:flex;justify-content:space-between}
+.recent{display:grid;gap:6px;margin-bottom:30px}
+.rec{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:2px 14px;align-items:center;text-align:left;padding:12px 14px;border-radius:14px;background:var(--panel);box-shadow:var(--panel-edge)}
+.rec:hover{background:var(--raise)}
+.rec .ic{grid-column:1;grid-row:1/3;width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,.07);display:grid;place-items:center;font-size:13px}
+.rec b{grid-column:2;grid-row:1;font-weight:500}
+.rec .p{grid-column:2;grid-row:2;font:12px var(--mono);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rec .n{grid-column:3;grid-row:1/3;font-size:12.5px;color:var(--ink-3);text-align:right}
+.rec .n .needs{color:var(--needs)}
+.presets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.preset{text-align:left;padding:14px 16px;border-radius:14px;background:var(--panel);box-shadow:var(--panel-edge);display:flex;flex-direction:column;gap:4px}
+.preset:hover{background:var(--raise)}
+.preset b{font-weight:500}
+.preset span{font-size:12.5px;color:var(--ink-3)}
+.preset .clis{display:flex;gap:4px;margin-top:8px}
+
+@media (max-width:1320px){ .dock .tools{display:none} }
+@media (max-width:760px){
+  .app[data-view="split"] .queue{display:none}
+  .split{grid-column:1;grid-template-columns:minmax(0,1fr)!important;grid-auto-rows:minmax(340px,auto);overflow:auto}
+  .presets{grid-template-columns:minmax(0,1fr)}
+  .settings{grid-template-columns:minmax(0,1fr);height:auto;max-height:calc(100vh - 32px)}
+  .snav{display:none}
+  .hist,.stage > .chint{padding-left:16px;margin-left:16px}
+  .hist{padding:12px 16px 20px}
+  .decision.float{position:static;margin:0 12px 12px}
+  .stage{overflow:auto}
+  .twrap{flex:none}
+  .twrap .term{flex:none;min-height:220px;max-height:46vh}
+  #pinBtn{display:none}
+}
 </style>
 </head>
 <body>
@@ -409,17 +553,23 @@ kbd{font:500 11px/1 var(--mono);color:var(--ink-3);border:1px solid var(--line);
     </nav>
     <main class="stage" id="stage"></main>
     <aside class="rpanel" id="rpanel" aria-label="Changes"></aside>
+    <section class="split" id="split" hidden aria-label="Split view"></section>
     <div class="board" id="board" hidden></div>
   </div>
 
   <nav class="dock" aria-label="Views and commands">
     <div class="views" role="group" aria-label="View">
       <button id="vQueue" aria-pressed="true">Queue</button>
+      <button id="vSplit" aria-pressed="false">Split</button>
       <button id="vBoard" aria-pressed="false">Board</button>
       <button id="openKeys" aria-label="Keyboard shortcuts">?</button>
     </div>
     <button class="kbtn" id="openPalette" aria-label="Search and commands"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m11 11 3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span class="sp">Ask, jump, or run a command</span><kbd>Ctrl K</kbd></button>
     <button class="newbtn" id="openNew">New task <kbd>N</kbd></button>
+    <div class="views tools" role="group" aria-label="Tools">
+      <button id="openFiles" aria-pressed="false">Files</button>
+      <button id="openSettings">Settings</button>
+    </div>
     <button class="tbtn vi" id="openNotes">Ghi chú<span class="long"> thiết kế</span></button>
   </nav>
 </div>
@@ -474,6 +624,8 @@ kbd{font:500 11px/1 var(--mono);color:var(--ink-3);border:1px solid var(--line);
     <dt>Select for bulk actions</dt><dd><kbd>X</kbd></dd>
     <dt>Type to the open agent</dt><dd><kbd>I</kbd></dd>
     <dt>Switch Queue / Board</dt><dd><kbd>B</kbd></dd>
+    <dt>Split: pinned agents side by side</dt><dd><kbd>W</kbd></dd>
+    <dt>Pin or unpin the open agent</dt><dd><kbd>P</kbd> or <kbd>Ctrl</kbd>+click</dd>
   </dl>
   <h3>When an agent needs you</h3>
   <dl>
@@ -495,6 +647,48 @@ kbd{font:500 11px/1 var(--mono);color:var(--ink-3);border:1px solid var(--line);
     <dt>This sheet</dt><dd><kbd>?</kbd></dd>
   </dl>
 </aside>
+
+<!-- files: a quick look at the branch, editing happens in the user's editor -->
+<aside class="drawer" id="files" hidden aria-label="Files"></aside>
+
+<!-- settings -->
+<div class="backdrop" id="setBack" hidden>
+  <div class="settings" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+    <nav class="snav" aria-label="Settings sections">
+      <h2 id="setTitle">Settings</h2>
+      <button data-sec="look" aria-current="true">Appearance</button>
+      <button data-sec="agents">Agents</button>
+      <button data-sec="remote">Remote</button>
+      <button data-sec="system">System</button>
+    </nav>
+    <div class="sbody" id="sbody">
+      <button class="btn quiet sclose" id="closeSettings">Close <kbd>Esc</kbd></button>
+      <section class="ssec" data-sec="look"><h3>Appearance</h3>
+        <div class="set"><div class="lab"><b>Terminal font size</b><span>Applies to every agent's terminal.</span></div><select id="setFont" aria-label="Terminal font size"><option>12</option><option selected>13</option><option>14</option><option>15</option></select></div>
+        <div class="set"><div class="lab"><b>Terminal colours</b><span>Follow each CLI's own theme, or force one.</span></div><select id="setTheme" aria-label="Terminal colours"><option selected>Follow the CLI</option><option>Maestro dark</option><option>High contrast</option></select></div>
+        <div class="set"><div class="lab"><b>Glow behind the stage</b><span>The warm light at the bottom of panels. Off for a flat look.</span></div><label class="switch"><input type="checkbox" id="setGlow" checked><span class="sr">Glow</span></label></div>
+      </section>
+      <section class="ssec" data-sec="agents"><h3>Agents</h3>
+        <div class="set"><div class="lab"><b>Default permission mode</b><span>What a new agent starts with. You can still allow commands one by one.</span></div><select id="setPerm" aria-label="Default permission mode"><option selected>Ask before commands</option><option>Accept edits</option><option>Bypass permissions</option></select></div>
+        <div class="set"><div class="lab"><b>Own worktree for every task</b><span>Each agent works on its own branch. Nothing touches your checkout until you merge.</span></div><label class="switch"><input type="checkbox" id="setWt" checked><span class="sr">Worktree</span></label></div>
+        <div class="set"><div class="lab"><b>Hand-offs between agents</b><span>Let agents give work to each other with fleet_send. You see every hand-off in the queue.</span></div><label class="switch"><input type="checkbox" id="setFleet" checked><span class="sr">Hand-offs</span></label></div>
+        <div class="set"><div class="lab"><b>Record sessions for replay</b><span>Keeps a replay of each terminal in the task's History.</span></div><label class="switch"><input type="checkbox" id="setRec" checked><span class="sr">Record</span></label></div>
+      </section>
+      <section class="ssec" data-sec="remote"><h3>Remote</h3>
+        <div class="set"><div class="lab"><b>Web dashboard</b><span>See the queue and answer agents from your phone at <span class="num">localhost:8477</span>.</span></div><label class="switch"><input type="checkbox" id="setDash"><span class="sr">Dashboard</span></label></div>
+        <div class="set"><div class="lab"><b>Allow other devices on this network</b><span>Anyone on your Wi-Fi who opens the page can type into your agents. Turn on only at home.</span></div><label class="switch"><input type="checkbox" id="setLan"><span class="sr">LAN</span></label></div>
+      </section>
+      <section class="ssec" data-sec="system"><h3>System</h3>
+        <div class="set"><div class="lab"><b>Keep running in the tray</b><span>Closing the window leaves agents running.</span></div><label class="switch"><input type="checkbox" id="setTray" checked><span class="sr">Tray</span></label></div>
+        <div class="set"><div class="lab"><b>Restore agents on start</b><span>Reopens the same agents in the same folders.</span></div><label class="switch"><input type="checkbox" id="setRestore" checked><span class="sr">Restore</span></label></div>
+        <div class="set"><div class="lab"><b>Updates</b><span>Maestro 0.5.9. Signed updates install on restart.</span></div><button class="btn" id="setUpdate">Check now</button></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- start: no folder open yet -->
+<section class="start" id="start" hidden aria-label="Start"></section>
 
 <div class="toast" id="toast" role="status" hidden><span id="toastMsg"></span><button id="toastUndo" hidden>Undo</button></div>
 
@@ -544,11 +738,11 @@ kbd{font:500 11px/1 var(--mono);color:var(--ink-3);border:1px solid var(--line);
       <tr><th>Tính năng</th><th>Quyết định</th></tr>
       <tr><td>Sigil, mascot, wallpaper sau terminal</td><td>Bỏ.</td></tr>
       <tr><td>Pomodoro</td><td>Bỏ. Không thuộc việc điều phối agent.</td></tr>
-      <tr><td>Canvas kéo thả pane, Tidy, zoom</td><td>Bỏ. Queue + Stage thay thế. Cần xem nhiều terminal cùng lúc thì dùng "Wall" chỉ đọc qua Ctrl K.</td></tr>
+      <tr><td>Canvas kéo thả pane, Tidy, zoom</td><td>Thay bằng <b>Split</b> (phím W): 2–4 terminal thật cạnh nhau, ghim bằng P hoặc Ctrl+click. Không cần kéo thả hay sắp xếp tay.</td></tr>
       <tr><td>Wizard, spawn modal, spawn menu, console, switcher</td><td>Gộp vào Ctrl K và New task.</td></tr>
-      <tr><td>Code panel, file tree, editor</td><td>Đẩy ra rìa: mở file từ diff sang VS Code / Cursor.</td></tr>
+      <tr><td>Code panel, file tree, editor</td><td>Thành ngăn <b>Files</b> trong dock: xem cây file của nhánh, bấm file thì mở trong VS Code / Cursor.</td></tr>
       <tr><td>Conductor, Pipelines</td><td>Thành lựa chọn "Flow" khi tạo việc.</td></tr>
-      <tr><td>Schedule, Replay, Usage</td><td>Gộp vào lịch sử của từng việc.</td></tr>
+      <tr><td>Schedule, Replay, Usage</td><td>Thành tab <b>History</b> của từng việc: chi phí, replay, chạy lại theo lịch, dòng thời gian.</td></tr>
     </table>
 
     <h3>Giữ nguyên</h3>
@@ -632,6 +826,7 @@ const races = { r1: { task:"Fix the flaky upload test", project:"ByteWaker" } };
 
 // ---------- state ----------
 let current = "ana", filter = "all", view = "queue", fileIdx = 0, lastUndo = null, reviewPinned = false;
+let pinned = ["ana","bo","eli","fin"], stageTab = "term";
 const selected = new Set();
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
@@ -681,7 +876,7 @@ function queue(){
       return `<button class="row${st==="merged" ? " merged-row" : ""}${selected.has(a.id) ? " sel" : ""}" data-id="${a.id}" aria-current="${a.id===current}" aria-pressed="${selected.has(a.id)}">
         <span class="mk" style="background:${CLIS[a.cli].hue}" aria-hidden="true">${esc(a.name[0])}</span><span class="sr">${LABEL[st]}</span>
         <span class="title">${esc(titleOf(a))}</span>
-        <span class="time">${fmt(Date.now()-a.since)}</span>
+        <span class="time">${pinned.includes(a.id) ? `<span class="pin" title="In Split">◫</span> ` : ""}${fmt(Date.now()-a.since)}</span>
         <span class="sub"><span>${esc(a.name)}</span>${tag}<span aria-hidden="true">·</span><span class="st ${st}">${esc(statusLine(a))}</span></span>
         ${s && st !== "merged" ? `<span class="dc"><span class="a">+${s[0]}</span> <span class="d">−${s[1]}</span></span>` : "<span></span>"}
         ${st === "working" ? `<span class="bar" aria-hidden="true"><i style="width:${Math.min(92, 12 + (Date.now()-a.since)/1000/4)}%"></i></span>` : ""}
@@ -716,11 +911,14 @@ function termHTML(a){
   return a.log.map(([k,t]) => k === "gap" ? `<div class="gap"></div>` : `<div class="l ${k}">${esc(t)}</div>`).join("");
 }
 
-function dockHTML(a){
-  if (a.state === "needs") {
+// The decision floats over the live terminal; it can be tucked away to type straight into the CLI.
+function decisionHTML(a){
+  if (a.state !== "needs") return "";
+  if (a.askMin) return `<button class="waitchip" id="doShow"><i class="g needs" aria-hidden="true"></i>${esc(a.name)} is waiting on you · Show</button>`;
+  {
     const q = a.ask.kind === "question";
-    return `<section class="decision" aria-label="${q ? "Question" : "Approval"} from ${esc(a.name)}">
-      <div class="dtop"><i class="g needs" aria-hidden="true"></i>${q ? `${esc(a.name)} has a question` : `${esc(a.name)} wants to run a command`}<span class="why">${esc(a.ask.why)}</span></div>
+    return `<section class="decision float" aria-label="${q ? "Question" : "Approval"} from ${esc(a.name)}">
+      <div class="dtop"><i class="g needs" aria-hidden="true"></i>${q ? `${esc(a.name)} has a question` : `${esc(a.name)} wants to run a command`}<button class="dmin" id="doMin">Hide · type in terminal</button><span class="why">${esc(a.ask.why)}</span></div>
       <div class="dbody">${q
         ? `<p class="qtext">${esc(a.ask.q)}</p><div class="dopts">${a.ask.options.map((o,i) => `<button class="dopt" data-o="${i}"><span class="k">${i+1}</span><span class="sp">${esc(o)}</span><span class="go" aria-hidden="true">→</span></button>`).join("")}</div>`
         : `<code>${esc(a.ask.cmd)}</code>`}</div>
@@ -732,14 +930,36 @@ function dockHTML(a){
       </div>
     </section>`;
   }
+}
+
+// The prompt is the last line of the terminal itself, the way the CLI draws it.
+function promptHTML(a){
   const run = a.state === "working" ? `<div class="runbar" role="status"><i class="g working" aria-hidden="true"></i><span class="sp">${esc(a.name)} is working · ${fmt(Date.now()-a.since)} · ${esc(statusLine(a))}</span><button id="doStop"><span aria-hidden="true">■</span> Stop <kbd>S</kbd></button></div>` : "";
-  const ph = a.state === "idle" || a.state === "merged" ? `Give ${a.name} a task…` : `Message ${a.name}…`;
-  return `${run}<form class="composer" id="composer">
+  const ph = a.state === "idle" || a.state === "merged" ? `Give ${a.name} a task…` : `Type to ${a.name}…`;
+  return `${run}<form class="prompt" id="composer">
+      <span class="ps" aria-hidden="true">❯</span>
       <label class="sr" for="msg">${esc(ph)}</label>
       <textarea id="msg" rows="1" placeholder="${esc(ph)}"></textarea>
-      <button class="send" type="submit">Send</button>
-    </form>
-    <div class="chint"><span>Goes to ${esc(a.name)} only</span><span><kbd>@name</kbd> hand to another agent</span><span><kbd>Ctrl K</kbd> everything else</span></div>`;
+    </form>`;
+}
+
+function historyHTML(a){
+  const lines = a.log.filter(l => l[0] !== "gap" && l[0] !== "dim");
+  const who = {you:"You", tool:"Ran", say:a.name, ok:"Passed", err:"Stopped", thinking:"Now"};
+  const runs = a.log.filter(l => l[0] === "tool").length;
+  const mins = Math.max(1, Math.round((Date.now() - a.since) / 60000) + lines.length);
+  const ev = lines.map((l, i) => {
+    const t = i === lines.length - 1 ? "now" : `${Math.max(1, (lines.length - 1 - i) * 2)}m ago`;
+    return `<li class="ev ${l[0]}"><time>${t}</time><div><span class="who">${esc(who[l[0]] || "")}</span><span class="txt">${esc(l[1])}</span></div></li>`;
+  }).join("");
+  return `<div class="hist" id="hist">
+    <div class="hcards">
+      <div class="hcard"><span class="k">Cost so far</span><span class="v num">$${a.cost.toFixed(2)}</span><span class="k">${Math.round(a.cost * 180)}k tokens in · ${Math.round(a.cost * 22)}k out</span></div>
+      <div class="hcard"><span class="k">Session</span><span class="v">${mins} min · ${runs} commands</span><button class="btn" id="histReplay">Replay session</button></div>
+      <div class="hcard"><span class="k">Run this task again</span><label class="sr" for="histSched">Schedule</label><select id="histSched"><option>Don't repeat</option><option>Every morning at 09:00</option><option>Every hour</option><option>When main changes</option></select></div>
+    </div>
+    <ol class="timeline" aria-label="What happened">${ev}</ol>
+  </div>`;
 }
 
 function stage(){
@@ -759,12 +979,17 @@ function stage(){
         <div class="meta"><b>${esc(a.name)}</b><span>${cli.label}</span><span>${esc(a.project)} / <span class="num">${esc(a.branch)}</span></span><span class="num">$${a.cost.toFixed(2)}</span></div>
         <h1>${esc(titleOf(a))}</h1>
       </div>
-      <span class="pill ${a.state}"><i class="g ${a.state}" aria-hidden="true"></i>${LABEL[a.state]}</span>
-      <button class="hbtn" id="toggleReview" aria-expanded="${!$("#rpanel").hidden}" aria-controls="rpanel">Changes${s ? ` <span class="num a">+${s[0]}</span>` : ""}</button>
+      <div class="sctl"><span class="pill ${a.state}"><i class="g ${a.state}" aria-hidden="true"></i>${LABEL[a.state]}</span>
+      <div class="stabs" role="tablist" aria-label="Show"><button role="tab" id="tabTerm" aria-selected="${stageTab === "term"}">Terminal</button><button role="tab" id="tabHist" aria-selected="${stageTab === "history"}">History</button></div>
+      <button class="hbtn" id="pinBtn" aria-pressed="${pinned.includes(a.id)}">${pinned.includes(a.id) ? "In Split" : "Pin to Split"}</button>
+      <button class="hbtn" id="toggleReview" aria-expanded="${!$("#rpanel").hidden}" aria-controls="rpanel">Changes${s ? ` <span class="num a">+${s[0]}</span>` : ""}</button></div>
     </div>
-    <div class="term" id="term" tabindex="0" aria-label="${esc(a.name)} output">${termHTML(a)}${summary}</div>
-    <div class="dock-in">${dockHTML(a)}</div>`;
-  const t = $("#term"); t.scrollTop = t.scrollHeight;
+    ${stageTab === "history" ? historyHTML(a) : `<div class="twrap">
+      <div class="term" id="term" tabindex="0" aria-label="${esc(a.name)} terminal">${termHTML(a)}${summary}${promptHTML(a)}</div>
+      ${decisionHTML(a)}
+    </div>
+    <div class="chint"><span>Type straight into ${esc(a.name)}'s terminal</span><span><kbd>@name</kbd> hand to another agent</span><span><kbd>P</kbd> pin to Split</span><span><kbd>Ctrl K</kbd> everything else</span></div>`}`;
+  const t = $("#term"); if (t) t.scrollTop = t.scrollHeight;
   wireStage(a);
 }
 
@@ -827,20 +1052,77 @@ function board(){
   $("#board").querySelectorAll(".card").forEach(c => c.onclick = () => { current = c.dataset.id; fileIdx = 0; setView("queue"); });
 }
 
+// ---------- split: up to four live terminals side by side ----------
+function pin(id){
+  const a = byId(id); if (!a) return;
+  if (pinned.includes(id)) { pinned = pinned.filter(x => x !== id); toast(`Unpinned ${a.name} from Split.`); }
+  else { if (pinned.length >= 4) pinned.shift(); pinned.push(id); toast(`Pinned ${a.name} to Split (${pinned.length}/4).`); }
+  if (view === "split") render(); else queue();
+}
+function splitPaneHTML(a){
+  const cli = CLIS[a.cli];
+  let foot;
+  if (a.state === "needs" && a.ask.kind === "question") foot = `<div class="sask"><p><span class="lb">${esc(a.name)} asks</span>${esc(a.ask.q)}</p><div class="row3">${a.ask.options.map((o,i) => `<button class="btn" data-a="opt" data-o="${i}">${i+1}. ${esc(o)}</button>`).join("")}</div></div>`;
+  else if (a.state === "needs") foot = `<div class="sask"><p><span class="lb">${esc(a.name)} wants to run</span><code>${esc(a.ask.cmd)}</code></p><div class="row3"><button class="btn danger" data-a="deny">Deny</button><button class="btn primary" data-a="allow">Allow</button></div></div>`;
+  else foot = `<form class="sprompt" data-id="${a.id}"><span class="ps" aria-hidden="true">❯</span><input aria-label="Type to ${esc(a.name)}" autocomplete="off" placeholder="${a.state === "working" ? `Type to ${esc(a.name)}…` : `Give ${esc(a.name)} a task…`}"></form>`;
+  return `<section class="spane${a.id === current ? " cur" : ""}${a.state === "needs" ? " needs" : ""}" data-id="${a.id}" aria-label="${esc(a.name)}: ${esc(titleOf(a))}">
+    <header class="sph"><span class="mk" style="background:${cli.hue}" aria-hidden="true">${esc(a.name[0])}</span>
+      <div class="tt"><b>${esc(a.name)} <span style="font-weight:400">· ${cli.label}</span></b><span class="nowrap" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(titleOf(a))}</span></div>
+      <span class="pill ${a.state}"><i class="g ${a.state}" aria-hidden="true"></i>${LABEL[a.state]}</span>
+      <button class="ic" data-a="focus" aria-label="Open ${esc(a.name)} full size" title="Open full size">⤢</button>
+      <button class="ic" data-a="unpin" aria-label="Unpin ${esc(a.name)}" title="Unpin">✕</button></header>
+    <div class="term sterm" aria-label="${esc(a.name)} terminal">${termHTML({log: a.log.slice(-18)})}</div>
+    <div class="sfoot">${foot}</div>
+  </section>`;
+}
+function split(){
+  const el = $("#split");
+  pinned = pinned.filter(id => byId(id));
+  if (!pinned.length) {
+    el.style.setProperty("--cols", 1);
+    el.innerHTML = `<div class="sempty"><div class="rempty"><strong>Nothing pinned yet</strong>Click agents in the queue to watch up to four side by side, or press <kbd>P</kbd> on any agent.</div></div>`;
+    return;
+  }
+  el.style.setProperty("--cols", pinned.length === 1 ? 1 : 2);
+  el.innerHTML = pinned.map(id => splitPaneHTML(byId(id))).join("");
+}
+function markCurrentPane(){ document.querySelectorAll(".spane").forEach(p => p.classList.toggle("cur", p.dataset.id === current)); queue(); }
+$("#split").addEventListener("click", e => {
+  const pane = e.target.closest(".spane[data-id]"); if (!pane) return;
+  const a = byId(pane.dataset.id), b = e.target.closest("[data-a]");
+  current = a.id;
+  if (!b) { markCurrentPane(); return; }
+  const act = b.dataset.a;
+  if (act === "focus") { setView("queue"); select(a.id); }
+  else if (act === "unpin") pin(a.id);
+  else if (act === "allow") allow(a);
+  else if (act === "deny") deny(a);
+  else if (act === "opt") answer(a, a.ask.options[+b.dataset.o]);
+});
+$("#split").addEventListener("submit", e => {
+  e.preventDefault();
+  const f = e.target.closest(".sprompt"); if (!f) return;
+  const a = byId(f.dataset.id), v = f.querySelector("input").value;
+  current = a.id; message(a, v);
+});
+
 function setView(v){
   view = v;
+  $("#app").dataset.view = v;
   $("#vQueue").setAttribute("aria-pressed", v === "queue");
+  $("#vSplit").setAttribute("aria-pressed", v === "split");
   $("#vBoard").setAttribute("aria-pressed", v === "board");
-  const q = v === "queue";
-  $("#queue").hidden = !q; $("#stage").hidden = !q; $("#board").hidden = q;
-  $("#rpanel").hidden = !q || (window.innerWidth <= 1100 && !(byId(current) && byId(current).state === "review"));
+  $("#queue").hidden = v === "board"; $("#stage").hidden = v !== "queue"; $("#split").hidden = v !== "split"; $("#board").hidden = v !== "board";
+  $("#rpanel").hidden = v !== "queue" || (window.innerWidth <= 1100 && !(byId(current) && byId(current).state === "review"));
   render();
 }
 
 function render(){
   pulse();
   if (view === "board") { board(); return; }
-  chips(); queue(); stage(); review();
+  chips(); queue();
+  if (view === "split") { split(); return; }
+  stage(); review();
 }
 
 // ---------- actions ----------
@@ -865,7 +1147,7 @@ function advance(from){
 function resume(a, lines, then){
   a.log = a.log.filter(l => l[0] !== "thinking");
   a.log.push(...lines);
-  a.state = "working"; a.since = Date.now(); delete a.ask;
+  a.state = "working"; a.since = Date.now(); delete a.ask; delete a.askMin;
   if (then) finishLater(a, then.ms, then.lines);
 }
 function finishLater(a, ms, lines){
@@ -965,6 +1247,13 @@ function wireStage(a){
   on("#doAllow", () => allow(a)); on("#doAlways", () => allow(a, true)); on("#doDeny", () => deny(a));
   on("#doReply", () => answer(a, $("#replyIn").value));
   on("#doStop", () => stop(a));
+  on("#doMin", () => { a.askMin = true; stage(); const m = $("#msg"); if (m) m.focus(); });
+  on("#doShow", () => { a.askMin = false; stage(); const r = $("#replyIn"); if (r) r.focus(); });
+  on("#tabTerm", () => { stageTab = "term"; stage(); });
+  on("#tabHist", () => { stageTab = "history"; stage(); });
+  on("#pinBtn", () => { pin(a.id); stage(); });
+  on("#histReplay", () => toast(`Replaying ${a.name}'s session at 2×. Scrub the timeline or change speed from 1× to 8×.`));
+  const hs = $("#histSched"); if (hs) hs.onchange = () => toast(hs.value === "Don't repeat" ? "This task won't repeat." : `Scheduled: ${hs.value.toLowerCase()}.`);
   on("#openDiff", () => { $("#rpanel").hidden = false; review(); $("#rpanel .diff") && $("#rpanel .diff").focus(); });
   on("#toggleReview", () => { const r = $("#rpanel"); r.hidden = !r.hidden; reviewPinned = !r.hidden; $("#toggleReview").setAttribute("aria-expanded", String(!r.hidden)); });
   document.querySelectorAll(".dopt").forEach(b => b.onclick = () => answer(a, a.ask.options[+b.dataset.o]));
@@ -985,14 +1274,21 @@ function wireStage(a){
 }
 
 function select(id){
-  current = id; fileIdx = 0; reviewPinned = false;
+  current = id; fileIdx = 0; reviewPinned = false; stageTab = "term";
   const a = byId(id);
   if (window.innerWidth <= 1100) $("#rpanel").hidden = !(a && a.state === "review");
   render();
   $("#app").classList.add("show-stage");
 }
 
-$("#qlist").addEventListener("click", e => { const row = e.target.closest(".row"); if (row) select(row.dataset.id); });
+$("#qlist").addEventListener("click", e => {
+  const row = e.target.closest(".row"); if (!row) return;
+  const id = row.dataset.id;
+  if (e.ctrlKey || e.metaKey) { pin(id); return; }
+  if (view === "split") { current = id; if (!pinned.includes(id)) pin(id); else render(); return; }
+  select(id);
+});
+$("#vSplit").onclick = () => setView("split");
 $("#projChips").addEventListener("click", e => { const c = e.target.closest(".chip"); if (c) { filter = c.dataset.p; render(); } });
 $("#vQueue").onclick = () => setView("queue");
 $("#vBoard").onclick = () => setView("board");
@@ -1052,12 +1348,17 @@ function commands(){
     {label:"Race 3 agents on one task", keys:"", run:() => openNew(3)},
     {label:"Message every working agent", keys:"@working", run:() => { closePal(); prefill("@working "); }},
     {label: view === "board" ? "Show queue" : "Show board", keys:"B", run:() => { closePal(); setView(view === "board" ? "queue" : "board"); }},
+    {label: view === "split" ? "Leave Split" : "Split: watch pinned agents side by side", keys:"W", run:() => { closePal(); setView(view === "split" ? "queue" : "split"); }},
+    {label:"Files on this branch", keys:"", run:() => { closePal(); openFiles(); }},
+    {label:"Settings", keys:"", run:() => { closePal(); openSettings(); }},
+    {label:"Open a folder…", keys:"", run:() => { closePal(); openStart(); }},
     {label:"Keyboard shortcuts", keys:"?", run:() => { closePal(); openKeys(); }},
     {label:"Read the design notes", keys:"", run:() => { closePal(); openNotes(); }}
   ];
   if (a && a.state === "review") list.unshift({label:`Merge ${a.name}'s branch into main`, keys:"M", run:() => { closePal(); merge(a); }});
   if (a && a.race) list.unshift({label:`Compare the race: ${races[a.race].task}`, keys:"C", run:() => { closePal(); openCompare(a.race); }});
   if (a && a.state === "working") list.unshift({label:`Stop ${a.name}`, keys:"S", run:() => { closePal(); stop(a); }});
+  if (a) list.push({label: pinned.includes(a.id) ? `Unpin ${a.name} from Split` : `Pin ${a.name} to Split`, keys:"P", run:() => { closePal(); pin(a.id); }});
   return list.map(c => ({...c, sec:"Commands"}));
 }
 function prefill(t){ if (view !== "queue") setView("queue"); const m = $("#msg"); if (m) { m.value = t; m.focus(); } }
@@ -1163,6 +1464,81 @@ $("#closeKeys").onclick = closeKeys;
 $("#openNotes").onclick = openNotes;
 $("#closeNotes").onclick = closeNotes;
 
+// ---------- files: a look at the branch; editing is handed to the user's editor ----------
+const TREES = {
+  maestro:["src/","src/main.ts","src/pane.ts","src/terminal.ts","src/broadcast.ts","src-tauri/","src-tauri/src/review.rs","src-tauri/src/core/agent.rs","mcp/","mcp/src/server.ts","package.json","README.md"],
+  WhaleloSource:["app/","app/Http/Controllers/OrderController.php","app/Http/Controllers/CustomerController.php","app/Models/Customer.php","resources/js/pages/orders/Index.vue","routes/web.php","composer.json"],
+  ByteWaker:["src/","src/auth/validate.ts","src/auth/validate.test.ts","src/upload/queue.ts","src/upload/queue.test.ts","package.json"]
+};
+let filesReturn = null;
+function fileState(x){ return x.d === 0 && x.a > 0 ? "A" : x.a === 0 ? "D" : "M"; }
+function renderFiles(q = ""){
+  const a = byId(current); if (!a) return;
+  const changed = a.diff ? a.diff.files : [];
+  const paths = [...new Set([...(TREES[a.project] || []), ...changed.map(x => x.p)])].sort();
+  const shown = paths.filter(p => !q || p.toLowerCase().includes(q.toLowerCase()));
+  $("#files").innerHTML = `<div class="dh"><div><h2>Files</h2><p>${esc(a.project)} / ${esc(a.branch)}</p></div><button class="btn quiet" id="closeFiles">Close</button></div>
+    <label class="sr" for="fsearch">Find a file</label><input class="fsearch" id="fsearch" placeholder="Find a file…" value="${esc(q)}" autocomplete="off">
+    <div class="tree" role="list">${shown.map(p => {
+      const dir = p.endsWith("/"), depth = p.replace(/\/$/, "").split("/").length - 1, c = changed.find(x => x.p === p);
+      return `<button class="tnode${dir ? " dir" : ""}" role="listitem" data-p="${esc(p)}" style="padding-left:${8 + depth * 14}px"><span class="nm">${esc(dir ? p.split("/").slice(-2)[0] + "/" : p.split("/").pop())}</span>${c ? `<span class="fs ${fileState(c)}" title="${fileState(c) === "A" ? "Added" : fileState(c) === "D" ? "Deleted" : "Modified"}">${fileState(c)}</span>` : ""}</button>`;
+    }).join("") || `<p class="rempty">No file matches “${esc(q)}”.</p>`}</div>
+    <p class="dnote">Files open in your editor (VS Code, Cursor). Maestro shows the branch; it doesn't try to be a second IDE.</p>`;
+  $("#closeFiles").onclick = closeFiles;
+  const fs = $("#fsearch"); fs.oninput = () => { renderFiles(fs.value); const n = $("#fsearch"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); };
+  $("#files").querySelectorAll(".tnode:not(.dir)").forEach(b => b.onclick = () => toast(`Opening ${b.dataset.p} in VS Code.`));
+}
+function openFiles(){ filesReturn = document.activeElement; renderFiles(); $("#files").hidden = false; $("#openFiles").setAttribute("aria-pressed", "true"); $("#fsearch").focus(); }
+function closeFiles(){ $("#files").hidden = true; $("#openFiles").setAttribute("aria-pressed", "false"); giveBack(filesReturn); }
+$("#openFiles").onclick = () => $("#files").hidden ? openFiles() : closeFiles();
+
+// ---------- settings ----------
+let setReturn = null;
+function openSettings(){ setReturn = document.activeElement; $("#setBack").hidden = false; $("#closeSettings").focus(); }
+function closeSettings(){ $("#setBack").hidden = true; giveBack(setReturn); }
+$("#openSettings").onclick = openSettings;
+$("#closeSettings").onclick = closeSettings;
+$("#setBack").onclick = e => { if (e.target.id === "setBack") closeSettings(); };
+document.querySelectorAll(".snav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".snav button").forEach(x => x.setAttribute("aria-current", String(x === b)));
+  const sec = document.querySelector(`.ssec[data-sec="${b.dataset.sec}"]`); if (sec) sec.scrollIntoView({block:"start"});
+});
+$("#sbody").addEventListener("change", e => {
+  const t = e.target; if (!t.id) return;
+  if (t.id === "setGlow") document.documentElement.style.setProperty("--glow", t.checked ? "rgba(255,196,120,.08)" : "transparent");
+  if (t.id === "setLan" && t.checked && !$("#setDash").checked) { $("#setDash").checked = true; }
+  toast("Saved.");
+});
+$("#setUpdate").onclick = () => toast("You're on the latest version.");
+
+// ---------- start: nothing open yet ----------
+const PATHS = {maestro:"D:\\maestro", WhaleloSource:"D:\\WhaleloSource", ByteWaker:"D:\\ByteWaker"};
+const PRESETS = [
+  {name:"Solo", desc:"One Claude Code agent on its own branch.", clis:["claude"], n:1},
+  {name:"Pair", desc:"Claude Code builds, Codex reviews.", clis:["claude","codex"], n:1},
+  {name:"Race of three", desc:"Three CLIs on the same task. Keep the best diff.", clis:["claude","codex","gemini"], n:3}
+];
+function renderStart(){
+  $("#start").innerHTML = `<div class="in">
+    <div class="brand"><i aria-hidden="true">M</i>Maestro</div>
+    <h1><b>Start in a folder.</b> Agents work there, each on its own branch.</h1>
+    <p class="lede">Pick a project you've used before, or choose a new folder. You can open more than one; the queue shows every project together.</p>
+    <div class="drop"><span class="sp"><b>Choose a folder</b>Or drop a folder anywhere on this window.</span><button class="btn primary" id="stChoose">Choose folder…</button></div>
+    <h2><span>Recent</span><span>${PROJECTS.length}</span></h2>
+    <div class="recent">${PROJECTS.map(p => { const ag = agents.filter(a => a.project === p), n = ag.filter(a => a.state === "needs").length;
+      return `<button class="rec" data-p="${esc(p)}"><span class="ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M1.5 4.5a1 1 0 0 1 1-1h3.6l1.4 1.5h6a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></span><b>${esc(p)}</b><span class="n">${ag.length} agents${n ? ` · <span class="needs">${n} need you</span>` : ""}</span><span class="p">${esc(PATHS[p])}</span></button>`; }).join("")}</div>
+    <h2><span>Start with a crew</span></h2>
+    <div class="presets">${PRESETS.map((c,i) => `<button class="preset" data-i="${i}"><b>${esc(c.name)}</b><span>${esc(c.desc)}</span><span class="clis">${c.clis.map(k => `<span class="mini" style="background:${CLIS[k].hue}" title="${CLIS[k].label}">${CLIS[k].label[0]}</span>`).join("")}</span></button>`).join("")}</div>
+  </div>`;
+  const go = p => { closeStart(); filter = p; if (view !== "queue") setView("queue"); else render(); };
+  $("#stChoose").onclick = () => { toast("Opens the Windows folder picker. Picked D:\\maestro for this demo."); go("maestro"); openNew(); };
+  $("#start").querySelectorAll(".rec").forEach(b => b.onclick = () => go(b.dataset.p));
+  $("#start").querySelectorAll(".preset").forEach(b => b.onclick = () => { const c = PRESETS[+b.dataset.i]; go(filter === "all" ? "maestro" : filter); openNew(c.n); $("#nfCli").value = c.clis[0]; });
+}
+let startReturn = null;
+function openStart(){ startReturn = document.activeElement; renderStart(); $("#start").hidden = false; $("#stChoose").focus(); }
+function closeStart(){ $("#start").hidden = true; giveBack(startReturn); }
+
 // ---------- keyboard ----------
 document.addEventListener("keydown", e => {
   const el = document.activeElement;
@@ -1175,18 +1551,23 @@ document.addEventListener("keydown", e => {
     if (!$("#newBack").hidden) return closeNew();
     if (!$("#cmpBack").hidden) return closeCompare();
     if (!$("#notes").hidden) return closeNotes();
+    if (!$("#setBack").hidden) return closeSettings();
     if (!$("#keys").hidden) return closeKeys();
+    if (!$("#files").hidden) return closeFiles();
+    if (!$("#start").hidden && agents.length) return closeStart();
     if (typing) { el.blur(); return; }
     if (selected.size) { selected.clear(); queue(); }
     return;
   }
-  const modal = !$("#palBack").hidden || !$("#newBack").hidden || !$("#cmpBack").hidden || !$("#notes").hidden;
+  const modal = !$("#palBack").hidden || !$("#newBack").hidden || !$("#cmpBack").hidden || !$("#notes").hidden || !$("#setBack").hidden || !$("#start").hidden;
   if (typing || modal || e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase(), a = byId(current);
   if (e.key === "?") { $("#keys").hidden ? openKeys() : closeKeys(); return; }
   if (k === "n") { e.preventDefault(); openNew(); return; }
   if (k === "b") { setView(view === "board" ? "queue" : "board"); return; }
-  if (view !== "queue") return;
+  if (k === "w") { setView(view === "split" ? "queue" : "split"); return; }
+  if (view === "board") return;
+  if (k === "p" && a) { pin(a.id); if (view === "queue") stage(); return; }
   if (k === "j" || k === "k") {
     const s = sorted(), i = s.findIndex(x => x.id === current);
     const ni = Math.max(0, Math.min(s.length - 1, (i < 0 ? 0 : i) + (k === "j" ? 1 : -1)));
@@ -1205,12 +1586,18 @@ document.addEventListener("keydown", e => {
     if (!a.viewed.includes(fileIdx)) a.viewed.push(fileIdx);
     const next = a.diff.files.findIndex((_, i) => !a.viewed.includes(i));
     if (next >= 0) fileIdx = next;
-    $("#rpanel").hidden = false; review(); return;
+    if (view === "queue") { $("#rpanel").hidden = false; review(); }
+    return;
   }
-  if (k === "i" || (e.key === "Enter" && el === document.body)) { e.preventDefault(); const t = $("#msg") || $("#replyIn"); if (t) t.focus(); }
+  if (k === "i" || (e.key === "Enter" && el === document.body)) {
+    e.preventDefault();
+    const t = view === "split" ? document.querySelector(`.spane[data-id="${a.id}"] input`)
+            : (a.state === "needs" && !a.askMin && $("#replyIn")) || $("#msg");
+    if (t) t.focus();
+  }
 });
 
-setInterval(() => { if (view === "queue") { pulse(); queue(); } else board(); }, 15000);
+setInterval(() => { if (view === "board") board(); else { pulse(); queue(); } }, 15000);
 window.addEventListener("resize", () => { if (view === "queue") review(); });
 
 // deep link for screenshots and demos: #bo, #cy, #kai, #compare, #new, #board, #palette, #keys
@@ -1224,6 +1611,12 @@ if (h === "board") setView("board");
 if (h === "palette") openPal();
 if (h === "keys") openKeys();
 if (h === "notes") openNotes();
+if (h === "split") setView("split");
+if (h === "files") openFiles();
+if (h === "settings") openSettings();
+if (h === "start") openStart();
+if (h === "history") { current = "cy"; stageTab = "history"; render(); }
+if (h === "hidden") { byId("bo").askMin = true; current = "bo"; render(); }
 })();
 </script>
 </body>

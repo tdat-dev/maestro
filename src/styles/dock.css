@@ -312,10 +312,10 @@
 .kb-agent-pick{background:var(--surface-1);color:var(--text);border:1px solid var(--line-strong);
   border-radius:var(--r1);padding:5px 8px;font-size:12px;font-family:inherit}
 .kb-agent-none{color:var(--muted-2);font-size:12px}
-.kb-toast{position:fixed;right:18px;bottom:18px;z-index:9999;max-width:340px;
-  padding:10px 14px;border-radius:var(--r3);background:var(--surface-1);
-  border:1px solid var(--line-strong);color:var(--text);font-size:12.5px;
-  box-shadow:0 8px 24px rgba(0,0,0,.45);opacity:0;transform:translateY(8px);
+.kb-toast{position:fixed;right:16px;bottom:100px;z-index:9999;max-width:360px;
+  padding:11px 16px;border-radius:14px;background:var(--surface-2);
+  border:0;color:var(--text);font-size:13px;
+  box-shadow:0 24px 60px rgba(0,0,0,.65),inset 0 0 0 1px rgba(255,255,255,.1);opacity:0;transform:translateY(8px);
   transition:opacity .25s,transform .25s;pointer-events:none}
 .kb-toast.on{opacity:1;transform:translateY(0)}
 @media (prefers-reduced-motion:reduce){.kb-toast{transition:none}}

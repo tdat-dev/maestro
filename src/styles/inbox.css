@@ -1,7 +1,7 @@
-/* Agent Inbox interface (Settings → New interface). Direction D · Cinema:
-   black stage, floating panels, colour only for state (amber = needs you,
-   blue = ready to review, green = working). Every rule is scoped under
-   body.inbox-ui, so switching the preview off leaves the canvas UI untouched. */
+/* Agent Inbox, Maestro's interface. Direction D · Cinema: black stage,
+   floating panels, colour only for state (amber = needs you, blue = ready to
+   review, green = working). body.inbox-ui is always on; the base tokens in
+   tokens.css carry the same palette for the older surfaces. */
 
 body.inbox-ui {
   --ib-ground: #050506;
@@ -831,3 +831,20 @@ body.inbox-ui .set-shell .sbtn:hover { background: rgba(255, 255, 255, 0.14); }
 body.inbox-ui .home-resume { border: 0; border-radius: 999px; background: var(--ib-raise); box-shadow: var(--ib-float); color: var(--ib-ink); backdrop-filter: none; font-family: var(--sans); }
 body.inbox-ui .home-resume:hover { background: #1d1e23; color: var(--ib-ink); }
 body.inbox-ui .home-resume .hr-count { color: var(--ib-ink-3); }
+
+/* ---------- Files: a floating panel beside the stage, like the queue ---------- */
+body.inbox-ui .app > .code-panel {
+  margin: 0 16px var(--ib-dock-h) 0;
+  border: 0;
+  border-radius: 18px;
+  background: var(--ib-panel);
+  box-shadow: inset 0 0 0 1px var(--ib-line);
+}
+body.inbox-ui .app.code-hidden > .code-panel { margin: 0; box-shadow: none; }
+body.inbox-ui .code-panel .cp-head { height: 48px; padding: 0 10px 0 18px; }
+body.inbox-ui .code-panel .cp-eyebrow { font: 600 14px var(--sans); color: var(--ib-ink); }
+body.inbox-ui .code-panel .cp-btn { width: 28px; height: 28px; border-radius: 999px; color: var(--ib-ink-3); }
+body.inbox-ui .code-panel .cp-btn:hover { background: rgba(255, 255, 255, 0.08); color: var(--ib-ink); }
+body.inbox-ui .code-split::after { background: rgba(255, 255, 255, 0.5); }
+body.inbox-ui .app.editor-max .code-panel { margin: 0; border-radius: 18px; box-shadow: 0 40px 100px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.09); background: var(--ib-panel); }
+body.inbox-ui .app.editor-max::before { background: rgba(0, 0, 0, 0.6); }

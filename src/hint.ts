@@ -3,15 +3,15 @@
 // confirmations. Self-contained: injects its own markup + style, no app imports.
 
 const STYLE = `
-.hint{position:fixed;left:50%;top:54px;z-index:180;display:flex;align-items:center;gap:8px;
-  font-size:11.5px;color:var(--text);background:rgba(10,13,17,.82);backdrop-filter:blur(10px);
-  -webkit-backdrop-filter:blur(10px);border:1px solid var(--line-2);padding:7px 15px;border-radius:999px;
+.hint{position:fixed;left:50%;top:76px;z-index:180;display:flex;align-items:center;gap:8px;
+  font-size:13px;color:var(--text);background:var(--surface-2);
+  border:0;box-shadow:0 18px 40px rgba(0,0,0,.55),inset 0 0 0 1px rgba(255,255,255,.1);padding:9px 16px;border-radius:999px;
   opacity:0;visibility:hidden;transform:translateX(-50%) translateY(-8px);pointer-events:none;
   transition:opacity .28s,transform .28s,visibility .28s;box-shadow:0 12px 30px -12px rgba(0,0,0,.7)}
 .hint.on{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
 .hint b{color:var(--text)}
-.hint kbd{font-family:var(--mono);font-size:10px;background:var(--surface-2);
-  border:1px solid var(--line-2);border-radius:5px;padding:1px 5px}
+.hint kbd{font-family:var(--mono);font-size:11px;background:transparent;
+  border:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);border-radius:6px;padding:1px 6px;color:var(--muted)}
 `;
 
 let hintEl: HTMLElement | null = null;

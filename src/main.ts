@@ -4,7 +4,6 @@ import { resizePty, killAll, setTrayTooltip } from "./ipc";
 import { CLI_PRESETS } from "./crew";
 import { type Pane } from "./panetypes";
 import { configurePaneLayout } from "./panelayout";
-import { configureRecents, getRecents, renderRecents } from "./recents";
 import { configureUsage, initUsage } from "./usage";
 import { configureReplay, initReplay } from "./replay";
 import { configureDashboard, initDashboard } from "./dashboard";
@@ -20,7 +19,6 @@ import { initInbox } from "./inbox";
 import { getPref } from "./prefs";
 import { confirmModal } from "./confirmmodal";
 import { wirePaneSearch } from "./panesearch";
-import { initMascotView } from "./mascotview";
 import { configureBackground, initBackground, applyBackground } from "./background";
 import { configureZoomUi, initZoomUi } from "./zoomui";
 import { initHint, topNote } from "./hint";
@@ -199,7 +197,6 @@ function updateCount() {
 document.getElementById("btnNewWorkspace")?.addEventListener("click", () => openWizard());
 document.getElementById("btnNewAgent")?.addEventListener("click", () => openModal("current"));
 configurePaneLayout({ saveSession });
-configureRecents({ openWizard });
 configureUsage({ getActiveWs: () => activeWs, closeSettings });
 initUsage();
 configureReplay({ paneToast, errMsg, closeSettings });
@@ -224,27 +221,12 @@ initWorkspace();
 initBackground();
 initZoomUi();
 initHint();
-initMascotView();
 initBridges();
 initQuitLife();
 
 document.getElementById("btnHome")?.addEventListener("click", goHome);
 document.getElementById("homeResume")?.addEventListener("click", resumeWorkspace);
 document.getElementById("btnResumeAll")?.addEventListener("click", () => void resumeAllStopped());
-
-document.getElementById("btnQuick")?.addEventListener("click", () => {
-  const dir = getRecents()[0] ?? null;
-  const ps = CLI_PRESETS.find((p) => p.id === "powershell")!;
-  const ws = createWorkspace(dir);
-  void createAgent(ws, {
-    program: ps.program,
-    args: ps.args,
-    cwd: dir,
-    name: dir ? basename(dir) : "powershell",
-    badge: ps.badge,
-    ...cliLook(ps.badge, ps.label),
-  })();
-});
 
 // (extracted to its own module)
 /* ---------------- frameless window controls ---------------- */
@@ -442,7 +424,6 @@ tick();
 setInterval(tick, 1000);
 
 /* ---------------- init ---------------- */
-renderRecents();
 if (isDetachedWindow) {
   // A detached window must NOT kill-all (other windows' agents are alive) and
   // boots from its hand-off payload instead of the saved session.

@@ -320,6 +320,20 @@ function jobDelayMs(): number {
   return getPref("jobDelay") * 1000;
 }
 
+/** A plain PowerShell in `dir` (or the home folder), as its own project. */
+export function quickTerminal(dir: string | null): void {
+  const ps = CLI_PRESETS.find((p) => p.id === "powershell")!;
+  const ws = onCreateWorkspace(dir);
+  void onCreateAgent(ws, {
+    program: ps.program,
+    args: ps.args,
+    cwd: dir,
+    name: dir ? basename(dir) : "powershell",
+    badge: ps.badge,
+    ...onCliLook(ps.badge, ps.label),
+  })();
+}
+
 /** True when a preset's program is installed (resolves on PATH). */
 export function presetAvailable(program: string): boolean {
   return onIsPresetAvailable(program);

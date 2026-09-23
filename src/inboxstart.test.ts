@@ -9,6 +9,7 @@ vi.mock("./workspace", () => ({
 vi.mock("./ipc", () => ({ pickFolder: async () => "D:\\new" }));
 vi.mock("./recents", () => ({ getRecents: () => ["D:\\maestro", "D:\\quy"], addRecent: (d: string) => { calls.recents.push(d); } }));
 vi.mock("./inboxnew", () => ({ openNewAgent: (o: { count?: number } = {}) => { calls.newAgent.push(o.count); } }));
+vi.mock("./spawnmodal", () => ({ quickTerminal: (dir: string | null) => { calls.created.push(`shell:${dir}`); } }));
 vi.mock("./tasks", () => ({
   allTasks: () => [
     { paneId: "a", wsId: "ws-1", status: { state: "needs" } },
@@ -22,7 +23,7 @@ import type { Workspace } from "./panetypes";
 
 describe("start screen", () => {
   beforeEach(() => {
-    document.body.innerHTML = `<div id="home"></div><button id="btnQuick"></button>`;
+    document.body.innerHTML = `<div id="home"></div>`;
     calls.created.length = calls.activated.length = calls.newAgent.length = calls.recents.length = 0;
     workspaces.clear();
     workspaces.set("ws-1", { id: "ws-1", dir: "D:\\maestro\\", panes: new Map([["a", {}], ["b", {}]]) } as unknown as Workspace);
@@ -57,5 +58,11 @@ describe("start screen", () => {
     expect(calls.created).toEqual(["D:\\new"]);
     expect(calls.recents).toEqual(["D:\\new"]);
     expect(calls.newAgent).toEqual([3]);
+  });
+
+  it("opens a plain terminal in the latest project folder", () => {
+    mountStart();
+    (document.querySelector('[data-st="shell"]') as HTMLButtonElement).click();
+    expect(calls.created).toEqual(["shell:D:\\maestro"]);
   });
 });

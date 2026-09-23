@@ -8,7 +8,7 @@ vi.mock("./ipc", () => ({
 }));
 
 import { workspaces } from "./appstate";
-import { allTasks, answerOption, answerText, onTasksChange, taskLine, taskOf, updateTasks } from "./tasks";
+import { allTasks, answerOption, answerText, historyOf, onTasksChange, taskLine, taskOf, updateTasks } from "./tasks";
 import type { Pane, Workspace } from "./panetypes";
 
 const ASK = `
@@ -103,5 +103,25 @@ describe("tasks", () => {
     await answerOption("a", ask.options[2]);
     await answerText("a", "use pnpm instead");
     expect(sent).toEqual([["a", "\x1b"], ["a", "use pnpm instead"], ["a", "\r"]]);
+  });
+
+  it("keeps a history of what each agent asked and what you answered", async () => {
+    const p = pane("a", "Ana", { screen: ASK, lastOutputAt: 0 });
+    workspaces.set("ws-1", workspace([p]));
+    updateTasks(10_000);
+    const opt = taskOf("a")!.status.ask!.options[0];
+    await answerOption("a", opt);
+    // Output bursts flip working on and off; only one "Started working" is kept.
+    (p as { term: unknown }).term = { snapshot: () => "" };
+    p.lastOutputAt = 20_000; updateTasks(20_100);
+    p.lastOutputAt = 0; updateTasks(40_000);
+    p.lastOutputAt = 40_500; updateTasks(40_600);
+    await answerText("a", "  use pnpm ");
+    expect(historyOf("a").map((e) => e.text)).toEqual([
+      "Asked to run npm run build",
+      "You picked “Yes”",
+      "Started working",
+      "You said “use pnpm”",
+    ]);
   });
 });

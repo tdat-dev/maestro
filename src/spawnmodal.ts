@@ -302,6 +302,54 @@ export async function spawnForConductor(
   }
 }
 
+/** True when a preset's program is installed (resolves on PATH). */
+export function presetAvailable(program: string): boolean {
+  return onIsPresetAvailable(program);
+}
+
+/** New agent (the Agent Inbox form): start `count` agents of one CLI in `ws`,
+ *  named like every other pane (Ana, Bob, …), and type `task` into each once
+ *  it has reached its prompt. Several agents on one task is a race: compare
+ *  their diffs and keep the best. Returns the new agents' names. */
+export async function spawnAgents(
+  ws: Workspace,
+  presetId: string,
+  count: number,
+  task: string | null,
+  skipPerms: boolean,
+): Promise<string[]> {
+  const preset = CLI_PRESETS.find((p) => p.id === presetId);
+  if (!preset || count < 1) return [];
+  saveSkipPerms(skipPerms);
+  const taken: string[] = [...ws.panes.values()].map((x) => x.spec.name);
+  const names: string[] = [];
+  const boots = Array.from({ length: count }, () => {
+    const name = nameForNewPane(preset.badge, taken);
+    taken.push(name);
+    names.push(name);
+    return onCreateAgent(ws, {
+      program: preset.program,
+      args: effectiveArgs(preset, skipPerms),
+      cwd: ws.dir,
+      name,
+      badge: preset.badge,
+      role: preset.role,
+      ...onCliLook(preset.badge, preset.label),
+    });
+  });
+  await runLimited(boots, MAX_CONCURRENT_BOOT);
+  if (task) {
+    // The CLI needs a few seconds to reach its prompt before it accepts input.
+    window.setTimeout(() => {
+      for (const name of names) {
+        const pane = [...ws.panes.values()].find((x) => x.spec.name === name);
+        if (pane && pane.running) void sendMessage(pane.id, task).catch(() => {});
+      }
+    }, 3500);
+  }
+  return names;
+}
+
 async function spawnFromModal() {
   const dir = mDir.value.trim() || null;
   crew.custom = mCustom.value;

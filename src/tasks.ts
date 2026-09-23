@@ -30,7 +30,17 @@ const SCREEN_LINES = 40;
 /** How often each agent's branch is asked for changed files. */
 export const DIFF_EVERY_MS = 5000;
 
+/** One line in an agent's History: what happened and when. */
+export interface HistoryEvent {
+  at: number;
+  kind: TaskState | "answer";
+  text: string;
+}
+/** Enough to scroll back through a long session without growing forever. */
+const HISTORY_MAX = 200;
+
 const tasks = new Map<string, Task>();
+const history = new Map<string, HistoryEvent[]>();
 const diffs = new Map<string, { n: number | null; at: number; pending: boolean }>();
 const listeners = new Set<(list: Task[]) => void>();
 
@@ -75,6 +85,41 @@ function toTask(ws: Workspace, pane: Pane, now: number): Task {
   };
 }
 
+/** The History line for a task entering its current state, or null for
+ *  states not worth a line of their own. */
+export function describe(t: Pick<Task, "status" | "changedFiles">): string | null {
+  const a = t.status.ask;
+  switch (t.status.state) {
+    case "needs":
+      if (a?.kind === "run") return a.detail ? `Asked to run ${a.detail}` : "Asked to run a command";
+      if (a?.kind === "edit") return a.detail ? `Asked to edit ${a.detail}` : "Asked to edit a file";
+      return a ? `Asked: ${a.prompt}` : "Waited for you";
+    case "review": {
+      const n = t.changedFiles ?? 0;
+      return `Finished with ${n} file${n === 1 ? "" : "s"} changed`;
+    }
+    case "working": return "Started working";
+    case "stopped": return "Stopped";
+    default: return null;
+  }
+}
+
+function log(paneId: string, ev: HistoryEvent): void {
+  const list = history.get(paneId) ?? [];
+  const last = list[list.length - 1];
+  // A burst of output flips working on and off; one "Started working" per stretch is enough.
+  if (last && last.text === ev.text) return;
+  if (ev.kind === "working" && last?.kind === "working") return;
+  list.push(ev);
+  if (list.length > HISTORY_MAX) list.splice(0, list.length - HISTORY_MAX);
+  history.set(paneId, list);
+}
+
+/** What an agent has done, oldest first. */
+export function historyOf(paneId: string): HistoryEvent[] {
+  return history.get(paneId) ?? [];
+}
+
 /** Re-derive every task. Call once per tick; cheap when nothing runs. */
 export function updateTasks(now: number = Date.now()): void {
   let changed = false;
@@ -84,11 +129,17 @@ export function updateTasks(now: number = Date.now()): void {
       seen.add(pane.id);
       const next = toTask(ws, pane, now);
       const prev = tasks.get(pane.id);
-      if (!prev || prev.status.state !== next.status.state || prev.status.ask?.prompt !== next.status.ask?.prompt) changed = true;
+      const moved = !prev || prev.status.state !== next.status.state || prev.status.ask?.prompt !== next.status.ask?.prompt ||
+        prev.status.ask?.detail !== next.status.ask?.detail;
+      if (moved) {
+        changed = true;
+        const text = describe(next);
+        if (text) log(pane.id, { at: now, kind: next.status.state, text });
+      }
       tasks.set(pane.id, next);
     }
   for (const id of [...tasks.keys()])
-    if (!seen.has(id)) { tasks.delete(id); diffs.delete(id); changed = true; }
+    if (!seen.has(id)) { tasks.delete(id); diffs.delete(id); history.delete(id); changed = true; }
   if (changed && listeners.size) {
     const list = allTasks();
     for (const cb of listeners) cb(list);
@@ -120,11 +171,13 @@ export function onTasksChange(cb: (list: Task[]) => void): () => void {
 
 /** Pick an option of the prompt currently on the agent's screen. */
 export async function answerOption(paneId: string, option: AskOption): Promise<void> {
+  log(paneId, { at: Date.now(), kind: "answer", text: `You picked “${option.label}”` });
   await sendInput(paneId, option.key);
 }
 
 /** Answer in free text, through the CLI's "type something" row when it has one. */
 export async function answerText(paneId: string, text: string): Promise<void> {
   const ask = tasks.get(paneId)?.status.ask ?? null;
+  log(paneId, { at: Date.now(), kind: "answer", text: `You said “${text.trim()}”` });
   for (const part of freeTextKeys(ask, text)) await sendInput(paneId, part);
 }

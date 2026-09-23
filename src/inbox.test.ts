@@ -233,6 +233,17 @@ describe("inbox DOM", () => {
     expect([...document.querySelectorAll(".iq-row")].map((r) => (r as HTMLElement).dataset.id)).toEqual(["q"]);
   });
 
+  it("opens its own palette on Ctrl K with every agent and the actions", () => {
+    state.tasks = [task("a", "Ana", "needs"), task("e", "Eli", "working")];
+    setInbox(true);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, cancelable: true }));
+    const labels = [...document.querySelectorAll(".pal-it .pal-t")].map((t) => t.firstChild!.textContent);
+    expect(labels.slice(0, 3)).toEqual(["Ana", "Eli", "New agent"]);
+    expect(labels).toContain("Back to the classic interface");
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, cancelable: true }));
+    expect(document.querySelector(".inbox-pal")).toBeNull();
+  });
+
   it("does not wipe what you are typing when the tick re-renders", () => {
     state.tasks = [task("a", "Ana", "needs")];
     setInbox(true);

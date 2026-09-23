@@ -14,9 +14,10 @@ import { tileToFit, type Area, type Tile } from "./canvas";
 import { resizePty } from "./ipc";
 import { paneFont } from "./zoom";
 import { createReviewDrawer } from "./inboxreview";
-import { openSwitcher } from "./switcher";
-import { openModal } from "./spawnmodal";
 import { openSettings } from "./settingsmodal";
+import { openNewAgent } from "./inboxnew";
+import { openPalette, closePalette, paletteOpen, type PaletteItem } from "./inboxpalette";
+import { createHistoryDrawer } from "./inboxhistory";
 import { dockToggle } from "./dock";
 import { getInboxUi, setInboxUi } from "./settings";
 import { allTasks, answerOption, answerText, onTasksChange, type Task } from "./tasks";
@@ -127,6 +128,8 @@ let splitWs: Workspace | null = null;
 let splitBtn: HTMLButtonElement | null = null;
 let reviewBtn: HTMLButtonElement | null = null;
 let reviewer: ReturnType<typeof createReviewDrawer> | null = null;
+let historian: ReturnType<typeof createHistoryDrawer> | null = null;
+let historyBtn: HTMLButtonElement | null = null;
 let dockEl: HTMLElement | null = null;
 let statsEl: HTMLElement | null = null;
 /** Queue filter: one project's id, or null for all of them. */
@@ -382,6 +385,9 @@ function render(): void {
   renderHead(list);
   renderStagePill(list, pane);
   renderAsk(list, pane);
+  // History follows the stage: switch agents and it shows the new one's.
+  if (historian?.paneId && pane && historian.paneId !== pane.id) historian.open(pane);
+  historian?.refresh();
 }
 
 async function pick(option: AskOption): Promise<void> {
@@ -416,6 +422,7 @@ function onKey(e: KeyboardEvent): void {
   if (k === "s") { e.preventDefault(); setSplit(!splitOn); return; }
   if (k === "p") { e.preventDefault(); pinCurrent(); return; }
   if (k === "r") { e.preventDefault(); if (reviewer?.paneId) reviewer.close(); else openReview(); return; }
+  if (k === "h") { e.preventDefault(); if (historian?.paneId) historian.close(); else openHistory(); return; }
   if (/^[1-9]$/.test(e.key)) {
     const o = currentAsk()?.options.find((x) => x.n === Number(e.key));
     if (o) { e.preventDefault(); void pick(o); }
@@ -425,9 +432,56 @@ function onKey(e: KeyboardEvent): void {
 function openReview(): void {
   const pane = stagePane();
   if (!pane || !reviewer) return;
+  if (historian?.paneId) historian.close();
   reviewer.open(pane);
   reviewBtn?.setAttribute("aria-pressed", "true");
   render();
+}
+
+function openHistory(): void {
+  const pane = stagePane();
+  if (!pane || !historian) return;
+  if (reviewer?.paneId) reviewer.close();
+  if (historian?.paneId) historian.close();
+  historian.open(pane);
+  historyBtn?.setAttribute("aria-pressed", "true");
+}
+
+/** Everything Ctrl K can reach: every agent (in queue order), then actions. */
+export function paletteItems(): PaletteItem[] {
+  const agents: PaletteItem[] = allTasks().map((t) => {
+    const p = paneOf(t);
+    return {
+      group: GROUP_LABEL[t.status.state],
+      label: t.name,
+      sub: `${t.project} · ${rowLine(t)}`,
+      mark: { color: p?.color ?? "#888", letter: (t.name.trim()[0] ?? "?").toUpperCase() },
+      run: () => openTask(t),
+    };
+  });
+  const act = (label: string, run: () => void, keys?: string): PaletteItem => ({ group: "Actions", label, run, keys });
+  return [
+    ...agents,
+    act("New agent", () => openNewAgent()),
+    act(splitOn ? "Leave Split" : "Split: pinned agents side by side", () => setSplit(!splitOn), "Alt+S"),
+    act("Pin or unpin the current agent in Split", () => pinCurrent(), "Alt+P"),
+    act("Review what the current agent changed", () => openReview(), "Alt+R"),
+    act("History of the current agent", () => openHistory(), "Alt+H"),
+    act("Board", () => dockToggle("kanban")),
+    act("Files", () => document.getElementById("btnToggleCode")?.click(), "Ctrl+Shift+E"),
+    act("Settings", () => openSettings()),
+    act("Back to the classic interface", () => setInbox(false)),
+  ];
+}
+
+/** Ctrl K opens this palette instead of the classic switcher while the new
+ *  interface is on. Window capture runs before the switcher's document one. */
+function onCtrlK(e: KeyboardEvent): void {
+  if (!document.body.classList.contains("inbox-ui")) return;
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "k") return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  if (paletteOpen()) closePalette(); else openPalette(paletteItems());
 }
 
 /** Clicking into another terminal in Split makes it the current one. */
@@ -469,6 +523,7 @@ function mount(): void {
       <button data-dock="queue" aria-pressed="true" title="One agent at a time">Queue</button>
       <button data-dock="split" aria-pressed="false" title="Pinned agents side by side (Alt+S; Alt+P pins)">Split</button>
       <button data-dock="review" aria-pressed="false" title="What the agent on the stage changed (Alt+R)">Review</button>
+      <button data-dock="history" aria-pressed="false" title="What the agent on the stage has done (Alt+H)">History</button>
       <button data-dock="board" title="The project's board">Board</button>
     </div>
     <button class="id-search" data-dock="search">
@@ -482,6 +537,7 @@ function mount(): void {
   app.appendChild(dockEl);
   splitBtn = dockEl.querySelector<HTMLButtonElement>('[data-dock="split"]');
   reviewBtn = dockEl.querySelector<HTMLButtonElement>('[data-dock="review"]');
+  historyBtn = dockEl.querySelector<HTMLButtonElement>('[data-dock="history"]');
   dockEl.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>("[data-dock]");
     switch (b?.dataset.dock) {
@@ -489,12 +545,14 @@ function mount(): void {
       case "split": setSplit(!splitOn); break;
       case "review": if (reviewer?.paneId) reviewer.close(); else openReview(); break;
       case "board": dockToggle("kanban"); break;
-      case "search": openSwitcher(); break;
-      case "new": openModal("current"); break;
+      case "history": if (historian?.paneId) historian.close(); else openHistory(); break;
+      case "search": openPalette(paletteItems()); break;
+      case "new": openNewAgent(); break;
       case "files": document.getElementById("btnToggleCode")?.click(); break;
       case "settings": openSettings(); break;
     }
   });
+  historian = createHistoryDrawer(app, () => historyBtn?.setAttribute("aria-pressed", "false"));
   reviewer = createReviewDrawer(app, () => { reviewBtn?.setAttribute("aria-pressed", "false"); render(); });
 
   queueEl.addEventListener("click", (e) => {
@@ -526,6 +584,7 @@ function mount(): void {
   });
   document.addEventListener("keydown", onKey, true);
   document.addEventListener("focusin", onFocusIn);
+  window.addEventListener("keydown", onCtrlK, true);
   window.addEventListener("resize", render);
   offTasks = onTasksChange(render);
   timer = window.setInterval(render, 1000);
@@ -539,12 +598,14 @@ function unmount(): void {
   if (reviewer?.paneId) reviewer.close();
   for (const ws of workspaces.values()) for (const p of ws.panes.values()) p.el.querySelector(".ib-pill")?.remove();
   queueEl?.remove(); askEl?.remove(); headEl?.remove(); dockEl?.remove(); statsEl?.remove();
-  queueEl = askEl = headEl = dockEl = statsEl = null; splitBtn = reviewBtn = null; reviewer = null;
+  queueEl = askEl = headEl = dockEl = statsEl = null; splitBtn = reviewBtn = historyBtn = null; reviewer = null; historian = null;
   projectFilter = null;
   if (timer !== null) { clearInterval(timer); timer = null; }
   offTasks?.(); offTasks = null;
   document.removeEventListener("keydown", onKey, true);
   document.removeEventListener("focusin", onFocusIn);
+  window.removeEventListener("keydown", onCtrlK, true);
+  closePalette();
   window.removeEventListener("resize", render);
   answered.clear(); hidden.clear();
 }

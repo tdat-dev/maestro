@@ -683,19 +683,6 @@ body.inbox-ui .inbox-start {
 }
 .st-chip:hover { background: rgba(255, 255, 255, 0.1); color: var(--ib-ink); }
 .st-chip:focus-within { outline: 2px solid #fff; outline-offset: 2px; }
-.st-chip select {
-  appearance: none; -webkit-appearance: none;
-  border: 0; outline: none; background: transparent;
-  color: inherit; font: inherit;
-  padding-right: 14px;
-  cursor: pointer;
-  field-sizing: content;
-  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(-45deg, transparent 50%, currentColor 50%);
-  background-size: 4px 4px;
-  background-position: right 4px center, right 0 center;
-  background-repeat: no-repeat;
-}
-.st-chip select option { background: #15161a; color: var(--ib-ink); }
 .st-sp { flex: 1; }
 .st-go {
   display: inline-flex; align-items: center; gap: 8px;
@@ -819,7 +806,6 @@ body.inbox-ui .set-shell .sbtn:hover { background: rgba(255, 255, 255, 0.14); }
   color: var(--ib-ink, #f4f4f5);
   font: 13px var(--sans);
 }
-.set-select option { background: #15161a; }
 .set-select:focus-visible, body.inbox-ui .set-shell button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 .im-sp { flex: 1; }

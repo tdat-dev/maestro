@@ -16,6 +16,7 @@ import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setS
 import { configureWorkspace, initWorkspace, createWorkspace, activateWorkspace, bootDetached } from "./workspace";
 import { updateTasks } from "./tasks";
 import { initInbox } from "./inbox";
+import { enhanceSelects } from "./selectmenu";
 import { openNewAgent } from "./inboxnew";
 import { getPref } from "./prefs";
 import { wirePaneSearch } from "./panesearch";
@@ -220,6 +221,7 @@ configureZoomUi({ getActiveWs: () => activeWs, applyZoom: (ws, z) => void applyZ
 configureBridges({ activateWorkspace, clearAttention, setStatus, updateCount, stopRecording });
 initSettingsModal();
 initInbox(); // the Agent Inbox interface
+enhanceSelects(); // every drop-down uses the app menu, not the Windows popup
 initScheduler();
 initWorkspace();
 initBackground();

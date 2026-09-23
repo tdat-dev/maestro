@@ -17,6 +17,7 @@ import { CLI_PRESETS } from "./crew";
 import { getPref } from "./prefs";
 import { revealPane } from "./agentbridge";
 import { focusPane } from "./panelayout";
+import { enhanceSelects } from "./selectmenu";
 import type { Workspace } from "./panetypes";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -97,6 +98,20 @@ function lastCli(): string {
   try { return localStorage.getItem(LAST_CLI) || "claude"; } catch { return "claude"; }
 }
 
+const NOT_INSTALLED = "Not installed";
+
+/** A path as people say it: the home folder reads as ~. */
+export function shortPath(dir: string): string {
+  const m = /^([a-z]:[\\/]users[\\/][^\\/]+)(?=[\\/]|$)/i.exec(dir) ?? /^(\/(?:home|Users)\/[^/]+)(?=\/|$)/.exec(dir);
+  return m ? "~" + dir.slice(m[1].length) : dir;
+}
+
+/** The folder list: recent projects with their path, then a way to pick another. */
+function dirOptions(recents: string[]): string {
+  return recents.map((d, i) => `<option value="${esc(d)}" data-sub="${esc(shortPath(d))}"${i === 0 ? " selected" : ""}>${esc(folderName(d))}</option>`).join("") +
+    `<option value="${CHOOSE}"${recents.length ? " data-sep" : " selected"}>Choose a folder…</option>`;
+}
+
 function composerHTML(): string {
   const recents = getRecents();
   const cli = lastCli();
@@ -109,10 +124,9 @@ function composerHTML(): string {
       <div class="st-bar">
         <label class="st-chip" title="The folder it works in">${FOLDER_SVG}
           <span class="ia-sr">Project</span>
-          <select id="stDir">${recents.map((d, i) => `<option value="${esc(d)}"${i === 0 ? " selected" : ""}>${esc(folderName(d))}</option>`).join("")}
-            <option value="${CHOOSE}"${recents.length ? "" : " selected"}>Choose a folder…</option></select></label>
+          <select id="stDir">${dirOptions(recents)}</select></label>
         <label class="st-chip"><span class="ia-sr">Agent</span>
-          <select id="stCli">${clis.map((p) => `<option value="${esc(p.id)}"${p.id === cli ? " selected" : ""}${presetAvailable(p.program) ? "" : " disabled"}>${esc(p.label)}</option>`).join("")}</select></label>
+          <select id="stCli">${clis.map((p) => `<option value="${esc(p.id)}"${p.id === cli ? " selected" : ""}${presetAvailable(p.program) ? "" : ` disabled data-note="${NOT_INSTALLED}"`}>${esc(p.label)}</option>`).join("")}</select></label>
         <label class="st-chip"><span class="ia-sr">How many agents</span>
           <select id="stCount">${[1, 2, 3].map((n) => `<option value="${n}"${n === count ? " selected" : ""}>${n === 1 ? "1 agent" : `${n} agents, same job`}</option>`).join("")}</select></label>
         <span class="st-sp"></span>
@@ -158,7 +172,7 @@ export function renderStart(): void {
       : `<section class="st-sec" aria-label="Projects"><h2>Projects</h2><div class="st-projects">${rows.map((r) => `
         <button class="st-proj" data-dir="${esc(r.dir)}">
           <span class="st-ic">${FOLDER_SVG}</span><b>${esc(folderName(r.dir))}</b>
-          <span class="st-p">${esc(r.dir)}</span>
+          <span class="st-p" title="${esc(r.dir)}">${esc(shortPath(r.dir))}</span>
           <span class="st-n${r.needs ? " needs" : ""}">${r.needs ? `${r.needs} waiting on you` : r.agents ? `${r.agents} agent${r.agents === 1 ? "" : "s"}` : "Not open"}</span></button>`).join("")}
         <button class="st-proj st-add" data-st="choose"><span class="st-ic">+</span><b>Open a folder</b><span class="st-p">Start a new project</span></button>
         <button class="st-proj st-add" data-st="shell"><span class="st-ic">›_</span><b>Plain terminal</b><span class="st-p">A shell, no agent</span></button>
@@ -174,14 +188,15 @@ function syncChoices(recents: string[]): void {
     const have = [...dirSel.options].map((o) => o.value).filter((v) => v !== CHOOSE);
     if (have.join("\n") !== recents.join("\n")) {
       const keep = dirSel.value;
-      dirSel.innerHTML = recents.map((d) => `<option value="${esc(d)}">${esc(folderName(d))}</option>`).join("") +
-        `<option value="${CHOOSE}">Choose a folder…</option>`;
+      dirSel.innerHTML = dirOptions(recents);
       dirSel.value = keep === CHOOSE || recents.includes(keep) ? keep : recents[0] ?? CHOOSE;
     }
   }
   el?.querySelectorAll<HTMLOptionElement>("#stCli option").forEach((o) => {
     const p = CLI_PRESETS.find((x) => x.id === o.value);
-    o.disabled = !!p && !presetAvailable(p.program);
+    const off = !!p && !presetAvailable(p.program);
+    if (o.disabled !== off) o.disabled = off;
+    if (off) o.dataset.note = NOT_INSTALLED; else delete o.dataset.note;
   });
 }
 
@@ -227,6 +242,7 @@ export function mountStart(): void {
     <div class="st-live"></div>
   </div>`;
   home.appendChild(el);
+  enhanceSelects(el);
   sig = "";
   const form = el.querySelector<HTMLFormElement>(".st-compose")!;
   const job = el.querySelector<HTMLTextAreaElement>("#stJob")!;

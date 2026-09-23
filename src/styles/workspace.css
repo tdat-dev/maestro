@@ -10,7 +10,7 @@
 .app.code-hidden{--code-w:0px}
 
 /* ---------- unified top bar ---------- */
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 150px 0 10px;background:rgba(14,18,23,.72);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);z-index:100}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 150px 0 10px;background:rgba(10,10,12,.72);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);z-index:100}
 .tb-left, .tb-right{display:flex;align-items:center;gap:10px;flex:1}
 .tb-right{justify-content:flex-end}
 .tb-center{display:flex;align-items:center;justify-content:center;gap:3px;flex:2;min-width:0}
@@ -47,7 +47,7 @@
 .tb-btn:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--surface-2)}
 .tb-btn svg{color:var(--accent)}
 /* count chip on the "Resume all" button */
-.ra-count:not(:empty){display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 5px;margin-left:1px;border-radius:8px;background:var(--accent-glow,rgba(198,241,53,.18));color:var(--accent);font-size:11px;font-weight:700;line-height:1}
+.ra-count:not(:empty){display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 5px;margin-left:1px;border-radius:8px;background:var(--accent-glow,rgba(255,255,255,.18));color:var(--accent);font-size:11px;font-weight:700;line-height:1}
 /* "Resume all" is the one contextual action — it only appears when agents are
    parked (e.g. after reopening the app). Give it a soft accent treatment so it
    reads as the recommended thing to do, distinct from the neutral chrome. */
@@ -76,14 +76,14 @@
 /* Flush tiling: panes sit edge-to-edge, the 1px gap over the hairline grid is
    the only divider. A faint ambient glow behind the grid shines through the
    translucent panes (the glass). Bottom padding reserves broadcast-bar room. */
-.main{overflow:hidden;padding:0 0 56px 0;box-sizing:border-box;background:radial-gradient(1100px 700px at 88% -8%,rgba(198,241,53,.17),transparent 62%),radial-gradient(900px 650px at -8% 108%,rgba(56,189,248,.13),transparent 60%),var(--bg)}
+.main{overflow:hidden;padding:0 0 56px 0;box-sizing:border-box;background:radial-gradient(1100px 700px at 88% -8%,rgba(255,255,255,.17),transparent 62%),radial-gradient(900px 650px at -8% 108%,rgba(56,189,248,.13),transparent 60%),var(--bg)}
 /* dynamic tiling — panes fill the whole area; --cols/--rows set per pane count */
 .grid{display:grid;grid-template-columns:repeat(var(--cols,1),minmax(0,1fr));grid-template-rows:repeat(var(--rows,1),minmax(0,1fr));gap:1px;height:100%;background:rgba(255,255,255,.06)}
 
 /* ---------- pane (flush glass tile: slim header bar + terminal) ---------- */
-.pane{position:relative;display:flex;flex-direction:column;background:rgba(12,14,19,.42);box-shadow:inset 0 1px 0 rgba(255,255,255,.025);overflow:hidden;transition:box-shadow .15s;animation:paneIn .3s cubic-bezier(.2,.7,.2,1) both}
+.pane{position:relative;display:flex;flex-direction:column;background:rgba(10,10,12,.42);box-shadow:inset 0 1px 0 rgba(255,255,255,.025);overflow:hidden;transition:box-shadow .15s;animation:paneIn .3s cubic-bezier(.2,.7,.2,1) both}
 /* highlighted while a file is dragged over it (drop → path typed into the PTY) */
-.pane.drop-target{box-shadow:inset 0 0 0 2px var(--accent-dim),inset 0 0 44px -12px rgba(198,241,53,.3)}
+.pane.drop-target{box-shadow:inset 0 0 0 2px var(--accent-dim),inset 0 0 44px -12px rgba(255,255,255,.3)}
 .pane.drop-target::after{content:"Drop file to attach path";position:absolute;inset:0;display:grid;place-items:center;background:rgba(13,16,20,.5);color:var(--accent);font-size:13px;font-weight:600;letter-spacing:.02em;pointer-events:none;z-index:5}
 /* same overlay, but a Kanban card (a task) is being dropped, not a file */
 .pane.drop-agent::after{content:"Drop to send task to agent"}

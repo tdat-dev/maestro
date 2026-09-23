@@ -32,18 +32,18 @@
   font-family:var(--mono);white-space:nowrap}
 
 /* status accents */
-.fleet-row.st-needs{border-color:rgba(198,241,53,.4)}
+.fleet-row.st-needs{border-color:rgba(255,255,255,.4)}
 .fleet-row.st-needs .fleet-st{color:var(--accent-ink);background:var(--accent)}
 .fleet-row.st-needs .fleet-dot{background:var(--accent);
-  box-shadow:0 0 0 3px rgba(198,241,53,.18);animation:fleet-pulse 1.6s ease-in-out infinite}
+  box-shadow:0 0 0 3px rgba(255,255,255,.18);animation:fleet-pulse 1.6s ease-in-out infinite}
 .fleet-row.st-active .fleet-st{color:#052e16;background:var(--run)}
 .fleet-row.st-active .fleet-dot{background:var(--run)}
 .fleet-row.st-idle{opacity:.9}
 .fleet-row.st-stopped{opacity:.6}
 .fleet-row.st-stopped .fleet-dot{background:var(--idle)}
 
-@keyframes fleet-pulse{0%,100%{box-shadow:0 0 0 3px rgba(198,241,53,.18)}
-  50%{box-shadow:0 0 0 5px rgba(198,241,53,.28)}}
+@keyframes fleet-pulse{0%,100%{box-shadow:0 0 0 3px rgba(255,255,255,.18)}
+  50%{box-shadow:0 0 0 5px rgba(255,255,255,.28)}}
 @media (prefers-reduced-motion:reduce){.fleet-row.st-needs .fleet-dot{animation:none}}
 
 /* rail count badge */

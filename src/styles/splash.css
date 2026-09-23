@@ -5,7 +5,7 @@
    overlap heavily so it reads fast despite the richness. */
 .intro{position:fixed;inset:0;z-index:200;display:grid;place-items:center;pointer-events:none;overflow:hidden;
   background:
-    radial-gradient(820px 440px at 50% 42%, rgba(198,241,53,.10), transparent 62%),
+    radial-gradient(820px 440px at 50% 42%, rgba(255,255,255,.10), transparent 62%),
     radial-gradient(560px 560px at 50% 100%, rgba(94,194,240,.05), transparent 60%),
     var(--bg);
   animation:introOut .5s ease 1.05s forwards}
@@ -15,7 +15,7 @@
 /* (no animated blur anywhere — the soft radial gradients give the glow, and we
     animate only transform/opacity so everything stays GPU-composited.) */
 .intro-aurora{position:absolute;width:680px;height:680px;border-radius:50%;opacity:0;will-change:opacity,transform;
-  background:radial-gradient(circle, rgba(39,185,163,.20), rgba(94,194,240,.06) 45%, transparent 70%);
+  background:radial-gradient(circle, rgba(111,214,160,.20), rgba(94,194,240,.06) 45%, transparent 70%);
   animation:introAurora 1.4s ease-out forwards}
 @keyframes introAurora{0%{opacity:0;transform:scale(.86)}45%{opacity:1;transform:scale(1.04)}100%{opacity:.7;transform:scale(1)}}
 .intro-grid{position:absolute;inset:0;opacity:0;
@@ -32,7 +32,7 @@
 .intro-burst{position:absolute;width:320px;height:320px;border-radius:50%;opacity:0;
   will-change:opacity,transform;
   background:repeating-conic-gradient(from 0deg,
-    rgba(198,241,53,0) 0deg, rgba(198,241,53,.22) 2deg, rgba(198,241,53,0) 6deg);
+    rgba(255,255,255,0) 0deg, rgba(255,255,255,.22) 2deg, rgba(255,255,255,0) 6deg);
   -webkit-mask:radial-gradient(circle, transparent 28%, #000 44%, transparent 74%);
           mask:radial-gradient(circle, transparent 28%, #000 44%, transparent 74%);
   animation:introBurst .8s ease-out .5s forwards}
@@ -40,13 +40,13 @@
 
 /* ---- glow bloom behind the mark ---- */
 .intro-glow{position:absolute;width:200px;height:200px;border-radius:50%;will-change:opacity,transform;
-  background:radial-gradient(circle, rgba(39,185,163,.5), rgba(198,241,53,.16) 40%, transparent 70%);
+  background:radial-gradient(circle, rgba(111,214,160,.5), rgba(255,255,255,.16) 40%, transparent 70%);
   opacity:0;transform:scale(.4);
   animation:introGlow 1.1s cubic-bezier(.2,.7,.2,1) .42s forwards}
 @keyframes introGlow{0%{opacity:0;transform:scale(.4)}45%{opacity:.95;transform:scale(1.18)}100%{opacity:.5;transform:scale(1)}}
 
 /* ---- staggered ripple rings ---- */
-.intro .ring{position:absolute;width:70px;height:70px;border-radius:50%;border:1.5px solid rgba(198,241,53,.55);opacity:0;transform:scale(.2)}
+.intro .ring{position:absolute;width:70px;height:70px;border-radius:50%;border:1.5px solid rgba(255,255,255,.55);opacity:0;transform:scale(.2)}
 .intro .r1{animation:introRing 1s ease-out .56s forwards}
 .intro .r2{animation:introRing 1s ease-out .72s forwards}
 .intro .r3{animation:introRing 1.05s ease-out .9s forwards;border-color:rgba(94,194,240,.4)}
@@ -54,7 +54,7 @@
 
 /* ---- the M mark draws its stroke (pathLength=1 normalizes the dash math) ---- */
 .intro-mark{position:relative;width:124px;height:124px;will-change:transform;
-  filter:drop-shadow(0 0 22px rgba(39,185,163,.5)) drop-shadow(0 0 9px rgba(198,241,53,.35));
+  filter:drop-shadow(0 0 22px rgba(111,214,160,.5)) drop-shadow(0 0 9px rgba(255,255,255,.35));
   animation:introMarkPop .42s cubic-bezier(.2,.8,.2,1.25) .62s both}
 @keyframes introMarkPop{0%{transform:scale(1)}45%{transform:scale(1.08)}100%{transform:scale(1)}}
 .intro-mark path{stroke-dasharray:1;stroke-dashoffset:1;animation:introDraw .56s cubic-bezier(.65,0,.35,1) .12s forwards}
@@ -65,7 +65,7 @@
 
 /* ---- flash bloom the instant the M completes ---- */
 .intro-flash{position:absolute;width:150px;height:150px;border-radius:50%;opacity:0;
-  background:radial-gradient(circle, rgba(234,255,176,.9), rgba(198,241,53,.4) 35%, transparent 65%);
+  background:radial-gradient(circle, rgba(234,255,176,.9), rgba(255,255,255,.4) 35%, transparent 65%);
   animation:introFlash .5s ease-out .56s forwards}
 @keyframes introFlash{0%{opacity:0;transform:scale(.5)}30%{opacity:.95;transform:scale(1.05)}100%{opacity:0;transform:scale(1.5)}}
 

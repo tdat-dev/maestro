@@ -42,7 +42,7 @@ body.splitting{cursor:col-resize;user-select:none}
 .tb-pane:hover{background:var(--surface-1);color:var(--text-2)}
 /* lit pill = that panel is currently open; dim = collapsed (click to reveal) */
 .tb-pane.on{color:var(--accent);background:var(--accent-glow);box-shadow:inset 0 0 0 1px var(--accent-dim)}
-.tb-pane.on:hover{background:rgba(198,241,53,.22)}
+.tb-pane.on:hover{background:rgba(255,255,255,.22)}
 
 /* hairline divider grouping the toggles apart from the rest of the topbar */
 .tb-div{width:1px;height:18px;background:var(--line);flex:none;margin:0 2px}

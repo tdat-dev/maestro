@@ -135,9 +135,9 @@ export interface TermPalette {
 /** Light glyphs — the palette Maestro shipped, for dark backdrops. */
 const LIGHT_TEXT: Omit<TermPalette, "background"> = {
   foreground: "#e2e8f0", // slate-200
-  cursor: "#c6f135", // maestro accent
+  cursor: "#f4f4f5", // maestro accent
   cursorAccent: "#0a0c10",
-  selectionBackground: "rgba(198, 241, 53, 0.30)",
+  selectionBackground: "rgba(255, 255, 255, 0.22)",
   black: "#1e293b",
   red: "#ef4444",
   green: "#22c55e",

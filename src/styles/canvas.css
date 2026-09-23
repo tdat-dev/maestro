@@ -35,7 +35,7 @@
      the terminal agree. At the default "Glass" opacity it is fully transparent
      and the wallpaper reads straight through the pane — the border, the title
      bar and the text are all that remain. */
-  background: var(--pane-plate, rgba(12, 14, 19, 0.62));
+  background: var(--pane-plate, rgba(10,10,12, 0.62));
   border: 1px solid var(--line-2);
   box-shadow: 0 22px 50px -22px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.03);
   transition: box-shadow 0.18s, border-color 0.18s, transform 0.12s;
@@ -103,7 +103,7 @@
   /* Its own plate, independent of the pane's: the dot, the name and the buttons
      are chrome, and they have to stay readable and hittable over any wallpaper
      even when the body below them is fully see-through. */
-  background: rgba(12, 14, 19, 0.55);
+  background: rgba(10,10,12, 0.55);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
   cursor: grab;
@@ -308,7 +308,7 @@
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  background: rgba(6, 8, 11, 0.55);
+  background: rgba(0,0,0, 0.55);
   -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
 }
@@ -323,7 +323,7 @@
      and a zoom-in on entry — the mockup's focus-stage feel. */
   border-radius: 16px;
   box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.9),
-    0 0 0 1px color-mix(in oklab, var(--stg, #27b9a3) 22%, transparent);
+    0 0 0 1px color-mix(in oklab, var(--stg, #6fd6a0) 22%, transparent);
   transform-origin: var(--ox, 50%) var(--oy, 50%);
   animation: zoomIn 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
 }

@@ -59,22 +59,22 @@ const maestroTheme = EditorView.theme(
     ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--text-2)" },
     ".cm-lineNumbers .cm-gutterElement": { padding: "0 8px 0 14px", minWidth: "30px" },
     ".cm-foldGutter .cm-gutterElement": { color: "var(--muted-2)" },
-    ".cm-selectionMatch": { backgroundColor: "rgba(198,241,53,.13)" },
-    "&.cm-focused .cm-matchingBracket": { backgroundColor: "rgba(198,241,53,.18)", outline: "none", color: "var(--accent)" },
+    ".cm-selectionMatch": { backgroundColor: "rgba(255,255,255,.10)" },
+    "&.cm-focused .cm-matchingBracket": { backgroundColor: "rgba(255,255,255,.16)", outline: "none", color: "var(--accent)" },
     ".cm-tooltip": { background: "var(--surface-2)", border: "1px solid var(--line-strong)", borderRadius: "8px", overflow: "hidden" },
     ".cm-tooltip-autocomplete ul li[aria-selected]": { background: "var(--accent-glow)", color: "var(--text)" },
   },
   { dark: true },
 );
 
-/** Syntax palette: blue keywords/types, green strings, amber numbers, lime defs. */
+/** Syntax palette: blue keywords/types, green strings, amber numbers, warm defs. */
 const maestroHighlight = HighlightStyle.define([
   { tag: t.comment, color: "var(--muted-2)", fontStyle: "italic" },
   { tag: [t.keyword, t.modifier, t.operatorKeyword, t.controlKeyword], color: "#5ec2f0" },
   { tag: [t.string, t.special(t.string), t.regexp], color: "#3ad29f" },
   { tag: [t.number, t.bool, t.null, t.atom], color: "#ffb84c" },
-  { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "#c6f135" },
-  { tag: [t.definition(t.variableName), t.definitionKeyword], color: "#c6f135" },
+  { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "#e8c787" },
+  { tag: [t.definition(t.variableName), t.definitionKeyword], color: "#e8c787" },
   { tag: [t.typeName, t.className, t.namespace], color: "#5ec2f0" },
   { tag: [t.propertyName, t.attributeName], color: "#9fb4c6" },
   { tag: t.variableName, color: "var(--text-2)" },

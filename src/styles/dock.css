@@ -67,7 +67,7 @@
 .kb-tool.on{border-color:var(--accent);color:var(--accent-ink);background:var(--accent)}
 .kb-tool.on:hover{color:var(--accent-ink);background:var(--accent)}
 .kb-tool.on.auto{animation:kb-cond-pulse 1.8s ease-in-out infinite}
-@keyframes kb-cond-pulse{0%,100%{box-shadow:0 0 0 0 rgba(198,241,53,.0)}50%{box-shadow:0 0 0 3px rgba(198,241,53,.28)}}
+@keyframes kb-cond-pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.0)}50%{box-shadow:0 0 0 3px rgba(255,255,255,.28)}}
 @media (prefers-reduced-motion:reduce){.kb-tool.on.auto{animation:none}}
 /* Done evidence footer on a card: changed files + a diff link */
 .kb-done{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:7px;padding-top:7px;border-top:1px solid var(--line)}
@@ -304,7 +304,7 @@
   border:1px solid var(--accent-glow);border-radius:999px;background:var(--accent-glow);
   color:var(--accent);font-size:11px;max-width:100%;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
-.kb-assignee:hover{background:rgba(198,241,53,.2)}
+.kb-assignee:hover{background:rgba(255,255,255,.2)}
 .kb-assignee.big{font-size:12px;padding:4px 10px;margin-top:0}
 .kb-agent-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .kb-agent-pick{background:var(--surface-1);color:var(--text);border:1px solid var(--line-strong);

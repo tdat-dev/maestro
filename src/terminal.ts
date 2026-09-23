@@ -116,9 +116,9 @@ const SEARCH_OPTS = {
     matchBackground: "#3f4a18",
     matchBorder: "#5e6b1f",
     matchOverviewRuler: "#5e6b1f",
-    activeMatchBackground: "#c6f135",
-    activeMatchBorder: "#c6f135",
-    activeMatchColorOverviewRuler: "#c6f135",
+    activeMatchBackground: "#f0bf6a",
+    activeMatchBorder: "#f0bf6a",
+    activeMatchColorOverviewRuler: "#f0bf6a",
   },
 } as const;
 

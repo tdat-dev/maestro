@@ -30,9 +30,11 @@ export interface ChatState {
   onTerminal?: () => void;
 }
 
-/** "claude-opus-5-5" → "Opus 5.5"; other ids as they are. */
+/** "claude-opus-5-5" → "Opus 5.5", "Opus 5.5 (1M context)" → "Opus 5.5";
+ *  other ids as they are. */
 export function modelName(id: string | null): string {
   if (!id) return "";
+  if (!id.startsWith("claude-")) return id.replace(/\s*\(.*$/, "");
   const m = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?/.exec(id);
   if (!m) return id;
   return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ""}`;
@@ -395,7 +397,7 @@ function mount(pane: Pane): View {
           label: m.label, hint: m.hint,
           // The CLI switches itself: the same command you would type.
           run: () => { void sendMessage(pane.id, `${p.modelCommand} ${m.value}`); },
-          disabled: !!now && now.includes(m.value),
+          disabled: !!now && now.toLowerCase().includes(m.value),
         })),
         { label: "More in the terminal…", sep: true, hint: "Its own picker", run: () => { v.state.onTerminal?.(); void sendMessage(pane.id, p.modelCommand!); } },
       ], "Model");

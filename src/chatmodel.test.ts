@@ -108,3 +108,27 @@ describe("chat meta", () => {
     expect(turns.map((t) => [t.start, t.end, t.took])).toEqual([[0, 1, 12000], [2, 3, 1000]]);
   });
 });
+
+describe("switching the model", () => {
+  const row = (content: string) => JSON.stringify({ type: "user", timestamp: "2026-09-24T10:00:00.000Z", origin: { kind: "human" }, message: { content } });
+  it("takes the model from /model's own answer, before any reply", () => {
+    const chat = createChat();
+    chat.feed([
+      JSON.stringify({ type: "assistant", timestamp: "2026-09-24T09:59:00.000Z", message: { id: "m1", model: "claude-opus-5-5", content: [{ type: "text", text: "hi" }] } }),
+      row("<command-name>/model</command-name>\n            <command-message>model</command-message>\n            <command-args>haiku</command-args>"),
+      row("<local-command-stdout>Set model to `Haiku 4.5` and saved as your default for new sessions</local-command-stdout>"),
+    ].join("\n"));
+    expect(chat.meta.model).toBe("Haiku 4.5");
+    // the switch reads as one line, not the raw command
+    expect(chat.items.filter((i) => i.kind === "note").map((i) => ("text" in i ? i.text : ""))).toEqual(["Switched to Haiku 4.5"]);
+    // and the next reply, with the model's id, is the source again
+    chat.feed(JSON.stringify({ type: "assistant", timestamp: "2026-09-24T10:01:00.000Z", message: { id: "m2", model: "claude-haiku-4-5-20251001", content: [{ type: "text", text: "ok" }] } }));
+    expect(chat.meta.model).toBe("claude-haiku-4-5-20251001");
+  });
+
+  it("keeps the model's plain name when /model reports a long one", () => {
+    const chat = createChat();
+    chat.feed(row("<local-command-stdout>Set model to `Opus 5.5 (1M context) (default)` and saved as your default for new sessions</local-command-stdout>"));
+    expect(chat.meta.model).toBe("Opus 5.5 (1M context)");
+  });
+});

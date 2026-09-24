@@ -59,7 +59,8 @@ async function claudeDiscover(program: string, dir: string | null): Promise<CliF
   // /cost is answered locally: no model call, nothing billed, and the init
   // event before it carries the full list for this folder (project commands,
   // your skills and plugins included).
-  const run = launchSpec(program, ["-p", "/cost", "--output-format", "stream-json", "--verbose"]);
+  // --no-session-persistence: asking must not leave a session in your /resume list.
+  const run = launchSpec(program, ["-p", "/cost", "--output-format", "stream-json", "--verbose", "--no-session-persistence"]);
   const out = await runCapture(run.program, run.args, dir, 90_000);
   const facts = parseClaudeInit(out);
   if (!facts) throw new Error("Claude Code didn't list its commands");

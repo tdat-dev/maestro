@@ -258,7 +258,17 @@ export function createChat(): Chat {
   function userText(raw: string, images: number, v: Input, at: number): void {
     const origin = (v.origin ?? null) as Input | null;
     if (origin && origin.kind !== "human") return; // hook output, task notices…
+    // /model answers with the model it switched to; that is the model from now
+    // on, before any reply comes back with its id.
+    const switched = /<local-command-stdout>Set model to `([^`]+)`/.exec(raw);
+    if (switched) {
+      meta.model = switched[1].replace(/\s*\(default\)\s*$/i, "").trim();
+      items.push({ kind: "note", id: id(), text: `Switched to ${meta.model}`, at });
+      return;
+    }
     const cmd = /<command-name>([^<]*)<\/command-name>(?:[\s\S]*?<command-args>([^<]*)<\/command-args>)?/.exec(raw);
+    // /model is said by its answer above
+    if (cmd && cmd[1] === "/model") return;
     if (cmd) { items.push({ kind: "note", id: id(), text: `${cmd[1]}${cmd[2] ? ` ${cmd[2]}` : ""}`.trim(), at }); return; }
     if (/<local-command-(stdout|stderr)>|<local-command-caveat>/.test(raw)) return;
     if (/^\[Request interrupted by user/.test(raw.trim())) { items.push({ kind: "note", id: id(), text: "You stopped the agent", at }); return; }

@@ -288,6 +288,8 @@ describe("inbox DOM", () => {
     expect(panes[0].el.classList.contains("focused")).toBe(true);
     // Still Grid, so still a terminal: no Chat/Terminal choice to make.
     expect(panes[0].el.querySelector(".ib-view")).toBeNull();
+    // and its buttons wear no class the canvas styles itself ("grid" did).
+    expect(panes[0].el.querySelector(".ib-acts")!.className).toBe("ib-acts");
     delete (panes[0].spec as { badge?: string }).badge;
     (document.querySelector('[data-dock="queue"]') as HTMLButtonElement).click();
     expect(document.querySelector('[data-dock="split"]')!.getAttribute("aria-pressed")).toBe("false");

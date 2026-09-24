@@ -470,7 +470,7 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
     if (!acts || acts.dataset.mode !== mode) {
       acts?.remove();
       acts = document.createElement("span");
-      acts.className = `ib-acts ${mode}`;
+      acts.className = "ib-acts";
       acts.dataset.mode = mode;
       acts.innerHTML = pinned
         ? `<button class="ib-icon" data-stage="full" title="Open full size" aria-label="Open ${esc(t.name)} full size">⤢</button><button class="ib-icon" data-stage="close" title="Take out of Grid" aria-label="Take ${esc(t.name)} out of the Grid">✕</button>`

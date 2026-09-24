@@ -14,6 +14,7 @@ import {
   onExit,
 } from "./ipc";
 import { type Pane, type Workspace } from "./panetypes";
+import { typeToAgent } from "./chatview";
 import { workspaces, activeWs } from "./appstate";
 import { focusPane } from "./panelayout";
 import {
@@ -82,6 +83,8 @@ function setDropTarget(p: Pane | null, agent = false) {
 function dropPathsIntoPane(target: Pane, paths: string[]) {
   if (paths.length === 0) return;
   const text = paths.map((p) => (/\s/.test(p) ? `"${p}"` : p)).join(" ") + " ";
+  // Shown as a chat: the path goes where you are typing, not into the hidden terminal.
+  if (typeToAgent(target, text)) return;
   void sendMessage(target.id, text, false).catch(() => {});
   target.term.focus();
 }

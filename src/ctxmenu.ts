@@ -179,6 +179,13 @@ export function blockNativeMenu(dev = false): void {
     if (dev && e.shiftKey) return;
     e.preventDefault();
     const f = editableAt(e.target);
-    if (f) openMenu(e.clientX, e.clientY, editMenu(f), "Edit");
+    if (f) { openMenu(e.clientX, e.clientY, editMenu(f), "Edit"); return; }
+    // Selected text anywhere else (a chat answer, the help page) can be copied.
+    const picked = window.getSelection()?.toString() ?? "";
+    if (picked.trim()) {
+      openMenu(e.clientX, e.clientY, [
+        { label: "Copy", hint: "Ctrl+C", run: () => { void navigator.clipboard.writeText(picked).catch(() => {}); } },
+      ], "Selection");
+    }
   });
 }

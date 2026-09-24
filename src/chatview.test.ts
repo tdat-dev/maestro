@@ -8,6 +8,12 @@ const io = vi.hoisted(() => ({
   keys: [] as Array<[string, string]>,
   captured: [] as Array<{ program: string; args: string[]; cwd: string | null }>,
   sessions: [] as Array<{ id: string; modified_ms: number; title: string; messages: number }>,
+  opened: [] as string[],
+  confirms: [] as string[],
+  confirmOk: true,
+}));
+vi.mock("./confirmmodal", () => ({
+  confirmModal: async (o: { title: string }) => { io.confirms.push(o.title); return { ok: io.confirmOk, dontAsk: false, value: "" }; },
 }));
 vi.mock("./ipc", () => ({
   claudeTranscript: async (dir: string, sessionId: string | null, _since: number | null, offset: number) => {
@@ -18,6 +24,7 @@ vi.mock("./ipc", () => ({
   sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); },
   sendInput: async (id: string, data: string) => { io.keys.push([id, data]); },
   claudeSessions: async () => io.sessions,
+  openExternal: async (url: string) => { io.opened.push(url); },
   // Claude Code's own list, as its init event gives it.
   runCapture: async (program: string, args: string[], cwd: string | null) => {
     io.captured.push({ program, args, cwd });
@@ -47,7 +54,7 @@ function pane(badge = "claude"): Pane {
 const flush = async () => { for (let k = 0; k < 6; k++) await new Promise((r) => setTimeout(r, 0)); };
 
 describe("chat view", () => {
-  beforeEach(() => { io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; });
+  beforeEach(() => { io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; io.opened = []; io.confirms = []; io.confirmOk = true; });
   afterEach(() => { dropChat("p1"); document.body.innerHTML = ""; });
 
   it("is for Claude Code agents", () => {
@@ -92,23 +99,93 @@ describe("chat view", () => {
     expect(p.el.classList.contains("chat-on")).toBe(false);
   });
 
-  it("offers Start again instead of a composer when the agent is stopped", async () => {
+  it("offers Resume instead of a composer when the agent is stopped", async () => {
     const p = pane();
     let restarted = 0;
     (p as unknown as { restart: () => Promise<void> }).restart = async () => { restarted++; };
     showChat(p, { name: "Ana", state: "stopped" });
     await flush();
     expect(p.el.querySelector(".cv")!.classList.contains("stopped")).toBe(true);
-    expect(p.el.querySelector(".cv-empty span")!.textContent).toContain("Stopped");
+    expect(p.el.querySelector(".cv-empty span")!.textContent).toBe("Resume it to carry on, or start a new conversation.");
     (p.el.querySelector("[data-restart-agent]") as HTMLButtonElement).click();
     expect(restarted).toBe(1);
   });
 
-  it("hides the composer while an answer card is up", async () => {
+  it("hides the composer only while an answer card is up, and never offers jobs then", async () => {
     const p = pane();
-    showChat(p, { name: "Ana", state: "needs" });
+    showChat(p, { name: "Ana", state: "needs", asking: true });
     await flush();
     expect(p.el.querySelector(".cv")!.classList.contains("asking")).toBe(true);
+    expect(p.el.querySelector(".cv-starters")).toBeNull();
+    expect(p.el.querySelector(".cv-empty b")!.textContent).toBe("Ana is waiting on you");
+    // needs you, but no card to answer on: the composer is the way to reply
+    showChat(p, { name: "Ana", state: "needs" });
+    expect(p.el.querySelector(".cv")!.classList.contains("asking")).toBe(false);
+  });
+
+  it("says why an agent couldn't start, and offers to try again", async () => {
+    const p = pane();
+    showChat(p, { name: "Ana", state: "stopped", problem: "The folder D:/gone doesn't exist anymore." });
+    await flush();
+    expect(p.el.querySelector(".cv-why")!.textContent).toBe("The folder D:/gone doesn't exist anymore.");
+    expect(p.el.querySelector("[data-restart-agent]")!.textContent).toBe("Try again");
+  });
+
+  it("opens links from an answer in the browser, not in the app's window", async () => {
+    io.chunks = [j({ type: "assistant", message: { id: "m1", content: [{ type: "text", text: "See [the docs](https://example.com/docs)." }] } })];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const a = p.el.querySelector<HTMLAnchorElement>(".cv-a a")!;
+    expect(a.title).toBe("https://example.com/docs");
+    const ev = new MouseEvent("click", { bubbles: true, cancelable: true });
+    a.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(io.opened).toEqual(["https://example.com/docs"]);
+  });
+
+  it("opens and closes a plan step as often as you like", async () => {
+    io.chunks = [j({ type: "assistant", message: { id: "m1", content: [{ type: "tool_use", id: "t", name: "TodoWrite", input: { todos: [{ content: "read", status: "completed" }] } }] } })];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const head = () => p.el.querySelector<HTMLButtonElement>(".cv-step button.cv-sh")!;
+    expect(head().getAttribute("aria-expanded")).toBe("true");
+    head().click();
+    expect(head().getAttribute("aria-expanded")).toBe("false");
+    head().click();
+    expect(head().getAttribute("aria-expanded")).toBe("true");
+    head().click();
+    expect(head().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("draws an edit's lines without blank lines between them", async () => {
+    io.chunks = [j({ type: "assistant", message: { id: "m1", content: [{ type: "tool_use", id: "e", name: "Edit", input: { file_path: "D:/wt/p1/a.ts", old_string: "a\nb", new_string: "a\nc" } }] } })];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    p.el.querySelector<HTMLButtonElement>(".cv-step button.cv-sh")!.click();
+    const pre = p.el.querySelector(".cv-diff")!;
+    expect(pre.innerHTML).not.toContain("\n");
+    expect(pre.querySelectorAll("span").length).toBeGreaterThan(1);
+  });
+
+  it("asks before switching conversations while the agent works", async () => {
+    io.sessions = [{ id: "aaaaaaaa-2222-3333-4444-555555555555", modified_ms: Date.now(), title: "Fix the login", messages: 12 }];
+    const p = pane();
+    const restarts: unknown[] = [];
+    (p as unknown as { restart: (o?: unknown) => Promise<void> }).restart = async (o) => { restarts.push(o); };
+    showChat(p, { name: "Ana", state: "working" });
+    await flush();
+    io.confirmOk = false;
+    p.el.querySelector<HTMLButtonElement>("[data-resume]")!.click();
+    await flush();
+    expect(io.confirms).toEqual(["Stop Ana and switch conversations?"]);
+    expect(restarts).toEqual([]);
+    io.confirmOk = true;
+    p.el.querySelector<HTMLButtonElement>("[data-resume]")!.click();
+    await flush();
+    expect(restarts).toEqual([{ session: "aaaaaaaa-2222-3333-4444-555555555555" }]);
   });
 
   it("fills the space: a side panel with the plan, the files and the session, and a footer per turn", async () => {
@@ -131,7 +208,7 @@ describe("chat view", () => {
     (side.querySelector(".cs-review") as HTMLButtonElement).click();
     expect(reviewed).toBe(1);
     expect(p.el.querySelector(".cv-tf span")!.textContent).toBe("Worked for 1m 12s");
-    expect(p.el.querySelector(".cv-model")!.textContent).toBe("Opus 5.5 ▾");
+    expect(p.el.querySelector(".cv-model .cv-chip-t")!.textContent).toBe("Opus 5.5");
   });
 
   it("offers jobs to start from in an empty conversation, and commands from the composer", async () => {
@@ -171,10 +248,13 @@ it("answers /resume itself: its conversations to pick from, the pick resumed her
     expect(io.sent).toEqual([]); // not typed into the hidden terminal picker
     const row = [...document.querySelectorAll<HTMLElement>("[role=option]")].find((r) => r.textContent!.includes("Fix the login"))!;
     row.click();
+    await flush();
     expect(restarts).toEqual([{ session: "aaaaaaaa-2222-3333-4444-555555555555" }]);
     input.value = "/clear";
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
     expect(restarts[1]).toEqual({ fresh: true });
+    expect(io.confirms).toEqual([]); // not working: nothing to ask
   });
 
   it("offers Resume and New conversation when stopped", async () => {
@@ -185,6 +265,7 @@ it("answers /resume itself: its conversations to pick from, the pick resumed her
     await flush();
     (p.el.querySelector("[data-restart-agent]") as HTMLButtonElement).click();
     (p.el.querySelector("[data-new-convo]") as HTMLButtonElement).click();
+    await flush();
     expect(restarts).toEqual([undefined, { fresh: true }]);
   });
   it("lets you pick any model, the one in use marked, and switches through the CLI", async () => {

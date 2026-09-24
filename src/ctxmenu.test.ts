@@ -1,25 +1,37 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { blockNativeMenu, closeMenu, menuShown, nativeMenuAllowed, openMenu } from "./ctxmenu";
+import { blockNativeMenu, closeMenu, editableAt, editMenu, menuShown, openMenu } from "./ctxmenu";
 
 describe("ctxmenu", () => {
   afterEach(() => { closeMenu(false); document.body.innerHTML = ""; });
 
-  it("keeps the browser menu only in text fields and terminals", () => {
-    document.body.innerHTML = `<div id="side"><button id="b">x</button></div><input id="i"><textarea id="t"></textarea>
-      <span id="ce" contenteditable="true">n</span><div class="xterm"><canvas id="c"></canvas></div>`;
+  it("finds the text field under a right-click, never in a terminal", () => {
+    document.body.innerHTML = `<div id="side"><button id="b">x</button></div><input id="i"><input id="cb" type="checkbox"><textarea id="t"></textarea>
+      <span id="ce" contenteditable="true">n</span><div class="xterm"><textarea id="xt"></textarea></div>`;
     const $ = (id: string) => document.getElementById(id);
-    expect(nativeMenuAllowed($("side"), false, false)).toBe(false);
-    expect(nativeMenuAllowed($("b"), false, false)).toBe(false);
-    expect(nativeMenuAllowed($("i"), false, false)).toBe(true);
-    expect(nativeMenuAllowed($("t"), false, false)).toBe(true);
-    expect(nativeMenuAllowed($("ce"), false, false)).toBe(true);
-    expect(nativeMenuAllowed($("c"), false, false)).toBe(true);
-    // Shift+right-click still reaches Inspect while developing, never in a build
-    expect(nativeMenuAllowed($("side"), true, true)).toBe(true);
-    expect(nativeMenuAllowed($("side"), true, false)).toBe(false);
+    expect(editableAt($("side"))).toBeNull();
+    expect(editableAt($("b"))).toBeNull();
+    expect(editableAt($("cb"))).toBeNull();
+    expect(editableAt($("xt"))).toBeNull();
+    expect(editableAt($("i"))).toBe($("i"));
+    expect(editableAt($("t"))).toBe($("t"));
+    expect(editableAt($("ce"))).toBe($("ce"));
   });
 
-  it("stops the page menu on empty space", () => {
+  it("offers Cut and Copy only with a selection, and pastes into the field", async () => {
+    document.body.innerHTML = `<input id="i" value="hello world">`;
+    const i = document.getElementById("i") as HTMLInputElement;
+    const on = (m: ReturnType<typeof editMenu>) => m.filter((x) => !x.disabled).map((x) => x.label);
+    i.setSelectionRange(0, 0);
+    expect(on(editMenu(i))).toEqual(["Paste", "Select all"]);
+    i.setSelectionRange(0, 5);
+    expect(on(editMenu(i))).toEqual(["Cut", "Copy", "Paste", "Select all"]);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { readText: async () => "HEY", writeText: async () => {} } });
+    editMenu(i).find((x) => x.label === "Paste")!.run();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(i.value).toBe("HEY world");
+  });
+
+  it("never shows the page menu, and opens the edit menu on a field", () => {
     blockNativeMenu(false);
     document.body.innerHTML = `<div id="side"></div><input id="i">`;
     const fire = (id: string) => {
@@ -28,7 +40,9 @@ describe("ctxmenu", () => {
       return e.defaultPrevented;
     };
     expect(fire("side")).toBe(true);
-    expect(fire("i")).toBe(false);
+    expect(menuShown()).toBe(false);
+    expect(fire("i")).toBe(true);
+    expect(menuShown()).toBe(true);
   });
 
   it("runs the picked item and skips disabled ones from the keyboard", () => {

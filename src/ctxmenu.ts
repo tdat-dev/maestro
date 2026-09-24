@@ -103,6 +103,8 @@ export function openMenu(x: number, y: number, list: MenuItem[], label = "Action
     if (r && i !== active && !items[i]?.disabled) move(i, 1);
   });
   menu.addEventListener("contextmenu", (e) => e.preventDefault());
+  // Pressing an item must not take focus or the selection from the field it acts on.
+  menu.addEventListener("mousedown", (e) => e.preventDefault());
   move(0, 1);
   document.addEventListener("pointerdown", outside, true);
   window.addEventListener("resize", away);
@@ -125,19 +127,58 @@ export function closeMenu(refocus: boolean): void {
 
 export function menuShown(): boolean { return !!menu; }
 
-/** Whether the browser's own menu (Back, Refresh, Print, Inspect…) may show:
- *  only where it helps, in text you can edit and in a terminal (Copy, Paste). */
-export function nativeMenuAllowed(target: EventTarget | null, shift: boolean, dev: boolean): boolean {
-  if (dev && shift) return true; // Inspect while developing
+type Field = HTMLInputElement | HTMLTextAreaElement;
+const TEXTY = /^(text|search|url|email|tel|password|number)$/;
+
+/** The text field a right-click landed in, if any (terminals have their own menu). */
+export function editableAt(target: EventTarget | null): Field | HTMLElement | null {
   const el = target instanceof Element ? target : null;
-  if (!el) return false;
-  return !!el.closest("input, textarea, [contenteditable=''], [contenteditable='true'], .xterm");
+  if (!el || el.closest(".xterm")) return null;
+  const f = el.closest<HTMLElement>("input, textarea, [contenteditable=''], [contenteditable='true']");
+  if (f instanceof HTMLInputElement && !TEXTY.test(f.type)) return null;
+  return f;
 }
 
-/** Stop the WebView's page menu from showing anywhere else in the app. */
+/** Cut / Copy / Paste / Select all for a text field, enabled as they apply. */
+export function editMenu(f: Field | HTMLElement): MenuItem[] {
+  const field = f instanceof HTMLInputElement || f instanceof HTMLTextAreaElement ? f : null;
+  const selected = field ? (field.selectionEnd ?? 0) > (field.selectionStart ?? 0) : !!window.getSelection()?.toString();
+  const readOnly = field ? field.readOnly || field.disabled : false;
+  const secret = field instanceof HTMLInputElement && field.type === "password";
+  const selectedText = () => field ? field.value.slice(field.selectionStart ?? 0, field.selectionEnd ?? 0) : window.getSelection()?.toString() ?? "";
+  const insert = (text: string) => {
+    f.focus();
+    if (field) {
+      field.setRangeText(text, field.selectionStart ?? field.value.length, field.selectionEnd ?? field.value.length, "end");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    } else {
+      document.execCommand("insertText", false, text);
+    }
+  };
+  return [
+    { label: "Cut", hint: "Ctrl+X", disabled: !selected || readOnly || secret, run: () => {
+      void navigator.clipboard.writeText(selectedText()).then(() => insert("")).catch(() => {});
+    } },
+    { label: "Copy", hint: "Ctrl+C", disabled: !selected || secret, run: () => { void navigator.clipboard.writeText(selectedText()).catch(() => {}); } },
+    { label: "Paste", hint: "Ctrl+V", disabled: readOnly, run: () => {
+      void navigator.clipboard.readText().then((t) => { if (t) insert(t); }).catch(() => {});
+    } },
+    { label: "Select all", hint: "Ctrl+A", sep: true, run: () => {
+      f.focus();
+      if (field) field.select(); else window.getSelection()?.selectAllChildren(f);
+    } },
+  ];
+}
+
+/** Replace the WebView's page menu (Back, Refresh, Print, Emoji, Inspect…)
+ *  everywhere: text fields get the app's edit menu, the rest gets nothing.
+ *  Shift+right-click still reaches it while developing. */
 export function blockNativeMenu(dev = false): void {
   document.addEventListener("contextmenu", (e) => {
     if (e.defaultPrevented) return; // one of our own menus took it
-    if (!nativeMenuAllowed(e.target, e.shiftKey, dev)) e.preventDefault();
+    if (dev && e.shiftKey) return;
+    e.preventDefault();
+    const f = editableAt(e.target);
+    if (f) openMenu(e.clientX, e.clientY, editMenu(f), "Edit");
   });
 }

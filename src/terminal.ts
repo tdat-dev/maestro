@@ -6,6 +6,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import "@xterm/xterm/css/xterm.css";
 import { paletteFor, backgroundAlpha, type TermPalette } from "./termtheme";
 import { createBgFilter } from "./ansibg";
+import { openMenu } from "./ctxmenu";
 
 /** How a pane paints: which palette, and whether the CLI's own background
  *  plate is stripped out of the byte stream on the way in. */
@@ -290,13 +291,20 @@ export function mountTerminal(
   // Right-click = copy the selection too. Copy-on-select can silently lose
   // the clipboard write on Windows (another process holding the clipboard
   // lock makes writeText reject), so a right-click retries the copy —
-  // deliberate and dependable, like Windows Terminal. With no selection the
-  // default context menu behaviour is left untouched.
+  // deliberate and dependable, like Windows Terminal. With no selection it
+  // opens the app's terminal menu instead of the WebView's page menu.
   container.addEventListener("contextmenu", (e) => {
-    const sel = term.getSelection();
-    if (!sel) return;
+    if (e.shiftKey && import.meta.env.DEV) return; // Inspect while developing
     e.preventDefault();
-    void navigator.clipboard.writeText(sel).catch(() => {});
+    const sel = term.getSelection();
+    if (sel) { void navigator.clipboard.writeText(sel).catch(() => {}); return; }
+    openMenu(e.clientX, e.clientY, [
+      { label: "Paste", hint: "Ctrl+V", run: () => {
+        void navigator.clipboard.readText().then((t) => { if (t) term.paste(t); term.focus(); }).catch(() => {});
+      } },
+      { label: "Select all", run: () => { term.selectAll(); term.focus(); } },
+      { label: "Clear", sep: true, run: () => { term.clear(); term.focus(); } },
+    ], "Terminal");
   });
 
   // Auto-fit: tiled panes get short fast (a 2x2 tidy leaves ~360px per tile),

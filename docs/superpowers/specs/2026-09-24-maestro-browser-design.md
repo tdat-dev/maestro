@@ -29,6 +29,40 @@ not have that limit.
 - The user's everyday Chrome is never touched, so an agent cannot wander into
   personal tabs.
 
+## Every existing Chrome profile, not one blank one
+
+The user wants agents to work in each Chrome profile they already have, with
+its extensions and logins. There is a constraint: Chrome 136+ ignores
+`--remote-debugging-port` on the real `User Data` folder, and a running Chrome
+locks that folder anyway. So Maestro **imports** the profiles instead:
+
+- **List them.** Read `%LOCALAPPDATA%/Google/Chrome/User Data/Local State`
+  (`profile.info_cache`): folder, name, Google account, avatar. Maestro shows
+  them with the same names.
+- **Import them.** Copy each chosen profile folder, plus `Local State`, into
+  Maestro Chrome's own `User Data`, under the same folder names. Skip caches,
+  which are gigabytes and not needed. This brings along extensions and their
+  data (GCare included), bookmarks, and settings. Whether cookies and saved
+  logins survive depends on Chrome's app-bound cookie encryption, and the
+  spike checks this.
+  - If they do not survive: the agent logs in once per site (passwords can
+    come from Google Sync), and the imported profile keeps it from then on.
+- **Keep them current.** A "Refresh from Chrome" button re-imports a profile
+  while the user's Chrome is closed. This matters when the user installed a
+  new extension or logged in somewhere new.
+- **One Maestro Chrome, many profiles.** Tools take a `profile` argument, for
+  example `browser_open({ profile: "Work", url })`.
+  - A window for that profile is opened with
+    `chrome.exe --user-data-dir=<maestro> --profile-directory="Profile 2" <url>`,
+    which the running instance picks up.
+  - CDP sees the tabs of every open profile.
+  - `browser_tabs` reports which profile each tab belongs to.
+- **Why not the live profiles?** Bypassing Chrome's block on the real folder is
+  fragile, since Chrome closes such holes. It would also force the user's own
+  Chrome to be closed while agents work. Driving the live profiles, all tabs
+  and current logins, is the job of the later extension ("Maestro for
+  Chrome"), and it has the extension-UI limit described below.
+
 ## What already exists (reused, not rebuilt)
 
 - **Every agent already gets `maestro-mcp`.** It is registered once, user-wide

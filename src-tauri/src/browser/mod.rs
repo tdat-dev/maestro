@@ -40,10 +40,13 @@ pub struct BrowserStatus {
 /// Start the hub and (re)register the native host. Called once at startup.
 pub fn start(app: &AppHandle, state: &BrowserState) {
     let app2 = app.clone();
-    let wanted = std::fs::read_to_string(std::path::Path::new(&extension_dir()).join("manifest.json"))
-        .ok()
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-        .and_then(|v| v["version"].as_str().map(String::from));
+    let manifest = std::path::Path::new(&extension_dir()).join("manifest.json");
+    let wanted = Box::new(move || {
+        std::fs::read_to_string(&manifest)
+            .ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .and_then(|v| v["version"].as_str().map(String::from))
+    });
     match hub::Hub::start(Box::new(move |ev| {
         let _ = match ev {
             hub::HubEvent::Browsers(list) => app2.emit("browser-hub", list),

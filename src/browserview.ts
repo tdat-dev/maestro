@@ -14,7 +14,9 @@ import { listen } from "@tauri-apps/api/event";
 import { topNote } from "./hint";
 import { notify } from "./ipc";
 
-export interface Ask { id: number; agent: string; what: string; url: string }
+export interface Ask { id: number; agent: string; what: string; url: string; at: number }
+/** Same as the hub's HOLD_MS: after this the agent has given up waiting. */
+const HOLD_MS = 10 * 60_000;
 export interface Blocker { agent: string; kind: string; url: string }
 
 export interface Activity { agent: string; browser: number; label: string; tool: string; action: string; at: number; paused: boolean }
@@ -188,8 +190,11 @@ function note(text: string) {
 
 let asksBox: HTMLElement | null = null;
 const told = new Set<number>();
+let asks: Ask[] = [];
 
-function renderAsks(list: Ask[]) {
+function renderAsks(all: Ask[]) {
+  asks = all;
+  const list = all.filter((a) => !a.at || Date.now() - a.at < HOLD_MS);
   asksBox ??= Object.assign(document.createElement("div"), { className: "bv-asks" });
   if (!asksBox.isConnected) document.body.append(asksBox);
   const had = new Set([...asksBox.querySelectorAll<HTMLElement>("[data-ask]")].map((e) => Number(e.dataset.ask)));
@@ -251,6 +256,11 @@ export function initBrowserView(): void {
     paint();
     void frame();
   });
-  // Follows the stage and keeps "3s ago" true, frames about once a second.
-  setInterval(() => { paint(); void frame(); }, 1000);
+  // Follows the stage and keeps "3s ago" true, frames about once a second,
+  // and lets an ask the agent stopped waiting for disappear.
+  setInterval(() => {
+    paint();
+    void frame();
+    if (asks.some((a) => a.at && Date.now() - a.at >= HOLD_MS)) renderAsks(asks);
+  }, 1000);
 }

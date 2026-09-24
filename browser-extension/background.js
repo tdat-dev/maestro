@@ -162,6 +162,17 @@ async function tabFor(agent, tabId) {
   return mine.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0))[0];
 }
 
+/** A minimised window has no page size, so clicks land nowhere and nothing
+ *  paints. Bring the agent's window back before it reads or acts. */
+async function shown(t) {
+  const w = await chrome.windows.get(t.windowId).catch(() => null);
+  if (w?.state === "minimized") {
+    await chrome.windows.update(w.id, { state: "normal" });
+    await sleep(300);
+  }
+  return t;
+}
+
 const brief = (t) => ({ tabId: t.id, title: t.title ?? "", url: t.url ?? t.pendingUrl ?? "", active: t.active });
 
 // ---------------------------------------------------------------- debugger
@@ -372,12 +383,12 @@ async function run(agent, tool, a) {
       return withBlocker(t.id, text(brief(await chrome.tabs.get(t.id))));
     }
     case "read_page": {
-      const t = await tabFor(agent, a.tabId);
+      const t = await shown(await tabFor(agent, a.tabId));
       const r = await inPage(t.id, snapshotPage, [a.filter === "all" ? "all" : "interactive", a.max ?? 400]);
       return withBlocker(t.id, text(`${r.title}\n${r.url}\nviewport ${r.viewport}\n\n${r.lines.join("\n")}${r.note ? `\n\n(${r.note})` : ""}`));
     }
     case "find": {
-      const t = await tabFor(agent, a.tabId);
+      const t = await shown(await tabFor(agent, a.tabId));
       const hits = await inPage(t.id, findInPage, [a.query, 30]);
       return text(hits.length ? hits.join("\n") : `Nothing on the page matches "${a.query}".`);
     }
@@ -387,12 +398,12 @@ async function run(agent, tool, a) {
       return text(`${r.title}\n${r.url}\n\n${r.text}`);
     }
     case "form_input": {
-      const t = await tabFor(agent, a.tabId);
+      const t = await shown(await tabFor(agent, a.tabId));
       await inPage(t.id, fillRef, [a.ref, a.value]);
       return text(`Set ${a.ref}.`);
     }
     case "computer": {
-      const t = await tabFor(agent, a.tabId);
+      const t = await shown(await tabFor(agent, a.tabId));
       await dbg(t.id);
       guardDialog(t.id);
       const act = a.action;

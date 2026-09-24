@@ -81,7 +81,13 @@ struct Held {
     call: Value,
     what: String,
     url: String,
+    at: u64,
 }
+
+/// How long a held click waits for the user. The agent's call gives up after
+/// the same time (HOLD_TIMEOUT_MS in maestro-mcp), so a late OK never clicks
+/// for an agent that has moved on.
+pub const HOLD_MS: u64 = 10 * 60_000;
 
 /// What Maestro shows for a held click.
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -90,6 +96,7 @@ pub struct Ask {
     pub agent: String,
     pub what: String,
     pub url: String,
+    pub at: u64,
 }
 
 /// A page that wants a person (a login or a CAPTCHA).
@@ -133,7 +140,13 @@ pub enum HubEvent {
 }
 
 fn asks(inner: &Inner) -> Vec<Ask> {
-    let mut v: Vec<Ask> = inner.held.iter().map(|(id, h)| Ask { id: *id, agent: h.agent.clone(), what: h.what.clone(), url: h.url.clone() }).collect();
+    let now = now_ms();
+    let mut v: Vec<Ask> = inner
+        .held
+        .iter()
+        .filter(|(_, h)| now.saturating_sub(h.at) < HOLD_MS)
+        .map(|(id, h)| Ask { id: *id, agent: h.agent.clone(), what: h.what.clone(), url: h.url.clone(), at: h.at })
+        .collect();
     v.sort_by_key(|a| a.id);
     v
 }
@@ -161,9 +174,10 @@ pub struct Hub {
     token: String,
     pub port: u16,
     on_change: OnChange,
-    /// The version of the extension on disk. A browser running another one is
-    /// told to reload, so an update reaches every profile without a click.
-    pub wanted_version: Option<String>,
+    /// The version of the extension on disk, read each time a browser says
+    /// hello. A browser running another one is told to reload, so an update
+    /// (or an edit during development) reaches every profile without a click.
+    pub wanted_version: Box<dyn Fn() -> Option<String> + Send + Sync>,
     /// Maps a browser's signed-in email to its profile name. Swappable in tests.
     profile_of: Box<dyn Fn(&str, &str) -> String + Send + Sync>,
 }
@@ -193,16 +207,16 @@ fn fail(id: &Value, error: String) -> String {
 
 impl Hub {
     pub fn new(token: String, port: u16, on_change: OnChange) -> Self {
-        Hub { inner: Mutex::new(Inner { ask_risky: true, ..Inner::default() }), token, port, on_change, wanted_version: None, profile_of: Box::new(super::profiles::profile_name) }
+        Hub { inner: Mutex::new(Inner { ask_risky: true, ..Inner::default() }), token, port, on_change, wanted_version: Box::new(|| None), profile_of: Box::new(super::profiles::profile_name) }
     }
 
     #[cfg(test)]
     pub fn for_test(token: &str, profile_of: impl Fn(&str, &str) -> String + Send + Sync + 'static) -> Self {
-        Hub { inner: Mutex::new(Inner { ask_risky: true, ..Inner::default() }), token: token.into(), port: 0, on_change: Box::new(|_| {}), wanted_version: None, profile_of: Box::new(profile_of) }
+        Hub { inner: Mutex::new(Inner { ask_risky: true, ..Inner::default() }), token: token.into(), port: 0, on_change: Box::new(|_| {}), wanted_version: Box::new(|| None), profile_of: Box::new(profile_of) }
     }
 
     /// Bind 127.0.0.1 on a free port, publish it, and serve in the background.
-    pub fn start(on_change: OnChange, wanted_version: Option<String>) -> std::io::Result<Arc<Hub>> {
+    pub fn start(on_change: OnChange, wanted_version: Box<dyn Fn() -> Option<String> + Send + Sync>) -> std::io::Result<Arc<Hub>> {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
         let port = listener.local_addr()?.port();
         let mut hub = Hub::new(random_token(), port, on_change);
@@ -260,7 +274,10 @@ impl Hub {
             let mut inner = self.inner.lock().unwrap();
             let Some(h) = inner.held.remove(&id) else { return };
             let agent_tx = inner.peers.get(&h.agent_conn).map(|p| p.tx.clone());
-            if ok {
+            let expired = now_ms().saturating_sub(h.at) >= HOLD_MS;
+            if expired {
+                // The agent stopped waiting; its call already failed.
+            } else if ok {
                 inner.next += 1;
                 let hid = inner.next;
                 let mut call = h.call.clone();
@@ -400,11 +417,12 @@ impl Hub {
                         info.email = v["email"].as_str().unwrap_or("").to_string();
                         info.version = v["version"].as_str().unwrap_or("").to_string();
                         info.profile = (self.profile_of)(&info.browser, &info.email);
-                        let key = format!("{}|{}", info.browser, info.email);
-                        let stale = self.wanted_version.as_ref().is_some_and(|w| *w != info.version);
                         let tx = peer.tx.clone();
-                        if stale && inner.reloaded.insert(key) {
-                            let _ = tx.send(json!({ "type": "call", "id": 0, "agent": "Maestro", "tool": "reload", "args": {} }).to_string());
+                        let info = info.clone();
+                        if let Some(want) = (self.wanted_version)().filter(|w| *w != info.version) {
+                            if inner.reloaded.insert(format!("{}|{}|{}", info.browser, info.email, want)) {
+                                let _ = tx.send(RELOAD.to_string());
+                            }
                         }
                         drop(inner);
                         (self.on_change)(HubEvent::Browsers(self.browsers()));
@@ -424,7 +442,8 @@ impl Hub {
                                 }
                                 let what = confirm["what"].as_str().unwrap_or("a click").to_string();
                                 let url = confirm["url"].as_str().unwrap_or("").to_string();
-                                inner.held.insert(id, Held { agent_conn: a, cid, browser: p.browser, agent: p.agent, call: p.call, what, url });
+                                inner.held.retain(|_, h| now_ms().saturating_sub(h.at) < HOLD_MS);
+                                inner.held.insert(id, Held { agent_conn: a, cid, browser: p.browser, agent: p.agent, call: p.call, what, url, at: now_ms() });
                                 let list = asks(&inner);
                                 drop(inner);
                                 (self.on_change)(HubEvent::Asks(list));
@@ -532,6 +551,17 @@ impl Hub {
                         return false;
                     }
                 };
+                // Running an older extension than the one on disk: update it
+                // first (once per version); the agent simply tries again.
+                if let Some(b) = browsers.iter().find(|b| b.id == target) {
+                    if let Some(want) = (self.wanted_version)().filter(|w| !b.version.is_empty() && *w != b.version) {
+                        if inner.reloaded.insert(format!("{}|{}|{}", b.browser, b.email, want)) {
+                            let _ = inner.peers[&target].tx.send(RELOAD.to_string());
+                            let _ = tx.send(fail(&id, format!("Maestro is updating the browser extension to {want}. Try again in a few seconds.")));
+                            return false;
+                        }
+                    }
+                }
                 let label = browsers.iter().find(|b| b.id == target).map(|b| b.label()).unwrap_or_default();
                 let action = args["action"].as_str().unwrap_or("").to_string();
                 inner.activity.insert(name.clone(), Activity { agent: name.clone(), browser: target, label, tool: tool.to_string(), action, at: now_ms(), paused: false });
@@ -550,6 +580,8 @@ impl Hub {
         }
     }
 }
+
+const RELOAD: &str = r#"{"type":"call","id":0,"agent":"Maestro","tool":"reload","args":{}}"#;
 
 const NONE_CONNECTED: &str = "No browser is connected to Maestro. Open Chrome (or Edge/Brave) in a profile that has the \"Maestro for Chrome\" extension; see Maestro Settings → Browser to install it.";
 
@@ -717,7 +749,7 @@ mod tests {
     #[test]
     fn a_browser_on_an_old_extension_is_told_to_reload_once() {
         let mut hub = Hub::for_test("t", |_, _| "P".into());
-        hub.wanted_version = Some("0.2.0".into());
+        hub.wanted_version = Box::new(|| Some("0.2.0".into()));
         let (br, brx) = peer(&hub);
         hub.on_message(br, r#"{"type":"hello","role":"browser","token":"t"}"#);
         last(&brx);
@@ -725,6 +757,27 @@ mod tests {
         assert_eq!(last(&brx)["tool"], "reload");
         hub.on_message(br, r#"{"type":"browser_info","browser":"Google Chrome","email":"a@x.com","version":"0.1.0"}"#);
         assert_eq!(last(&brx), Value::Null, "only once, so a folder that never updates can't loop");
+    }
+
+    #[test]
+    fn a_call_to_an_out_of_date_browser_updates_it_first() {
+        let mut hub = Hub::for_test("t", |_, _| "P".into());
+        let want = std::sync::Arc::new(Mutex::new("0.1.0".to_string()));
+        let w = want.clone();
+        hub.wanted_version = Box::new(move || Some(w.lock().unwrap().clone()));
+        let (br, brx) = peer(&hub);
+        let (ag, arx) = peer(&hub);
+        hub.on_message(br, r#"{"type":"hello","role":"browser","token":"t"}"#);
+        hub.on_message(br, r#"{"type":"browser_info","browser":"Google Chrome","email":"a@x.com","version":"0.1.0"}"#);
+        hub.on_message(ag, r#"{"type":"hello","role":"agent","token":"t","agent":"Ana"}"#);
+        last(&brx);
+        last(&arx);
+        *want.lock().unwrap() = "0.1.1".into(); // the extension on disk was just edited
+        hub.on_message(ag, r#"{"type":"call","id":1,"tool":"tabs","args":{}}"#);
+        assert_eq!(last(&brx)["tool"], "reload");
+        assert!(last(&arx)["error"].as_str().unwrap().contains("Try again"));
+        hub.on_message(ag, r#"{"type":"call","id":2,"tool":"tabs","args":{}}"#);
+        assert_eq!(last(&brx)["tool"], "tabs", "only one reload per version");
     }
 
     #[test]
@@ -749,6 +802,17 @@ mod tests {
         assert_eq!((again["args"]["confirmed"].as_bool(), again["args"]["ref"].as_str()), (Some(true), Some("ref_3")));
         hub.on_message(br, &json!({ "type": "result", "id": again["id"], "result": { "content": [] } }).to_string());
         assert_eq!((last(&arx)["type"].as_str(), hub.asks().len()), (Some("result"), 0));
+
+        // An OK that comes after the agent gave up clicks nothing.
+        hub.on_message(ag, r#"{"type":"call","id":9,"tool":"computer","args":{"action":"left_click","ref":"ref_9"}}"#);
+        let fwd = last(&brx);
+        hub.on_message(br, &json!({ "type": "result", "id": fwd["id"], "result": { "content": [], "needsConfirm": { "what": "Click \"Mua\"" } } }).to_string());
+        let late = hub.asks()[0].id;
+        hub.inner.lock().unwrap().held.get_mut(&late).unwrap().at -= HOLD_MS;
+        assert!(hub.asks().is_empty(), "an expired ask is no longer shown");
+        hub.answer(late, true);
+        assert_eq!(last(&brx), Value::Null, "a late OK never reaches the page");
+        last(&arx);
 
         hub.on_message(ag, r#"{"type":"call","id":6,"tool":"computer","args":{"action":"left_click","ref":"ref_4"}}"#);
         let fwd = last(&brx);

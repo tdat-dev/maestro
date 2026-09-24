@@ -77,10 +77,10 @@ fn dunce_like(p: std::path::PathBuf) -> String {
 fn register_host() -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let local = std::env::var("LOCALAPPDATA").map_err(|e| e.to_string())?;
     let dir = std::path::PathBuf::from(local).join("Maestro").join("NativeHost");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let exe = host_copy(&dir)?;
     let manifest = dir.join(format!("{HOST_NAME}.json"));
     let body = serde_json::json!({
         "name": HOST_NAME,
@@ -100,6 +100,35 @@ fn register_host() -> Result<(), String> {
     Ok(())
 }
 
+/// Chrome keeps the host running for as long as the extension is connected,
+/// which is always. If the host were maestro.exe itself, that would lock the
+/// file, and neither an update nor a dev rebuild could replace it. So the host
+/// is a copy, named after the build it came from. A new build writes a new
+/// copy beside the old one, which Chrome is still running; old copies are
+/// removed once they are no longer locked.
+#[cfg(windows)]
+fn host_copy(dir: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let meta = std::fs::metadata(&exe).map_err(|e| e.to_string())?;
+    let stamp = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+    let name = format!("maestro-host-{:x}-{:x}.exe", meta.len(), stamp);
+    let copy = dir.join(&name);
+    if !copy.exists() {
+        let tmp = dir.join(format!("{name}.part"));
+        std::fs::copy(&exe, &tmp).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, &copy).map_err(|e| e.to_string())?;
+    }
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for e in entries.flatten() {
+            let n = e.file_name().to_string_lossy().into_owned();
+            if n.starts_with("maestro-host-") && n != name {
+                let _ = std::fs::remove_file(e.path()); // fails while Chrome still runs it
+            }
+        }
+    }
+    Ok(copy)
+}
+
 #[cfg(not(windows))]
 fn register_host() -> Result<(), String> {
     Ok(())
@@ -115,4 +144,21 @@ pub fn browser_status(state: State<'_, BrowserState>) -> BrowserStatus {
         extension_id: EXTENSION_ID,
         extension_dir: extension_dir(),
     }
+}
+
+#[tauri::command]
+pub fn browser_profiles() -> Vec<profiles::ProfileRow> {
+    profiles::all_profiles()
+}
+
+/// Open a window of one of the user's profiles, so they can add the extension
+/// there.
+#[tauri::command]
+pub fn browser_open_profile(browser: String, dir: String) -> Result<(), String> {
+    let exe = profiles::browser_exe(&browser).ok_or_else(|| format!("{browser} isn't installed where Maestro looked."))?;
+    std::process::Command::new(exe)
+        .arg(format!("--profile-directory={dir}"))
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }

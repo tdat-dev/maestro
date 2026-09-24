@@ -128,6 +128,8 @@ pub fn run() {
             dashboard::dashboard_stop,
             dashboard::dashboard_push,
             browser::browser_status,
+            browser::browser_profiles,
+            browser::browser_open_profile,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -19,6 +19,7 @@ import { checkForUpdates } from "./updater";
 import { getVersion } from "@tauri-apps/api/app";
 import { workspaces } from "./appstate";
 import { initPrefsView, resetPrefsView, syncPrefsView } from "./prefsview";
+import { initBrowserPrefs, refreshBrowserPrefs } from "./browserprefs";
 
 /* ---------------- settings modal ---------------- */
 const settingsModal = document.getElementById("settingsModal") as HTMLElement | null;
@@ -71,6 +72,7 @@ export function openSettings() {
   if (setHideTray) setHideTray.checked = getHideToTray();
   syncFontLabel();
   syncPrefsView();
+  void refreshBrowserPrefs();
   document.getElementById("setContent")?.scrollTo(0, 0);
   navToSection("agents", false); // land on the first section
   if (!settingsModal?.classList.contains("open")) settingsBack = document.activeElement as HTMLElement | null;
@@ -90,6 +92,7 @@ export function closeSettings() {
  *  hide-to-tray toggle, and the font-size stepper. Call once at startup. */
 export function initSettingsModal(): void {
   initPrefsView();
+  initBrowserPrefs();
   // Show the running version in the Settings "Updates" row.
   void getVersion()
     .then((v) => { if (setVersion) setVersion.textContent = `Maestro · v${v}`; })

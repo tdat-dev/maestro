@@ -48,6 +48,9 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    },
+    "resources": {
+      "../browser-extension/": "browser-extension/"
     }
   }
 }

@@ -159,6 +159,7 @@
         <button class="sn on" type="button" data-sec="agents">Agents</button>
         <button class="sn" type="button" data-sec="inbox">Inbox</button>
         <button class="sn" type="button" data-sec="terminal">Terminal</button>
+        <button class="sn" type="button" data-sec="browser">Browser</button>
         <button class="sn" type="button" data-sec="fleet">Remote</button>
         <button class="sn" type="button" data-sec="sessions">Sessions</button>
         <button class="sn" type="button" data-sec="system">System</button>
@@ -204,6 +205,22 @@
           <div class="srow">
             <div class="sr-txt"><b>Font size</b><span>Applies live to every agent's terminal.</span></div>
             <div class="stepper" id="setFontStepper"><button type="button" data-dec aria-label="Smaller">−</button><span class="n" id="setFontN">15</span><button type="button" data-inc aria-label="Larger">+</button></div>
+          </div>
+        </section>
+        <section class="sec" data-sec="browser">
+          <h3>Browser</h3>
+          <div class="srow col">
+            <div class="sr-txt"><b>Your browsers, for your agents</b><span>Add Maestro for Chrome to a profile and your agents can open tabs there, read pages, click and type, signed in as you. Each agent works in its own tab group, so you can see what it touches.</span></div>
+            <ul class="bp-list" id="bpList" aria-label="Browser profiles" aria-live="polite"></ul>
+            <div class="bp-setup" id="bpSetup" hidden>
+              <b class="bp-h">Add Maestro for Chrome to <span data-bp-name></span></b>
+              <ol>
+                <li><span>Maestro opened this profile in <span data-bp-browser></span>. In its address bar, go to <code>chrome://extensions</code>.</span><button type="button" class="bp-copy" data-copy="chrome://extensions">Copy</button></li>
+                <li><span>Turn on <b>Developer mode</b>, top right of that page.</span></li>
+                <li><span>Click <b>Load unpacked</b> and choose this folder: <code data-bp-dir></code></span><button type="button" class="bp-copy" data-copy="dir">Copy</button></li>
+              </ol>
+              <div class="bp-foot"><span class="bp-wait"><i aria-hidden="true"></i>This profile shows Connected by itself once it's in.</span><button type="button" class="bp-copy" data-bp-done>Hide steps</button></div>
+            </div>
           </div>
         </section>
         <section class="sec" data-sec="fleet">

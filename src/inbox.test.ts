@@ -282,9 +282,13 @@ describe("inbox DOM", () => {
     panes[1].el.appendChild(document.createElement("textarea")).dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
     expect(panes[1].el.classList.contains("focused")).toBe(true);
     // ✕ takes Eli out; with one agent left it is a single stage again.
+    (panes[0].spec as { badge?: string }).badge = "claude";
     (panes[1].el.querySelector('[data-stage="close"]') as HTMLButtonElement).click();
     expect(document.querySelectorAll(".split-pin")).toHaveLength(0);
     expect(panes[0].el.classList.contains("focused")).toBe(true);
+    // Still Grid, so still a terminal: no Chat/Terminal choice to make.
+    expect(panes[0].el.querySelector(".ib-view")).toBeNull();
+    delete (panes[0].spec as { badge?: string }).badge;
     (document.querySelector('[data-dock="queue"]') as HTMLButtonElement).click();
     expect(document.querySelector('[data-dock="split"]')!.getAttribute("aria-pressed")).toBe("false");
     expect(panes[0].el.style.getPropertyValue("--sw")).toBe("");

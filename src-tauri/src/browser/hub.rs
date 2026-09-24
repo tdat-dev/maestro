@@ -427,6 +427,14 @@ impl Hub {
                         drop(inner);
                         (self.on_change)(HubEvent::Browsers(self.browsers()));
                     }
+                    "pause" => {
+                        // Stop, pressed on the pill the extension draws over the page.
+                        let agent = v["agent"].as_str().unwrap_or("").to_string();
+                        drop(inner);
+                        if !agent.is_empty() {
+                            self.set_paused(&agent, true);
+                        }
+                    }
                     "result" | "error" => {
                         let Some(hid) = v["id"].as_u64() else { return true };
                         let Some(p) = inner.pending.remove(&hid) else { return true };

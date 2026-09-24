@@ -10,9 +10,12 @@
  * DevTools Protocol), so clicks and keys are real browser input. */
 
 import { snapshotPage, locateRef, fillRef, findInPage, pageText, labelAt, blockerOf } from "./page.js";
+import { cursorAct } from "./cursor.js";
 
 const HOST = "com.maestro.browser";
 const COLORS = ["blue", "purple", "green", "orange", "pink", "cyan", "red", "yellow"];
+/** Chrome's tab group colours, so the cursor matches the agent's group. */
+const HEX = { grey: "#5f6368", blue: "#1a73e8", red: "#d93025", yellow: "#e8a500", green: "#1e8e3e", pink: "#d01884", purple: "#9334e6", cyan: "#007b83", orange: "#e8710a" };
 const MAX_CONSOLE = 300;
 const MAX_NETWORK = 300;
 /** Clicks that are hard to take back: sending, posting, paying, deleting.
@@ -97,6 +100,12 @@ async function onMessage(msg) {
 
 // The popup asks how things stand.
 chrome.runtime.onMessage.addListener((m, _s, reply) => {
+  if (m?.type === "stop_agent" && m.agent) {
+    // Stop, pressed on the pill over the page: Maestro refuses the agent's
+    // browser calls until you let it go on there.
+    send({ type: "pause", agent: m.agent });
+    return;
+  }
   if (m?.type !== "status") return;
   (async () => {
     const groups = await chrome.tabGroups.query({});
@@ -198,6 +207,7 @@ const cdp = (tabId, method, params = {}) => chrome.debugger.sendCommand({ tabId 
 
 chrome.debugger.onDetach.addListener((src) => attached.delete(src.tabId));
 chrome.tabs.onRemoved.addListener((tabId) => {
+  lastPos.delete(tabId);
   attached.delete(tabId);
   consoleLog.delete(tabId);
   networkLog.delete(tabId);
@@ -335,6 +345,26 @@ async function point(tabId, args) {
   throw new Error("Give a ref (from browser_read_page) or a coordinate [x, y] (from a screenshot).");
 }
 
+/** Where each tab's cursor last was, so a new page starts it there. */
+const lastPos = new Map();
+
+/** Drive the agent's cursor in the page (see cursor.js). Never fails a tool:
+ *  a page that can't be drawn on (chrome://, the Web Store) just has none. */
+async function cursor(tabId, agent, op, extra = {}) {
+  try {
+    const [r] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: cursorAct,
+      args: [op, { ...extra, name: agent, color: HEX[colorFor(agent)], from: lastPos.get(tabId) }],
+    });
+    if (Array.isArray(r?.result)) lastPos.set(tabId, r.result);
+  } catch {}
+}
+
+/** "ctrl+a" → "Ctrl+A", "Enter" → "Enter", for the chip beside the cursor. */
+const prettyKeys = (combo) =>
+  combo.trim().split(/\s+/).map((c) => c.split("+").map((k) => (k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1))).join("+")).join("  ");
+
 /** Add a note (and a flag Maestro reads) when the page wants a person. */
 async function withBlocker(tabId, result) {
   let kind = "";
@@ -360,6 +390,7 @@ async function run(agent, tool, a) {
       const tab = await chrome.tabs.create({ url: a.url ? withScheme(a.url) : "about:blank", active: true });
       await intoGroup(agent, tab.id);
       if (a.url) await waitLoaded(tab.id);
+      void cursor(tab.id, agent, "show");
       return withBlocker(tab.id, text(brief(await chrome.tabs.get(tab.id))));
     }
     case "tab_adopt": {
@@ -380,6 +411,7 @@ async function run(agent, tool, a) {
       else await chrome.tabs.update(t.id, { url: withScheme(a.url) });
       await sleep(150);
       await waitLoaded(t.id);
+      void cursor(t.id, agent, "show");
       return withBlocker(t.id, text(brief(await chrome.tabs.get(t.id))));
     }
     case "read_page": {
@@ -399,6 +431,9 @@ async function run(agent, tool, a) {
     }
     case "form_input": {
       const t = await shown(await tabFor(agent, a.tabId));
+      const at = await inPage(t.id, locateRef, [a.ref]);
+      await cursor(t.id, agent, "move", at);
+      void cursor(t.id, agent, "type", { text: typeof a.value === "string" ? a.value : String(a.value) });
       await inPage(t.id, fillRef, [a.ref, a.value]);
       return text(`Set ${a.ref}.`);
     }
@@ -407,11 +442,24 @@ async function run(agent, tool, a) {
       await dbg(t.id);
       guardDialog(t.id);
       const act = a.action;
-      if (act === "screenshot") return screenshot(t.id);
+      if (act === "screenshot") {
+        // The agent sees the page, not its own cursor.
+        await cursor(t.id, agent, "hide");
+        try { return await screenshot(t.id); } finally { void cursor(t.id, agent, "unhide"); }
+      }
       if (act === "wait") { await sleep(Math.min(30, a.duration ?? 1) * 1000); return text("Waited."); }
-      if (act === "type") { await cdp(t.id, "Input.insertText", { text: String(a.text ?? "") }); return text("Typed."); }
-      if (act === "key") { await pressKeys(t.id, String(a.text ?? "")); return text(`Pressed ${a.text}.`); }
+      if (act === "type") {
+        void cursor(t.id, agent, "type", { text: String(a.text ?? "") });
+        await cdp(t.id, "Input.insertText", { text: String(a.text ?? "") });
+        return text("Typed.");
+      }
+      if (act === "key") {
+        void cursor(t.id, agent, "key", { text: prettyKeys(String(a.text ?? "")) });
+        await pressKeys(t.id, String(a.text ?? ""));
+        return text(`Pressed ${a.text}.`);
+      }
       const { x, y } = await point(t.id, a);
+      await cursor(t.id, agent, "move", { x, y });
       if (act === "hover") { await cdp(t.id, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y }); return text(`Hovering at ${x},${y}.`); }
       if (act === "scroll") {
         const n = (a.scroll_amount ?? 3) * 100;
@@ -434,6 +482,7 @@ async function run(agent, tool, a) {
           return r;
         }
       }
+      await cursor(t.id, agent, "click", { x, y, button });
       await mouse(t.id, x, y, { button, clicks });
       await sleep(400);
       return withBlocker(t.id, text(`${act} at ${x},${y}.`));

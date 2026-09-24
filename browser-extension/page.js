@@ -163,7 +163,7 @@ export function pageText(maxChars) {
 
 /** The name of what sits at a point: the button or link a click there hits. */
 export function labelAt(x, y) {
-  let el = document.elementFromPoint(x, y);
+  let el = document.elementsFromPoint(x, y).find((e) => !e.closest("[data-maestro-overlay]"));
   el = el?.closest("button,a,[role=button],[role=link],[role=menuitem],input[type=submit],input[type=button],[onclick]") ?? el;
   if (!el) return "";
   return (el.getAttribute("aria-label") || el.value || el.innerText || el.title || "").replace(/\s+/g, " ").trim().slice(0, 80);

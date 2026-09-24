@@ -16,14 +16,14 @@ export interface HelpTool { id: string; name: string; what: string; keys?: strin
 
 export const HELP: HelpSection[] = [
   { title: "Agents", rows: [
-    { keys: [["Right-click"], ["Shift", "F10"]], what: "An agent in the list: rename it, add it to Split, see its changes, restart, stop or remove it." },
+    { keys: [["Right-click"], ["Shift", "F10"]], what: "An agent in the list: rename it, add it to the Grid, see its changes, restart, stop or remove it." },
     { keys: [["Alt", "↑"], ["Alt", "↓"]], what: "Move through the agents in the list." },
     { keys: [["Alt", "1…9"]], what: "Answer the agent on screen with that option, without the mouse." },
     { keys: [["Ctrl", "Shift", "T"]], what: "New agent. Give 2 or 3 agents the same job to race them, then Compare and keep the best." },
   ] },
-  { title: "Split and review", rows: [
-    { keys: [["Alt", "S"]], what: "Split: the agents side by side, each answering on its own card. Up to 9, in Settings." },
-    { keys: [["Alt", "P"]], what: "Add the agent on screen to Split, or take it out." },
+  { title: "Focus, Grid and review", rows: [
+    { keys: [["Alt", "S"]], what: "Switch between Focus, one agent as a chat, and Grid, several side by side as terminals, each answering on its own card. Up to 9, in Settings." },
+    { keys: [["Alt", "P"]], what: "Add the agent on screen to the Grid, or take it out." },
     { keys: [["Alt", "R"]], what: "What the agent changed, file by file. Merge it, or send it back with a note." },
     { keys: [["Alt", "H"]], what: "What the agent did, and what you answered, by day." },
   ] },

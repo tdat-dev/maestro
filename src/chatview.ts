@@ -160,6 +160,9 @@ async function poll(pane: Pane, v: View): Promise<void> {
     const dir = dirOf(pane);
     if (!dir) return;
     const since = pane.spawnedAt ? pane.spawnedAt - 5000 : null;
+    // Without its own session id, only a transcript begun after this run started
+    // can be its own; a stopped agent from an old session shows nothing.
+    if (!pane.spec.sessionId && since === null) return;
     for (let k = 0; k < SLICES_PER_TICK; k++) {
       const r = await claudeTranscript(dir, pane.spec.sessionId ?? null, since, v.offset);
       if (r.path && r.path !== v.path) {

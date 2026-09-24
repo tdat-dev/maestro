@@ -12,8 +12,8 @@ let lastAt = 0;
 
 export const TIPS = {
   welcome: "Press <kbd>?</kbd> to see everything Maestro can do · <kbd>Ctrl</kbd> <kbd>K</kbd> jumps anywhere",
-  menu: "Right-click an agent, or its <b>⋯</b>, to rename it, add it to Split, stop or remove it",
-  split: "Several agents? <kbd>Alt</kbd> <kbd>S</kbd> shows them side by side, each answering on its own card",
+  menu: "Right-click an agent, or its <b>⋯</b>, to rename it, add it to the Grid, stop or remove it",
+  split: "Several agents? <b>Grid</b> (<kbd>Alt</kbd> <kbd>S</kbd>) shows them side by side, each answering on its own card",
   review: "<kbd>Alt</kbd> <kbd>R</kbd> shows what it changed, to merge or send back",
 } as const;
 export type TipId = keyof typeof TIPS;

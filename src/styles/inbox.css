@@ -223,7 +223,9 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
   background: var(--ib-raise);
   box-shadow: var(--ib-float);
 }
+.id-seg button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .id-seg button {
+  display: inline-flex; align-items: center; gap: 7px;
   height: 32px; padding: 0 14px;
   border-radius: 999px;
   font: 500 13px var(--sans);

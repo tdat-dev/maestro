@@ -384,7 +384,7 @@ export function agentMenu(t: Task): MenuItem[] {
     { label: "Open", run: onStage },
     { label: "Rename…", run: () => void confirmModal({ title: "Rename agent", message: "What should this agent be called?", okLabel: "Rename", input: { value: pane.spec.name } })
       .then((r) => { if (r.ok) { renamePane(pane, r.value); render(); } }) },
-    { label: pinned ? "Take out of Split" : "Add to Split", hint: "Alt+P", run: () => {
+    { label: pinned ? "Take out of Grid" : "Add to Grid", hint: "Alt+P", run: () => {
       if (pinned) { pins = pins.filter((id) => id !== pane.id); if (splitOn) splitClosed.add(pane.id); }
       else { splitClosed.delete(pane.id); pins = togglePin(pins, pane.id, stagePane()?.id, getPref("splitMax")); }
       render();
@@ -428,7 +428,7 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
         return `<button class="iq-row st-${t.status.state}" role="listitem" data-id="${esc(t.paneId)}" aria-current="${t.paneId === current}">
           <span class="iq-mk" style="background:${esc(p?.color ?? "#888")}" aria-hidden="true">${esc((t.name.trim()[0] ?? "?").toUpperCase())}</span>
           <span class="iq-t">${esc(t.title ?? t.name)}</span>
-          <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In Split">◫</span> ` : ""}${ago(now - t.since)}</span>
+          <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In the Grid">◫</span> ` : ""}${ago(now - t.since)}</span>
           <span class="iq-more" data-more title="More (right-click)" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="12.5" cy="8" r="1.3" fill="currentColor"/></svg></span>
           <span class="iq-s"><span class="iq-p">${esc(t.title ? t.name : t.project)}</span>${t.race ? ` <span class="iq-race">race ${t.race.n}/${t.race.of}</span>` : ""} · <span class="iq-l">${esc(rowLine(t))}</span>${lineCounts(t)}</span>
         </button>`;
@@ -467,7 +467,7 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
       acts.className = `ib-acts ${mode}`;
       acts.dataset.mode = mode;
       acts.innerHTML = pinned
-        ? `<button class="ib-icon" data-stage="full" title="Open full size" aria-label="Open ${esc(t.name)} full size">⤢</button><button class="ib-icon" data-stage="close" title="Take out of Split" aria-label="Take ${esc(t.name)} out of Split">✕</button>`
+        ? `<button class="ib-icon" data-stage="full" title="Open full size" aria-label="Open ${esc(t.name)} full size">⤢</button><button class="ib-icon" data-stage="close" title="Take out of Grid" aria-label="Take ${esc(t.name)} out of the Grid">✕</button>`
         : `${chatSupported(p) && getPref("chatView") ? `<span class="ib-view" role="group" aria-label="Show ${esc(t.name)} as"><button data-stage="chat" title="The conversation">Chat</button><button data-stage="term" title="The terminal, as the CLI draws it">Terminal</button></span>` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
       pill.after(acts);
     }
@@ -737,8 +737,8 @@ export function paletteItems(): PaletteItem[] {
   return [
     ...agents,
     act("New agent", () => openNewAgent(), "Ctrl+Shift+T", "Give 2 or 3 the same job to race them"),
-    act(splitOn ? "Leave Split" : "Split: pinned agents side by side", () => setSplit(!splitOn), "Alt+S", "Each agent on its own card, answering in place"),
-    act("Pin or unpin the current agent in Split", () => pinCurrent(), "Alt+P"),
+    act(splitOn ? "Back to Focus: one agent, as a chat" : "Grid: agents side by side", () => setSplit(!splitOn), "Alt+S", "Each agent on its own card, answering in place"),
+    act("Add the current agent to the Grid, or take it out", () => pinCurrent(), "Alt+P"),
     act("Review what the current agent changed", () => openReview(), "Alt+R", "Merge it, or send it back with a note"),
     act("History of the current agent", () => openHistory(), "Alt+H", "What it did and what you answered"),
     act("Board", () => openTool("kanban"), "Ctrl+Shift+K", "Cards the agents move as they work"),
@@ -862,8 +862,8 @@ function mount(): void {
   dockEl.setAttribute("aria-label", "Maestro");
   dockEl.innerHTML = `
     <div class="id-seg">
-      <button data-dock="queue" aria-pressed="true" title="One agent at a time">Queue</button>
-      <button data-dock="split" aria-pressed="false" title="Pinned agents side by side (Alt+S; Alt+P pins)">Split</button>
+      <button data-dock="queue" aria-pressed="true" title="Focus: one agent at a time, as a chat (Alt+S switches)"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/><path d="M5.5 6.5h5M5.5 9.5h3"/></svg><span>Focus</span></button>
+      <button data-dock="split" aria-pressed="false" title="Grid: several agents side by side, as terminals (Alt+S switches, Alt+P adds one)"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.4"/><rect x="9" y="2" width="5" height="5" rx="1.4"/><rect x="2" y="9" width="5" height="5" rx="1.4"/><rect x="9" y="9" width="5" height="5" rx="1.4"/></svg><span>Grid</span></button>
     </div>
     <button class="id-search" data-dock="search" title="Jump to an agent or run a command (Ctrl K)">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>

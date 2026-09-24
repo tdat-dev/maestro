@@ -26,7 +26,7 @@ vi.mock("./ipc", () => ({
   },
 }));
 
-import { ago, chatCommand, chatSupported, dropChat, hideChat, modelName, showChat, took, tokens, whereIn } from "./chatview";
+import { ago, chatCommand, chatSupported, dropChat, hideChat, modelAlias, modelName, showChat, took, tokens, whereIn } from "./chatview";
 import type { Pane } from "./panetypes";
 
 const T = "2026-09-24T10:00:00.000Z";
@@ -187,9 +187,48 @@ it("answers /resume itself: its conversations to pick from, the pick resumed her
     (p.el.querySelector("[data-new-convo]") as HTMLButtonElement).click();
     expect(restarts).toEqual([undefined, { fresh: true }]);
   });
+  it("lets you pick any model, the one in use marked, and switches through the CLI", async () => {
+    io.chunks = [
+      JSON.stringify({ type: "user", timestamp: "2026-09-24T10:00:00.000Z", origin: { kind: "human" }, message: { content: "<local-command-stdout>Set model to `Haiku 4.5` and saved as your default for new sessions</local-command-stdout>" } }) + "\n",
+    ];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    (p.el.querySelector("[data-model]") as HTMLButtonElement).click();
+    const rows = [...document.querySelectorAll<HTMLButtonElement>(".cm-item")];
+    expect(rows.filter((b) => b.getAttribute("aria-disabled") === "true")).toEqual([]);
+    const haiku = rows.find((b) => b.textContent!.startsWith("Haiku"))!;
+    expect(haiku.textContent).toContain("In use");
+    rows.find((b) => b.textContent!.startsWith("Opus") && !b.textContent!.startsWith("Opus Plan"))!.click();
+    expect(io.sent).toEqual([["p1", "/model opus"]]);
+  });
+
+  it("empties at once for a new conversation, before it has written anything", async () => {
+    io.chunks = [j({ type: "user", origin: { kind: "human" }, message: { content: "old talk" } })];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    expect(p.el.querySelector(".cv-bubble")!.textContent).toBe("old talk");
+    // /clear or New conversation: a new session id, no file for it yet
+    p.spec.sessionId = "99999999-2222-3333-4444-555555555555";
+    showChat(p, { name: "Ana", state: "working" });
+    expect(p.el.querySelector(".cv-bubble")).toBeNull();
+    await flush();
+    expect(p.el.querySelector(".cv-bubble")).toBeNull();
+    expect(io.asked[io.asked.length - 1].sessionId).toBe("99999999-2222-3333-4444-555555555555");
+  });
+
 });
 
 describe("chat view words", () => {
+  it("tells which alias a model is, from however Claude names it", () => {
+    expect(modelAlias("Opus 5.5 (1M context)")).toBe("opus");
+    expect(modelAlias("claude-haiku-4-5-20251001")).toBe("haiku");
+    expect(modelAlias("Sonnet 5")).toBe("sonnet");
+    expect(modelAlias("Opus in plan mode, else Sonnet")).toBe("opusplan");
+    expect(modelAlias(null)).toBeNull();
+  });
+
   it("knows which commands the chat answers itself", () => {
     expect(chatCommand("/resume")).toEqual({ kind: "resume", query: "" });
     expect(chatCommand(" /resume login bug ")).toEqual({ kind: "resume", query: "login bug" });

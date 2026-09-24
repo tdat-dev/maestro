@@ -58,6 +58,17 @@ export function modelName(id: string | null): string {
   return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ""}`;
 }
 
+/** Which of Claude Code's model aliases a model name is: "Opus 5.5 (1M
+ *  context)" → "opus", "claude-haiku-4-5-2025" → "haiku", Opus Plan's
+ *  "Opus in plan mode, else Sonnet" → "opusplan". Null when unknown. */
+export function modelAlias(model: string | null): string | null {
+  if (!model) return null;
+  const s = model.toLowerCase();
+  if (s.includes("opusplan") || /plan mode/.test(s)) return "opusplan";
+  for (const a of ["opus", "sonnet", "haiku"]) if (s.includes(a)) return a;
+  return null;
+}
+
 /** 950 → "950", 45_200 → "45k", 1_300_000 → "1.3M". */
 export function tokens(n: number): string {
   if (n < 1000) return String(n);
@@ -214,6 +225,8 @@ interface View {
   sideSig: string;
   /** What the CLI said about itself (its commands, its model). */
   facts?: CliFacts;
+  /** The Claude session this view shows; another one means another conversation. */
+  session?: string;
   /** Earlier conversations in its folder, newest first (asked now and then). */
   sessions?: ClaudeSession[];
   sessionsAt?: number;
@@ -305,8 +318,27 @@ function draw(v: View, force = false): void {
   }
 }
 
+/** The view follows the agent's session: a new conversation (/clear, New
+ *  conversation) or another one (/resume) starts the view over at once, even
+ *  before the new session has written anything. */
+function follow(pane: Pane, v: View): boolean {
+  const id = pane.spec.sessionId;
+  if (id === v.session) return false;
+  v.session = id;
+  v.chat = createChat();
+  v.offset = 0;
+  v.path = "";
+  v.sig = "";
+  v.sideSig = "";
+  v.open.clear();
+  v.expanded.clear();
+  v.window = WINDOW;
+  return true;
+}
+
 async function poll(pane: Pane, v: View): Promise<void> {
   if (!pane.el.isConnected) { dropChat(pane.id); return; }
+  follow(pane, v);
   const dir0 = dirOf(pane);
   if (dir0 && (!v.sessionsAt || Date.now() - v.sessionsAt > 30_000)) {
     v.sessionsAt = Date.now();
@@ -321,13 +353,16 @@ async function poll(pane: Pane, v: View): Promise<void> {
     // Without its own session id, only a transcript begun after this run started
     // can be its own; a stopped agent from an old session shows nothing.
     if (!pane.spec.sessionId && since === null) return;
+    const session = pane.spec.sessionId;
     for (let k = 0; k < SLICES_PER_TICK; k++) {
-      const r = await claudeTranscript(dir, pane.spec.sessionId ?? null, since, v.offset);
+      const r = await claudeTranscript(dir, session ?? null, since, v.offset);
+      // Without a session id of its own (a preset that picks one), a new file
+      // is the only sign of a new conversation.
       if (r.path && r.path !== v.path) {
-        // A new session (the agent restarted): start the conversation over.
-        if (v.path) { v.chat = createChat(); v.offset = 0; v.path = r.path; continue; }
+        if (v.path) { v.chat = createChat(); v.offset = 0; v.path = r.path; v.sig = ""; continue; }
         v.path = r.path;
       }
+      if (session !== pane.spec.sessionId) return; // switched while reading: next tick
       if (!r.text) break;
       v.chat.feed(r.text);
       v.offset = r.next;
@@ -454,13 +489,18 @@ function mount(pane: Pane): View {
       const p = profileOf(pane.spec.badge);
       if (!p.modelCommand) return;
       const r = modelBtn.getBoundingClientRect();
-      const now = v.chat.meta.model ?? v.facts?.model ?? "";
+      // Only what this conversation itself says is in use; every model stays
+      // pickable (choosing the one in use again is harmless).
+      const inUse = modelAlias(v.chat.meta.model);
       openMenu(r.left, r.top - 8, [
         ...(p.models ?? []).map((m) => ({
-          label: m.label, hint: m.hint,
-          // The CLI switches itself: the same command you would type.
-          run: () => { void sendMessage(pane.id, `${p.modelCommand} ${m.value}`); },
-          disabled: !!now && now.toLowerCase().includes(m.value),
+          label: m.label, hint: m.value === inUse ? "In use" : m.hint,
+          // The CLI switches itself: the same command you would type. It also
+          // saves it as the default, so what we asked the CLI earlier is stale.
+          run: () => {
+            void sendMessage(pane.id, `${p.modelCommand} ${m.value}`);
+            void cliFacts(pane.spec.badge, pane.spec.program, pane.spec.ranIn ?? pane.spec.cwd, true)?.then((f) => { v.facts = f; }).catch(() => {});
+          },
         })),
         { label: "More in the terminal…", sep: true, hint: "Its own picker", run: () => { v.state.onTerminal?.(); void sendMessage(pane.id, p.modelCommand!); } },
       ], "Model");
@@ -499,6 +539,8 @@ function mount(pane: Pane): View {
 export function showChat(pane: Pane, state: ChatState, focus = false): void {
   const v = views.get(pane.id) ?? mount(pane);
   v.state = state;
+  // another conversation: read it now rather than at the next tick
+  if (follow(pane, v) && v.timer !== null) void poll(pane, v);
   pane.el.classList.add("chat-on");
   if (v.timer === null) {
     v.timer = window.setInterval(() => void poll(pane, v), POLL_MS);

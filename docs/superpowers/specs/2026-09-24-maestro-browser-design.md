@@ -29,6 +29,92 @@ not have that limit.
 - The user's everyday Chrome is never touched, so an agent cannot wander into
   personal tabs.
 
+## Direction (decided 2026-09-24): learn from Claude in Chrome
+
+**The user's call**: "xem cơ chế claude in chrome nó làm ntn thì học vậy",
+meaning do it the way Claude in Chrome does. The main route is therefore an
+extension in the user's real browsers, not a separate Chrome. The dedicated
+CDP Chrome described below becomes an optional extra, for headless runs or
+extension popups.
+
+**How Claude in Chrome works**, from code.claude.com/docs/en/chrome and this
+machine's install:
+- **The extension**: MV3, Web Store id `fcoeoab…`, installed in the user's
+  everyday Chrome. It works in any Chromium browser (Chrome, Edge, Brave,
+  Arc, Vivaldi, Opera) and uses whatever the user is already signed into.
+- **The native messaging host** is `claude.exe --chrome-native-host`,
+  launched by a `.bat` wrapper at `~/.claude/chrome/`.
+  - It is registered at
+    `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.anthropic.claude_code_browser_extension`,
+    with one key per browser (Edge and Brave have their own).
+  - Its manifest has `allowed_origins: ["chrome-extension://<id>/"]`.
+  - Chrome starts the host when the extension calls `connectNative`.
+  - On Windows the host and the Claude Code session meet on a named pipe,
+    hence "EADDRINUSE" when two sessions compete. Remote sessions go through
+    `bridge.claudeusercontent.com`.
+- **Several browsers or profiles at once**: every profile with the extension
+  counts as one connected browser. The user picks which one to use, and it
+  can be switched later.
+- **Tabs**: each session gets its own tab group, closed when the session ends.
+- **Safety**:
+  - Site permissions live in the extension.
+  - At a login page or CAPTCHA it pauses and asks the user.
+  - JavaScript dialogs block it, and the user must dismiss them.
+- **Idle drop**: the service worker can go idle and drop the connection. The
+  fix is a "Reconnect" action.
+- **Tools**:
+  - tabs context and create, navigate;
+  - `computer` (screenshot, click, type, key, scroll);
+  - `read_page` (element refs), `find`, `form_input`, `get_page_text`;
+  - JavaScript, console, network;
+  - GIF recording, upload, resize.
+
+**Maestro's version ("Maestro for Chrome"):**
+- **The extension**: MV3, loaded unpacked for now, Web Store later. It has a
+  fixed `key` in the manifest so its id is stable.
+  - Permissions: `debugger`, `tabs`, `tabGroups`, `scripting`,
+    `nativeMessaging`, `storage`, `identity`, `identity.email`, and host
+    `<all_urls>`.
+  - The service worker holds a `connectNative("com.maestro.browser")` port.
+    An open native port keeps an MV3 worker alive.
+  - Input, screenshots, the accessibility tree and JavaScript all go through
+    `chrome.debugger`, which speaks CDP.
+- **The host**: `maestro.exe --chrome-native-host`, the same binary
+  (Rust, handled in `main.rs` before Tauri starts).
+  - It relays native messaging frames (4-byte little-endian length plus
+    JSON) to the running Maestro app over a named pipe
+    `\\.\pipe\maestro-browser`.
+  - If Maestro is not running, it answers "Maestro is not open".
+- **Registration**: Maestro writes the host manifest and the HKCU keys for
+  Chrome, Edge and Brave at startup, the way Claude Code does.
+- **Maestro is the hub.**
+  - Each host connection says hello with the browser, the profile email (from
+    `chrome.identity.getProfileUserInfo`), and the extension version. Maestro
+    maps the email to the profile name through `Local State`
+    (`profile.info_cache`).
+  - maestro-mcp processes, one per agent, connect to the same hub over a
+    second pipe, `\\.\pipe\maestro-browser-mcp`. The hub routes each request
+    to the right profile, knows which agent asked, and can show a live view
+    or stop an agent. No agent talks to a browser directly.
+- **Per agent**:
+  - one tab group in the agent's colour, named after the agent;
+  - the agent picks a profile by name, or Maestro asks once when more than
+    one is connected.
+- **Tools, the same names and shapes as Claude in Chrome**, so agents
+  already know them: `tabs_context`, `tabs_create`, `navigate`, `computer`,
+  `read_page`, `find`, `form_input`, `get_page_text`, `javascript`,
+  `console`, `network`, `list_browsers`, `select_browser`.
+- **Its limit**:
+  - It cannot reach `chrome://` pages, the Web Store, or other extensions'
+    own pages.
+  - GravityCare's app is still reachable, because it lives on facebook.com
+    (see the spike).
+- **Installing into each profile**: Maestro shows the extension folder, and a
+  button opens `chrome://extensions` in the chosen profile
+  (`chrome.exe --profile-directory=…`). The user turns on Developer mode and
+  clicks Load unpacked once per profile. After Web Store publication, a
+  registry external-extension entry can offer it to every profile.
+
 ## Spike results (2026-09-24, Chrome 153.0.8010.53, this machine)
 
 **Copying a real profile does not work:**

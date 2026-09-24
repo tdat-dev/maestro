@@ -455,7 +455,7 @@ showView();
     intro?.remove();
   };
   // A detached window should feel like a continuation, not a fresh app launch.
-  window.setTimeout(clearIntro, isDetachedWindow ? 0 : 1850);
+  window.setTimeout(clearIntro, isDetachedWindow ? 0 : 2100);
 }
 
 // Silently check GitHub Releases for a newer signed build; prompts only if one

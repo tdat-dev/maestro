@@ -253,3 +253,38 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
   .cv-chev, .cv-compose { transition: none; }
   .cv button:not([disabled]):active, .ib-acts button:active { transform: none; }
 }
+
+/* ---- what the agent saw: screenshots and images, under the step that took them ---- */
+.cv-shots { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 10px 23px; }
+.cv-bubble .cv-shots { margin: 0 0 8px; justify-content: flex-end; }
+.cv-bubble .cv-shots:only-child { margin: 0; }
+.cv-shot {
+  display: block; padding: 0; border-radius: 10px; overflow: hidden; cursor: zoom-in;
+  background: var(--surface-0); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 6px 18px rgba(0, 0, 0, 0.35);
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+.cv-shot img { display: block; max-width: min(420px, 100%); max-height: 240px; width: auto; height: auto; object-fit: contain; }
+.cv-shots:has(.cv-shot + .cv-shot) .cv-shot img { max-width: 220px; max-height: 150px; }
+.cv-shot:hover { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 10px 26px rgba(0, 0, 0, 0.45); transform: translateY(-1px); }
+.cv-shot:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* full size: the picture fills the window, its step named above it */
+/* the app behind goes dark and soft, so the picture and its name are all you read */
+.cv-lb { z-index: 700; place-items: center; padding: 20px 28px 28px; background: rgba(5, 5, 6, 0.9); backdrop-filter: blur(6px); }
+.cv-lb-box { display: flex; flex-direction: column; gap: 12px; width: 100%; height: calc(100vh - 48px); max-width: 1600px; }
+.cv-lb-bar { display: flex; align-items: center; gap: 12px; color: var(--ib-ink); font-size: 13.5px; }
+.cv-lb-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.cv-lb-n { color: var(--ib-ink-3); font-variant-numeric: tabular-nums; }
+.cv-lb-bar .im-x { margin-left: auto; flex: none; display: grid; place-items: center; }
+.cv-lb-stage { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; }
+.cv-lb-img { max-width: calc(100% - 112px); max-height: calc(100vh - 120px); object-fit: contain; border-radius: 10px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.cv-lb-nav {
+  position: absolute; top: 50%; translate: 0 -50%; width: 40px; height: 40px; border-radius: 999px;
+  display: grid; place-items: center; color: var(--ib-ink);
+  background: rgba(20, 21, 25, 0.8); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.cv-lb-nav.prev { left: 8px; }
+.cv-lb-nav.next { right: 8px; }
+.cv-lb-nav:hover { background: rgba(40, 41, 46, 0.9); }
+.cv-lb-nav:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .cv-shot { transition: none; } .cv-shot:hover { transform: none; } }

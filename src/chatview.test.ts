@@ -170,6 +170,37 @@ describe("chat view", () => {
     expect(pre.querySelectorAll("span").length).toBeGreaterThan(1);
   });
 
+  it("shows what the agent saw: its screenshots under the step, full size on a click", async () => {
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    const image = { type: "image", source: { type: "base64", media_type: "image/png", data: png } };
+    io.chunks = [
+      j({ type: "assistant", message: { id: "m1", content: [{ type: "tool_use", id: "s1", name: "mcp__claude-in-chrome__computer", input: { action: "screenshot" } }] } }) +
+      j({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "s1", content: [image, image] }] } }) +
+      j({ type: "user", origin: { kind: "human" }, message: { content: [{ type: "text", text: "like this" }, image] } }),
+    ];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const shots = [...p.el.querySelectorAll<HTMLButtonElement>(".cv-step .cv-shot")];
+    expect(shots).toHaveLength(2);
+    const src = shots[0].querySelector("img")!.getAttribute("src")!;
+    expect(src.startsWith("blob:") || src.startsWith("data:image/png;base64,")).toBe(true);
+    expect(shots[0].getAttribute("aria-label")).toBe("Screenshot 1 of 2, open full size");
+    // what you pasted shows as a picture in your bubble, not as "1 image"
+    expect(p.el.querySelector(".cv-bubble .cv-shot img")).not.toBeNull();
+    expect(p.el.querySelector(".cv-bubble .cv-img")).toBeNull();
+    shots[1].click();
+    const lb = document.querySelector<HTMLElement>(".cv-lb")!;
+    expect(lb.querySelector(".cv-lb-t")!.textContent).toBe("Took a screenshot claude in chrome");
+    expect(lb.querySelector(".cv-lb-n")!.textContent).toBe("2 / 2");
+    expect(lb.querySelector<HTMLImageElement>(".cv-lb-img")!.getAttribute("src")).toBe(shots[1].querySelector("img")!.getAttribute("src"));
+    lb.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    expect(lb.querySelector(".cv-lb-n")!.textContent).toBe("1 / 2");
+    lb.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(document.querySelector(".cv-lb")).toBeNull();
+    expect(io.keys).toEqual([]); // Esc closed the picture, it didn't stop the agent
+  });
+
   it("asks before switching conversations while the agent works", async () => {
     io.sessions = [{ id: "aaaaaaaa-2222-3333-4444-555555555555", modified_ms: Date.now(), title: "Fix the login", messages: 12 }];
     const p = pane();

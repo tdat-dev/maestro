@@ -6,7 +6,8 @@
 
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import { createChat, turnsOf, type Chat, type ChatItem, type StepItem } from "./chatmodel";
+import { createChat, turnsOf, type Chat, type ChatImage, type ChatItem, type StepItem } from "./chatmodel";
+import { ICON_CLOSE } from "./icons";
 import { openMenu } from "./ctxmenu";
 import { openPalette, type PaletteItem } from "./inboxpalette";
 import { cliFacts, profileOf, type CliFacts } from "./cliprofile";
@@ -131,9 +132,13 @@ const ICON: Record<string, string> = {
   plan: `<path d="M4 6h2M4 10h2M4 14h2M9 6h7M9 10h7M9 14h7" />`,
   agent: `<circle cx="10" cy="7" r="3" /><path d="M4 17c1-3 3.5-4 6-4s5 1 6 4" />`,
   tool: `<path d="M12 4a4 4 0 0 0-4 5l-4 4 3 3 4-4a4 4 0 0 0 5-4l-2 2-2-1-1-2z" />`,
+  shot: `<path d="M3 7h3l1.5-2h5L14 7h3v9H3z" /><circle cx="10" cy="11.5" r="2.8" />`,
+  image: `<rect x="3" y="4" width="14" height="12" rx="2" /><circle cx="7.5" cy="8.5" r="1.3" /><path d="M3 14l4-3.5 3 2.5 3-2.5 4 3.5" />`,
 };
 function iconFor(s: StepItem): string {
   const k = s.verb in ICON ? s.verb
+    : s.verb === "Took a screenshot" ? "shot"
+    : s.verb === "Looked at" ? "image"
     : /Search|Looked for|Listed/.test(s.verb) ? "search"
     : s.tool === "TodoWrite" ? "plan"
     : /helper agent/.test(s.verb) ? "agent" : "tool";
@@ -159,6 +164,39 @@ function markdown(id: string, text: string): string {
   return html;
 }
 
+const urls = new WeakMap<ChatImage, string>();
+/** A URL an <img> can show this picture from. */
+function urlOf(img: ChatImage): string {
+  let u = urls.get(img);
+  if (u) return u;
+  try {
+    const bin = atob(img.data.replace(/\s+/g, ""));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    u = URL.createObjectURL(new Blob([bytes], { type: img.media }));
+  } catch {
+    u = `data:${img.media};base64,${img.data}`;
+  }
+  urls.set(img, u);
+  return u;
+}
+/** Let go of the pictures of a conversation the view no longer shows. */
+function forgetImages(items: ChatItem[]): void {
+  for (const it of items) {
+    const pics = it.kind === "step" ? it.images : it.kind === "user" ? it.pics : undefined;
+    for (const p of pics ?? []) {
+      const u = urls.get(p);
+      if (u?.startsWith("blob:")) URL.revokeObjectURL(u);
+      urls.delete(p);
+    }
+  }
+}
+
+/** What a step saw (its screenshots), or what you pasted: thumbnails that open full size. */
+function shotsHtml(owner: string, pics: ChatImage[], what: string): string {
+  return `<div class="cv-shots">${pics.map((p, k) => `<button type="button" class="cv-shot" data-shot="${owner}" data-k="${k}" aria-label="${what} ${k + 1} of ${pics.length}, open full size"><img src="${urlOf(p)}" alt="" decoding="async"></button>`).join("")}</div>`;
+}
+
 function stepBody(s: StepItem): string {
   if (s.todos?.length) {
     return `<ul class="cv-todos">${s.todos.map((t) => `<li class="${t.state}"><i aria-hidden="true"></i>${esc(t.text)}</li>`).join("")}</ul>`;
@@ -168,7 +206,7 @@ function stepBody(s: StepItem): string {
     return `<pre class="cv-diff">${s.diff.map((l) => `<span class="${l.sign === "+" ? "a" : l.sign === "-" ? "d" : ""}">${esc(l.sign)} ${esc(l.text)}</span>`).join("")}</pre>`;
   }
   const head = s.full && s.full !== s.target ? `<code class="cv-full">${esc(s.full)}</code>` : "";
-  const out = s.output ? `<pre class="cv-out${s.error ? " err" : ""}">${esc(s.output)}</pre>` : s.done ? `<p class="cv-none">No output</p>` : "";
+  const out = s.output ? `<pre class="cv-out${s.error ? " err" : ""}">${esc(s.output)}</pre>` : s.done && !s.images?.length ? `<p class="cv-none">No output</p>` : "";
   return head + out;
 }
 
@@ -185,13 +223,13 @@ function stepHtml(s: StepItem, open: boolean): string {
   // A step with nothing more to show is a plain line, not a dead button.
   return `<div class="cv-step${s.error ? " err" : ""}${open ? " open" : ""}" data-id="${s.id}">${body
     ? `<button type="button" class="cv-sh" aria-expanded="${open}" title="${title}">${inner}<svg class="cv-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2.5 6 5 3.5 7.5" /></svg></button>`
-    : `<div class="cv-sh cv-flat" title="${title}">${inner}</div>`}${open && body ? `<div class="cv-sb">${stepBody(s)}</div>` : ""}</div>`;
+    : `<div class="cv-sh cv-flat" title="${title}">${inner}</div>`}${open && body ? `<div class="cv-sb">${stepBody(s)}</div>` : ""}${s.images?.length ? shotsHtml(s.id, s.images, s.verb === "Took a screenshot" ? "Screenshot" : "Image") : ""}</div>`;
 }
 
 function itemHtml(it: ChatItem, open: Set<string>): string {
   switch (it.kind) {
     case "user":
-      return `<div class="cv-u" data-id="${it.id}"><div class="cv-bubble">${esc(it.text)}${it.images ? `<span class="cv-img">${it.images} image${it.images === 1 ? "" : "s"}</span>` : ""}</div></div>`;
+      return `<div class="cv-u" data-id="${it.id}"><div class="cv-bubble">${it.pics?.length ? shotsHtml(it.id, it.pics, "Image") : ""}${esc(it.text)}${it.images && !it.pics?.length ? `<span class="cv-img">${it.images} image${it.images === 1 ? "" : "s"}</span>` : ""}</div></div>`;
     case "text":
       return `<div class="cv-a" data-id="${it.id}">${markdown(it.id, it.text)}</div>`;
     case "note":
@@ -338,6 +376,7 @@ function focusKey(root: HTMLElement): string | null {
   const a = document.activeElement as HTMLElement | null;
   if (!a || !root.contains(a)) return null;
   const item = a.closest<HTMLElement>("[data-id]")?.dataset.id;
+  if (a.matches("[data-shot]")) return `[data-shot="${a.dataset.shot}"][data-k="${a.dataset.k}"]`;
   for (const sel of [".cv-sh", "[data-copy]", "[data-expand]", "[data-fold]", "[data-earlier]", "[data-starter]"]) {
     if (!a.matches(sel)) continue;
     if (sel === "[data-copy]") return `[data-copy="${a.dataset.copy}"]`;
@@ -421,6 +460,7 @@ function follow(pane: Pane, v: View): boolean {
   const id = pane.spec.sessionId;
   if (id === v.session) return false;
   v.session = id;
+  forgetImages(v.chat.items);
   v.chat = createChat();
   v.offset = 0;
   v.path = "";
@@ -606,6 +646,14 @@ function mount(pane: Pane): View {
     const resumeOne = t.closest<HTMLElement>("[data-resume]");
     if (resumeOne) { void restartWith({ session: resumeOne.dataset.resume }, "switch conversations"); return; }
     if (t.closest("[data-resume-pick]")) { void pickConversation(""); return; }
+    const shot = t.closest<HTMLElement>("[data-shot]");
+    if (shot) {
+      const owner = v.chat.items.find((i) => i.id === shot.dataset.shot);
+      const pics = owner?.kind === "step" ? owner.images : owner?.kind === "user" ? owner.pics : undefined;
+      const what = owner?.kind === "step" ? `${owner.verb} ${owner.target}`.trim() : "You sent";
+      if (pics?.length) openImage(pics, Number(shot.dataset.k) || 0, what);
+      return;
+    }
     const starter = t.closest<HTMLElement>("[data-starter]");
     if (starter) { input.value = starter.dataset.starter ?? ""; grow(); input.focus(); return; }
     const cmds = t.closest<HTMLButtonElement>("[data-cmds]");
@@ -710,6 +758,49 @@ export function showChat(pane: Pane, state: ChatState, focus = false): void {
   if (focus) requestAnimationFrame(() => requestAnimationFrame(() => v.el.querySelector<HTMLTextAreaElement>("textarea")?.focus()));
 }
 
+/** A picture full size over everything: ← → between the pictures of the same
+ *  step, Esc or a click outside closes it, and the keyboard goes back. */
+export function openImage(pics: ChatImage[], start: number, what: string): void {
+  document.querySelector(".cv-lb")?.remove();
+  const back = document.activeElement as HTMLElement | null;
+  let k = Math.max(0, Math.min(pics.length - 1, start));
+  const el = document.createElement("div");
+  el.className = "inbox-modal-back cv-lb";
+  el.innerHTML = `<div class="cv-lb-box" role="dialog" aria-modal="true" aria-label="${esc(what)}">
+      <header class="cv-lb-bar"><span class="cv-lb-t">${esc(what)}</span><span class="cv-lb-n"></span>
+        <button type="button" class="im-x" data-lb-close aria-label="Close" title="Close (Esc)">${ICON_CLOSE}</button></header>
+      <div class="cv-lb-stage">
+        <button type="button" class="cv-lb-nav prev" data-lb="-1" aria-label="Previous picture"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <img class="cv-lb-img" src="${urlOf(pics[k])}" alt="${esc(what)}">
+        <button type="button" class="cv-lb-nav next" data-lb="1" aria-label="Next picture"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+      </div></div>`;
+  document.body.appendChild(el);
+  const img = el.querySelector<HTMLImageElement>(".cv-lb-img")!;
+  const count = el.querySelector<HTMLElement>(".cv-lb-n")!;
+  const show = () => {
+    img.src = urlOf(pics[k]);
+    img.alt = `${what}, picture ${k + 1} of ${pics.length}`;
+    count.textContent = pics.length > 1 ? `${k + 1} / ${pics.length}` : "";
+    el.querySelectorAll<HTMLButtonElement>(".cv-lb-nav").forEach((b) => { b.hidden = pics.length < 2; });
+  };
+  const close = () => { el.remove(); if (back?.isConnected) back.focus(); };
+  const step = (d: number) => { k = (k + d + pics.length) % pics.length; show(); };
+  el.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement;
+    if (t.closest("[data-lb-close]") || t === el || t.classList.contains("cv-lb-stage")) { close(); return; }
+    const nav = t.closest<HTMLElement>("[data-lb]");
+    if (nav) step(Number(nav.dataset.lb));
+  });
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); }
+    else if (e.key === "ArrowRight" && pics.length > 1) { e.preventDefault(); step(1); }
+    else if (e.key === "ArrowLeft" && pics.length > 1) { e.preventDefault(); step(-1); }
+    e.stopPropagation();
+  });
+  show();
+  el.querySelector<HTMLElement>("[data-lb-close]")!.focus();
+}
+
 /** Put the keyboard where you would type to this agent: the chat's composer
  *  when the chat is showing, else its terminal. */
 export function focusAgent(pane: Pane): void {
@@ -740,6 +831,7 @@ export function dropChat(paneId: string): void {
   const v = views.get(paneId);
   if (v?.timer != null) window.clearInterval(v.timer);
   v?.off?.();
+  if (v) forgetImages(v.chat.items);
   v?.el.remove();
   views.delete(paneId);
 }

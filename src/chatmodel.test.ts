@@ -131,4 +131,37 @@ describe("switching the model", () => {
     chat.feed(row("<local-command-stdout>Set model to `Opus 5.5 (1M context) (default)` and saved as your default for new sessions</local-command-stdout>"));
     expect(chat.meta.model).toBe("Opus 5.5 (1M context)");
   });
+
+  it("keeps what a step saw: a screenshot's picture, not the word [image]", () => {
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    const chat = createChat();
+    chat.feed([
+      assistant([{ type: "tool_use", id: "s1", name: "mcp__claude-in-chrome__computer", input: { action: "screenshot", tabId: 1 } }]),
+      result("s1", [{ type: "text", text: "Screenshot of tab 1" }, { type: "image", source: { type: "base64", media_type: "image/png", data: png } }]),
+      assistant([{ type: "tool_use", id: "r1", name: "Read", input: { file_path: "D:\\shots\\home.png" } }]),
+      result("r1", [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: "/9j/4AAQSkZJRg==" } }]),
+      // a format that could carry script is not kept
+      assistant([{ type: "tool_use", id: "r2", name: "Read", input: { file_path: "D:\\a.svg" } }]),
+      result("r2", [{ type: "image", source: { type: "base64", media_type: "image/svg+xml", data: "PHN2Zz4=" } }]),
+      "",
+    ].join("\n"));
+    const [shot, read, svg] = chat.items.filter((i): i is StepItem => i.kind === "step");
+    expect([shot.verb, shot.target, shot.output]).toEqual(["Took a screenshot", "claude in chrome", "Screenshot of tab 1"]);
+    expect(shot.images).toEqual([{ media: "image/png", data: png }]);
+    expect([read.verb, read.target, read.output, read.images?.length]).toEqual(["Looked at", "home.png", "", 1]);
+    expect(svg.images).toBeUndefined();
+  });
+
+  it("keeps the pictures you pasted with a message, and only the last few of a burst", () => {
+    const chat = createChat();
+    const pic = (n: number) => ({ type: "image", source: { type: "base64", media_type: "image/png", data: `AAAA${n}` } });
+    chat.feed(human([{ type: "text", text: "this looks off" }, pic(1)]) + "\n");
+    const you = chat.items[0];
+    expect(you.kind === "user" && [you.text, you.images, you.pics?.length]).toEqual(["this looks off", 1, 1]);
+    chat.feed(assistant([{ type: "tool_use", id: "b", name: "mcp__playwright__browser_take_screenshot", input: {} }]) + "\n" +
+      result("b", Array.from({ length: 12 }, (_, k) => pic(k))) + "\n");
+    const burst = chat.items.find((i): i is StepItem => i.kind === "step")!;
+    expect(burst.verb).toBe("Took a screenshot");
+    expect(burst.images!.map((p) => p.data)).toEqual(Array.from({ length: 8 }, (_, k) => `AAAA${k + 4}`));
+  });
 });

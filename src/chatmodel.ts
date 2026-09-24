@@ -4,6 +4,9 @@
 // with its result. Pure: feed it lines, read `items`. No DOM here.
 
 export interface DiffLine { sign: " " | "+" | "-"; text: string }
+/** A picture in the conversation: a screenshot a tool took, an image file it
+ *  opened, or one you pasted. Base64, as the transcript keeps it. */
+export interface ChatImage { media: string; data: string }
 export interface Todo { text: string; state: "pending" | "in_progress" | "completed" }
 
 export interface StepItem {
@@ -26,15 +29,35 @@ export interface StepItem {
   added?: number;
   removed?: number;
   todos?: Todo[];
+  /** What the step saw: screenshots and images its tool returned. */
+  images?: ChatImage[];
   at: number;
 }
 export type ChatItem =
-  | { kind: "user"; id: string; text: string; images: number; at: number }
+  | { kind: "user"; id: string; text: string; images: number; pics?: ChatImage[]; at: number }
   | { kind: "text"; id: string; text: string; at: number }
   | { kind: "note"; id: string; text: string; at: number }
   | StepItem;
 
 const MAX_OUTPUT = 6000;
+/** Pictures kept per step or message; a burst of screenshots keeps its last ones. */
+const MAX_IMAGES = 8;
+/** Formats an <img> shows as a picture and nothing else (no SVG: it can carry script). */
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+
+/** The pictures in a message's or a tool result's content. */
+export function imagesOf(content: unknown): ChatImage[] {
+  if (!Array.isArray(content)) return [];
+  const out: ChatImage[] = [];
+  for (const c of content as Input[]) {
+    if (!c || typeof c !== "object" || c.type !== "image") continue;
+    const src = (c.source ?? {}) as Input;
+    const media = str(src.media_type).toLowerCase();
+    const data = str(src.data);
+    if (src.type === "base64" && IMAGE_TYPES.has(media) && /^[A-Za-z0-9+/=\s]+$/.test(data.slice(0, 256))) out.push({ media, data });
+  }
+  return out.slice(-MAX_IMAGES);
+}
 const MAX_DIFF_LINES = 400;
 
 /** The last part of a path. */
@@ -93,7 +116,7 @@ export function describeTool(name: string, input: Input): Omit<StepItem, "kind" 
       return { tool: name, verb: "Ran", target: said || firstLine(cmd), full: cmd, code: !said };
     }
     case "Read":
-      return { tool: name, verb: "Read", target: baseName(file), full: file, code: true };
+      return { tool: name, verb: /\.(png|jpe?g|gif|webp|bmp)$/i.test(file) ? "Looked at" : "Read", target: baseName(file), full: file, code: true };
     case "Edit": {
       const diff = lineDiff(str(input.old_string), str(input.new_string)).slice(0, MAX_DIFF_LINES);
       return { tool: name, verb: "Edited", target: baseName(file), full: file, code: true, diff, ...countDiff(diff) };
@@ -145,6 +168,10 @@ export function describeTool(name: string, input: Input): Omit<StepItem, "kind" 
       return { tool: name, verb: "Proposed a plan", target: "" };
     default: {
       const mcp = /^mcp__(.+?)__(.+)$/.exec(name);
+      // A browser or desktop screenshot, whichever server took it.
+      if (mcp && (str(input.action) === "screenshot" || /screenshot|snapshot/i.test(mcp[2]))) {
+        return { tool: name, verb: "Took a screenshot", target: mcp[1].replace(/^plugin_[^_]+_/, "").replace(/[_-]+/g, " ") };
+      }
       if (mcp) return { tool: name, verb: "Used", target: `${mcp[1].replace(/[_-]+/g, " ")} · ${mcp[2].replace(/_/g, " ")}` };
       return { tool: name, verb: "Used", target: name };
     }
@@ -155,7 +182,7 @@ export function describeTool(name: string, input: Input): Omit<StepItem, "kind" 
 function resultText(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
-    return content.map((c) => (c && typeof c === "object" && (c as Input).type === "text" ? str((c as Input).text) : (c as Input)?.type === "image" ? "[image]" : "")).join("\n");
+    return content.map((c) => (c && typeof c === "object" && (c as Input).type === "text" ? str((c as Input).text) : "")).filter(Boolean).join("\n");
   }
   return "";
 }
@@ -247,15 +274,17 @@ export function createChat(): Chat {
           out = [str(extra.stdout), str(extra.stderr)].filter(Boolean).join("\n");
         }
         step.output = trimOutput(out);
+        const pics = imagesOf(part.content);
+        if (pics.length) step.images = pics;
         step.error = part.is_error === true;
         step.done = true;
       } else if (part.type === "text") text += (text ? "\n" : "") + str(part.text);
       else if (part.type === "image") images++;
     }
-    if (text || images) userText(text, images, v, at);
+    if (text || images) userText(text, images, v, at, imagesOf(content));
   }
 
-  function userText(raw: string, images: number, v: Input, at: number): void {
+  function userText(raw: string, images: number, v: Input, at: number, pics: ChatImage[] = []): void {
     const origin = (v.origin ?? null) as Input | null;
     if (origin && origin.kind !== "human") return; // hook output, task notices…
     // /model answers with the model it switched to; that is the model from now
@@ -274,7 +303,7 @@ export function createChat(): Chat {
     if (/^\[Request interrupted by user/.test(raw.trim())) { items.push({ kind: "note", id: id(), text: "You stopped the agent", at }); return; }
     const text = cleanUserText(raw);
     if (!text && !images) return;
-    items.push({ kind: "user", id: id(), text, images, at });
+    items.push({ kind: "user", id: id(), text, images, ...(pics.length ? { pics } : {}), at });
   }
 
   function onAssistant(v: Input, at: number): void {

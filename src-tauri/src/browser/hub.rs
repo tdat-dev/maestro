@@ -67,6 +67,37 @@ enum Asker {
 struct Pending {
     asker: Asker,
     browser: u64,
+    agent: String,
+    /// The call as sent, so a click held for the user's OK can be sent again.
+    call: Value,
+}
+
+/// A risky click waiting for the user's OK (see RISKY in the extension).
+struct Held {
+    agent_conn: u64,
+    cid: Value,
+    browser: u64,
+    agent: String,
+    call: Value,
+    what: String,
+    url: String,
+}
+
+/// What Maestro shows for a held click.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct Ask {
+    pub id: u64,
+    pub agent: String,
+    pub what: String,
+    pub url: String,
+}
+
+/// A page that wants a person (a login or a CAPTCHA).
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct Blocker {
+    pub agent: String,
+    pub kind: String,
+    pub url: String,
 }
 
 /// What an agent last did in a browser, for the live view and the Stop button.
@@ -88,12 +119,23 @@ struct Inner {
     activity: HashMap<String, Activity>,
     /// Browsers already told to reload onto the extension on disk (once each).
     reloaded: std::collections::HashSet<String>,
+    held: HashMap<u64, Held>,
+    /// Hold sending, posting, paying and deleting clicks for the user's OK.
+    ask_risky: bool,
     next: u64,
 }
 
 pub enum HubEvent {
     Browsers(Vec<BrowserInfo>),
     Activity(Vec<Activity>),
+    Asks(Vec<Ask>),
+    Blocker(Blocker),
+}
+
+fn asks(inner: &Inner) -> Vec<Ask> {
+    let mut v: Vec<Ask> = inner.held.iter().map(|(id, h)| Ask { id: *id, agent: h.agent.clone(), what: h.what.clone(), url: h.url.clone() }).collect();
+    v.sort_by_key(|a| a.id);
+    v
 }
 
 type OnChange = Box<dyn Fn(HubEvent) + Send + Sync>;
@@ -151,12 +193,12 @@ fn fail(id: &Value, error: String) -> String {
 
 impl Hub {
     pub fn new(token: String, port: u16, on_change: OnChange) -> Self {
-        Hub { inner: Mutex::new(Inner::default()), token, port, on_change, wanted_version: None, profile_of: Box::new(super::profiles::profile_name) }
+        Hub { inner: Mutex::new(Inner { ask_risky: true, ..Inner::default() }), token, port, on_change, wanted_version: None, profile_of: Box::new(super::profiles::profile_name) }
     }
 
     #[cfg(test)]
     pub fn for_test(token: &str, profile_of: impl Fn(&str, &str) -> String + Send + Sync + 'static) -> Self {
-        Hub { inner: Mutex::new(Inner::default()), token: token.into(), port: 0, on_change: Box::new(|_| {}), wanted_version: None, profile_of: Box::new(profile_of) }
+        Hub { inner: Mutex::new(Inner { ask_risky: true, ..Inner::default() }), token: token.into(), port: 0, on_change: Box::new(|_| {}), wanted_version: None, profile_of: Box::new(profile_of) }
     }
 
     /// Bind 127.0.0.1 on a free port, publish it, and serve in the background.
@@ -204,6 +246,44 @@ impl Hub {
         (self.on_change)(HubEvent::Activity(list));
     }
 
+    pub fn asks(&self) -> Vec<Ask> {
+        asks(&self.inner.lock().unwrap())
+    }
+
+    pub fn set_ask_risky(&self, on: bool) {
+        self.inner.lock().unwrap().ask_risky = on;
+    }
+
+    /// The user's answer to a held click: send it on, or tell the agent no.
+    pub fn answer(&self, id: u64, ok: bool) {
+        let list = {
+            let mut inner = self.inner.lock().unwrap();
+            let Some(h) = inner.held.remove(&id) else { return };
+            let agent_tx = inner.peers.get(&h.agent_conn).map(|p| p.tx.clone());
+            if ok {
+                inner.next += 1;
+                let hid = inner.next;
+                let mut call = h.call.clone();
+                call["id"] = json!(hid);
+                call["args"]["confirmed"] = json!(true);
+                match inner.peers.get(&h.browser) {
+                    Some(b) if b.tx.send(call.to_string()).is_ok() => {
+                        inner.pending.insert(hid, Pending { asker: Asker::Agent(h.agent_conn, h.cid), browser: h.browser, agent: h.agent, call });
+                    }
+                    _ => {
+                        if let Some(tx) = &agent_tx {
+                            let _ = tx.send(fail(&h.cid, "The user allowed it, but the browser has gone.".into()));
+                        }
+                    }
+                }
+            } else if let Some(tx) = &agent_tx {
+                let _ = tx.send(fail(&h.cid, format!("The user said no to: {}. Don't do it; tell them what you were about to do and why.", h.what)));
+            }
+            asks(&inner)
+        };
+        (self.on_change)(HubEvent::Asks(list));
+    }
+
     /// Maestro's own call into a browser on behalf of `agent` (the live view),
     /// answered on a channel. Uses the browser the agent last used.
     pub fn app_call(&self, agent: &str, tool: &str, args: Value, timeout: Duration) -> Result<Value, String> {
@@ -220,9 +300,9 @@ impl Hub {
                 .ok_or_else(|| format!("{agent} isn't using a connected browser."))?;
             inner.next += 1;
             let hid = inner.next;
-            inner.pending.insert(hid, Pending { asker: Asker::App(tx), browser: target });
-            let msg = json!({ "type": "call", "id": hid, "agent": agent, "tool": tool, "args": args }).to_string();
-            let _ = inner.peers[&target].tx.send(msg);
+            let call = json!({ "type": "call", "id": hid, "agent": agent, "tool": tool, "args": args });
+            let _ = inner.peers[&target].tx.send(call.to_string());
+            inner.pending.insert(hid, Pending { asker: Asker::App(tx), browser: target, agent: agent.to_string(), call });
             hid
         };
         let got = rx.recv_timeout(timeout);
@@ -250,6 +330,15 @@ impl Hub {
                 Role::Browser(b) => Some(b.label()),
                 _ => None,
             };
+            let held_gone: Vec<u64> = inner.held.iter().filter(|(_, h)| h.browser == id || h.agent_conn == id).map(|(k, _)| *k).collect();
+            for k in held_gone {
+                let h = inner.held.remove(&k).unwrap();
+                if h.browser == id {
+                    if let Some(a) = inner.peers.get(&h.agent_conn) {
+                        let _ = a.tx.send(fail(&h.cid, "The browser disconnected while waiting for the user.".into()));
+                    }
+                }
+            }
             let gone: Vec<u64> = inner
                 .pending
                 .iter()
@@ -323,7 +412,24 @@ impl Hub {
                     "result" | "error" => {
                         let Some(hid) = v["id"].as_u64() else { return true };
                         let Some(p) = inner.pending.remove(&hid) else { return true };
+                        let confirm = v["result"]["needsConfirm"].clone();
+                        let blocker = v["result"]["blocker"].clone();
                         match p.asker {
+                            Asker::Agent(a, cid) if confirm.is_object() => {
+                                // Hold the click; the agent's call waits for the user.
+                                inner.next += 1;
+                                let id = inner.next;
+                                if let Some(agent) = inner.peers.get(&a) {
+                                    let _ = agent.tx.send(json!({ "type": "hold", "id": cid }).to_string());
+                                }
+                                let what = confirm["what"].as_str().unwrap_or("a click").to_string();
+                                let url = confirm["url"].as_str().unwrap_or("").to_string();
+                                inner.held.insert(id, Held { agent_conn: a, cid, browser: p.browser, agent: p.agent, call: p.call, what, url });
+                                let list = asks(&inner);
+                                drop(inner);
+                                (self.on_change)(HubEvent::Asks(list));
+                                return true;
+                            }
                             Asker::Agent(a, cid) => {
                                 if let Some(agent) = inner.peers.get(&a) {
                                     let mut out = v.clone();
@@ -334,6 +440,15 @@ impl Hub {
                             Asker::App(tx) => {
                                 let _ = tx.send(v);
                             }
+                        }
+                        if blocker.is_object() {
+                            let b = Blocker {
+                                agent: p.agent,
+                                kind: blocker["kind"].as_str().unwrap_or("").to_string(),
+                                url: blocker["url"].as_str().unwrap_or("").to_string(),
+                            };
+                            drop(inner);
+                            (self.on_change)(HubEvent::Blocker(b));
                         }
                     }
                     _ => {}
@@ -422,9 +537,11 @@ impl Hub {
                 inner.activity.insert(name.clone(), Activity { agent: name.clone(), browser: target, label, tool: tool.to_string(), action, at: now_ms(), paused: false });
                 inner.next += 1;
                 let hid = inner.next;
-                inner.pending.insert(hid, Pending { asker: Asker::Agent(from, id.clone()), browser: target });
-                let msg = json!({ "type": "call", "id": hid, "agent": name, "tool": tool, "args": args }).to_string();
-                if inner.peers[&target].tx.send(msg).is_err() {
+                let mut args = if args.is_object() { args } else { json!({}) };
+                args["_ask"] = json!(inner.ask_risky);
+                let call = json!({ "type": "call", "id": hid, "agent": name, "tool": tool, "args": args });
+                inner.pending.insert(hid, Pending { asker: Asker::Agent(from, id.clone()), browser: target, agent: name.clone(), call: call.clone() });
+                if inner.peers[&target].tx.send(call.to_string()).is_err() {
                     inner.pending.remove(&hid);
                     let _ = tx.send(fail(&id, "That browser just disconnected.".into()));
                 }
@@ -608,6 +725,38 @@ mod tests {
         assert_eq!(last(&brx)["tool"], "reload");
         hub.on_message(br, r#"{"type":"browser_info","browser":"Google Chrome","email":"a@x.com","version":"0.1.0"}"#);
         assert_eq!(last(&brx), Value::Null, "only once, so a folder that never updates can't loop");
+    }
+
+    #[test]
+    fn a_risky_click_waits_for_the_user() {
+        let hub = Hub::for_test("t", |_, _| "P".into());
+        let (br, brx) = peer(&hub);
+        let (ag, arx) = peer(&hub);
+        hub.on_message(br, r#"{"type":"hello","role":"browser","token":"t"}"#);
+        hub.on_message(ag, r#"{"type":"hello","role":"agent","token":"t","agent":"Ana"}"#);
+        last(&arx);
+        hub.on_message(ag, r#"{"type":"call","id":5,"tool":"computer","args":{"action":"left_click","ref":"ref_3"}}"#);
+        let fwd = last(&brx);
+        assert_eq!(fwd["args"]["_ask"], true);
+        let held = json!({ "type": "result", "id": fwd["id"], "result": { "content": [], "needsConfirm": { "what": "Click \"Đăng\"", "url": "https://facebook.com" } } });
+        hub.on_message(br, &held.to_string());
+        assert_eq!(last(&arx), json!({ "type": "hold", "id": 5 }));
+        let a = hub.asks();
+        assert_eq!((a.len(), a[0].agent.as_str(), a[0].what.as_str()), (1, "Ana", "Click \"Đăng\""));
+
+        hub.answer(a[0].id, true);
+        let again = last(&brx);
+        assert_eq!((again["args"]["confirmed"].as_bool(), again["args"]["ref"].as_str()), (Some(true), Some("ref_3")));
+        hub.on_message(br, &json!({ "type": "result", "id": again["id"], "result": { "content": [] } }).to_string());
+        assert_eq!((last(&arx)["type"].as_str(), hub.asks().len()), (Some("result"), 0));
+
+        hub.on_message(ag, r#"{"type":"call","id":6,"tool":"computer","args":{"action":"left_click","ref":"ref_4"}}"#);
+        let fwd = last(&brx);
+        hub.on_message(br, &json!({ "type": "result", "id": fwd["id"], "result": { "content": [], "needsConfirm": { "what": "Click \"Gửi\"" } } }).to_string());
+        hub.answer(hub.asks()[0].id, false);
+        let no = last(&arx);
+        assert_eq!((no["type"].as_str(), no["id"].as_u64()), (Some("error"), Some(6)));
+        assert_eq!(last(&brx), Value::Null, "a refused click never reaches the page");
     }
 
     #[test]

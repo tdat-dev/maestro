@@ -81,7 +81,24 @@ async function copy(text: string, btn: HTMLElement) {
   }
 }
 
+const ASK_KEY = "maestro.browserAsk";
+
+/** "Ask me before an agent sends, posts, pays or deletes": on unless turned off. */
+export function askRisky(): boolean {
+  try { return localStorage.getItem(ASK_KEY) !== "0"; } catch { return true; }
+}
+
 export function initBrowserPrefs(): void {
+  const ask = document.getElementById("prefBrowserAsk") as HTMLInputElement | null;
+  if (ask) {
+    ask.checked = askRisky();
+    ask.addEventListener("change", () => {
+      try { localStorage.setItem(ASK_KEY, ask.checked ? "1" : "0"); } catch {}
+      void invoke("browser_set_ask", { on: ask.checked }).catch(() => {});
+    });
+  }
+  // The hub starts with asking on; match what you chose last time.
+  if (!askRisky()) void invoke("browser_set_ask", { on: false }).catch(() => {});
   void listen<Connected[]>("browser-hub", (e) => {
     connected = e.payload;
     render();

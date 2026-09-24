@@ -160,3 +160,21 @@ export function pageText(maxChars) {
   const t = document.body?.innerText ?? "";
   return { title: document.title, url: location.href, text: t.length > maxChars ? t.slice(0, maxChars) + `\n… (${t.length - maxChars} more characters)` : t };
 }
+
+/** The name of what sits at a point: the button or link a click there hits. */
+export function labelAt(x, y) {
+  let el = document.elementFromPoint(x, y);
+  el = el?.closest("button,a,[role=button],[role=link],[role=menuitem],input[type=submit],input[type=button],[onclick]") ?? el;
+  if (!el) return "";
+  return (el.getAttribute("aria-label") || el.value || el.innerText || el.title || "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+/** Does the page want a person? A visible password field (a login) or a
+ *  CAPTCHA widget. Returns "login", "captcha" or "". */
+export function blockerOf() {
+  const shown = (el) => { const r = el.getBoundingClientRect(); return r.width > 1 && r.height > 1 && getComputedStyle(el).visibility !== "hidden"; };
+  const captcha = [...document.querySelectorAll("iframe[src*='recaptcha'],iframe[src*='hcaptcha'],iframe[src*='turnstile'],iframe[src*='captcha'],.g-recaptcha,.h-captcha,.cf-turnstile,#captcha")];
+  if (captcha.some(shown)) return "captcha";
+  if ([...document.querySelectorAll("input[type=password]")].some(shown)) return "login";
+  return "";
+}

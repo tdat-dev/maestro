@@ -48,6 +48,8 @@ pub fn start(app: &AppHandle, state: &BrowserState) {
         let _ = match ev {
             hub::HubEvent::Browsers(list) => app2.emit("browser-hub", list),
             hub::HubEvent::Activity(list) => app2.emit("browser-activity", list),
+            hub::HubEvent::Asks(list) => app2.emit("browser-asks", list),
+            hub::HubEvent::Blocker(b) => app2.emit("browser-blocker", b),
         };
     }), wanted) {
         Ok(h) => *state.hub.lock().unwrap() = Some(h),
@@ -192,4 +194,22 @@ pub async fn browser_peek(state: State<'_, BrowserState>, agent: String) -> Resu
     tauri::async_runtime::spawn_blocking(move || hub.app_call(&agent, "peek", serde_json::json!({}), std::time::Duration::from_secs(4)))
         .await
         .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn browser_asks(state: State<'_, BrowserState>) -> Vec<hub::Ask> {
+    state.hub.lock().unwrap().as_ref().map(|h| h.asks()).unwrap_or_default()
+}
+
+/// The user's answer to a click Maestro held (sending, posting, paying…).
+#[tauri::command]
+pub fn browser_answer(state: State<'_, BrowserState>, id: u64, ok: bool) -> Result<(), String> {
+    hub_of(&state)?.answer(id, ok);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn browser_set_ask(state: State<'_, BrowserState>, on: bool) -> Result<(), String> {
+    hub_of(&state)?.set_ask_risky(on);
+    Ok(())
 }

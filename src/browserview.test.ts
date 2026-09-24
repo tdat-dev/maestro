@@ -1,5 +1,5 @@
 import { describe as group, it, expect } from "vitest";
-import { describe, shows, type Activity } from "./browserview";
+import { describe, shows, askLine, host, type Activity } from "./browserview";
 
 const act = (o: Partial<Activity> = {}): Activity => ({ agent: "Ana", browser: 1, label: "Chrome · GravityCare", tool: "navigate", action: "", at: 1_000_000, paused: false, ...o });
 
@@ -17,5 +17,15 @@ group("browser live view", () => {
     expect(shows(act({ paused: true }), 1_000_000 + 3_600_000)).toBe(true);
     expect(shows(undefined, 0)).toBe(false);
     expect(shows(act({ browser: 0 }), 1_000_000)).toBe(false); // stopped before it ever browsed: nothing to watch yet
+  });
+});
+
+group("held clicks", () => {
+  it("reads as a sentence about the agent", () => {
+    expect(askLine({ agent: "Ana", what: 'Click "Đăng"' })).toBe('Ana wants to click "Đăng"');
+  });
+  it("names the site without www", () => {
+    expect(host("https://www.facebook.com/groups/1")).toBe("facebook.com");
+    expect(host("not a url")).toBe("");
   });
 });

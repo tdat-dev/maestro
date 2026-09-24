@@ -20,12 +20,14 @@ export function hubFile(): string {
 
 const CALL_TIMEOUT_MS = 90_000;
 const CONNECT_TIMEOUT_MS = 5_000;
+/** How long a click held for the user's OK may wait. */
+const HOLD_TIMEOUT_MS = 10 * 60_000;
 
 export class HubClient {
   private ws: WebSocket | null = null;
   private ready: Promise<void> | null = null;
   private next = 1;
-  private waiting = new Map<number, { resolve: (r: ToolResult) => void; timer: NodeJS.Timeout }>();
+  private waiting = new Map<number, { resolve: (r: ToolResult) => void; timer: NodeJS.Timeout; tool: string }>();
 
   constructor(
     private agent: string,
@@ -84,9 +86,20 @@ export class HubClient {
     if (typeof m.id !== "number") return;
     const w = this.waiting.get(m.id);
     if (!w) return;
+    if (m.type === "hold") {
+      // Maestro is asking the user first: wait for their answer, not the usual limit.
+      clearTimeout(w.timer);
+      const id = m.id;
+      w.timer = setTimeout(() => {
+        this.waiting.delete(id);
+        w.resolve(err("The user did not answer in time, so it was not done."));
+      }, HOLD_TIMEOUT_MS);
+      return;
+    }
     this.waiting.delete(m.id);
     clearTimeout(w.timer);
-    if (m.type === "result" && m.result?.content) w.resolve(m.result);
+    // Only the MCP fields: the browser adds its own notes for Maestro.
+    if (m.type === "result" && m.result?.content) w.resolve({ content: m.result.content, ...(m.result.isError ? { isError: true } : {}) });
     else w.resolve(err(m.error ?? "The browser did not answer."));
   }
 
@@ -102,7 +115,7 @@ export class HubClient {
         this.waiting.delete(id);
         resolve(err(`The browser took longer than ${CALL_TIMEOUT_MS / 1000}s on ${tool}.`));
       }, CALL_TIMEOUT_MS);
-      this.waiting.set(id, { resolve, timer });
+      this.waiting.set(id, { resolve, timer, tool });
       this.ws!.send(JSON.stringify({ type: "call", id, tool, args }));
     });
   }
@@ -112,7 +125,7 @@ const err = (text: string): ToolResult => ({ content: [{ type: "text", text }], 
 
 const tabId = z.number().int().optional().describe("Tab id from browser_tabs; defaults to your most recent tab");
 
-export const BROWSER_INSTRUCTIONS = `Browser: you can use the user's real Chrome (their logins included) through the browser_* tools. You work in your own tab group, named after you. Start with browser_tab_new or browser_tabs. Read a page with browser_read_page (gives refs), act with browser_computer (click a ref or a screenshot coordinate, type, key), and check with a screenshot. When you hit a login page or a CAPTCHA, stop and ask the user to handle it. Never submit payments or send messages the user didn't ask for.`;
+export const BROWSER_INSTRUCTIONS = `Browser: you can use the user's real Chrome (their logins included) through the browser_* tools. You work in your own tab group, named after you. Start with browser_tab_new or browser_tabs. Read a page with browser_read_page (gives refs), act with browser_computer (click a ref or a screenshot coordinate, type, key), and check with a screenshot. When you hit a login page or a CAPTCHA, stop and ask the user to handle it. Never submit payments or send messages the user didn't ask for. Clicks that send, post, pay or delete wait for the user to allow them in Maestro; if they say no, don't retry.`;
 
 export function registerBrowserTools(server: McpServer, hub: HubClient) {
   const tool = (name: string, description: string, inputSchema: Record<string, z.ZodTypeAny>, hubTool: string) =>

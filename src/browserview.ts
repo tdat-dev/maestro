@@ -12,6 +12,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { topNote } from "./hint";
+import { notify } from "./ipc";
+
+export interface Ask { id: number; agent: string; what: string; url: string }
+export interface Blocker { agent: string; kind: string; url: string }
 
 export interface Activity { agent: string; browser: number; label: string; tool: string; action: string; at: number; paused: boolean }
 
@@ -38,6 +42,15 @@ export function describe(a: Pick<Activity, "tool" | "action">): string {
 /** The card is up when the agent browsed recently, or you stopped it. */
 export function shows(a: Activity | undefined, now: number): boolean {
   return !!a && (a.paused || (a.browser > 0 && now - a.at < RECENT_MS));
+}
+
+/** "Ana wants to click "Đăng"", from the hub's `Click "Đăng"`. */
+export function askLine(a: Pick<Ask, "agent" | "what">): string {
+  return `${a.agent} wants to ${a.what.charAt(0).toLowerCase()}${a.what.slice(1)}`;
+}
+
+export function host(url: string): string {
+  try { return new URL(url).host.replace(/^www\./, ""); } catch { return ""; }
 }
 
 function ago(ms: number): string {
@@ -171,7 +184,64 @@ function note(text: string) {
   n.hidden = !text;
 }
 
+// ---- clicks held for your OK (sending, posting, paying, deleting)
+
+let asksBox: HTMLElement | null = null;
+const told = new Set<number>();
+
+function renderAsks(list: Ask[]) {
+  asksBox ??= Object.assign(document.createElement("div"), { className: "bv-asks" });
+  if (!asksBox.isConnected) document.body.append(asksBox);
+  const had = new Set([...asksBox.querySelectorAll<HTMLElement>("[data-ask]")].map((e) => Number(e.dataset.ask)));
+  asksBox.replaceChildren(
+    ...list.map((a) => {
+      const el = document.createElement("section");
+      el.className = "bv-ask";
+      el.dataset.ask = String(a.id);
+      el.setAttribute("role", "alertdialog");
+      el.setAttribute("aria-label", askLine(a));
+      el.innerHTML = `<span class="bv-dot" aria-hidden="true"></span><div class="bv-ask-t"><b></b><span></span></div><div class="bv-ask-acts"><button type="button" class="bv-no" data-no>Don't allow</button><button type="button" class="bv-ok" data-ok>Allow</button></div>`;
+      el.querySelector("b")!.textContent = askLine(a);
+      el.querySelector(".bv-ask-t span")!.textContent = host(a.url) ? `on ${host(a.url)}` : "in the browser";
+      return el;
+    }),
+  );
+  for (const a of list) {
+    if (had.has(a.id) || told.has(a.id)) continue;
+    told.add(a.id);
+    if (!document.hasFocus()) void notify(askLine(a), `${host(a.url) ? `On ${host(a.url)}. ` : ""}Open Maestro to allow it or not.`).catch(() => {});
+  }
+  // A new ask takes the keyboard only when nothing else has it.
+  const first = asksBox.querySelector<HTMLButtonElement>("[data-no]");
+  if (first && list.some((a) => !had.has(a.id)) && (document.activeElement === document.body || !document.activeElement)) first.focus();
+}
+
+const seenBlockers = new Map<string, number>();
+
+function onBlocker(b: Blocker) {
+  const key = `${b.agent}|${b.kind}|${b.url}`;
+  if (Date.now() - (seenBlockers.get(key) ?? 0) < 120_000) return;
+  seenBlockers.set(key, Date.now());
+  const what = b.kind === "captcha" ? "a CAPTCHA" : "a login page";
+  const where = host(b.url) ? ` on ${host(b.url)}` : "";
+  topNote(`<b>${esc(b.agent)}</b> reached ${what}${esc(where)}. Handle it in Chrome, then tell it to carry on.`, 6000);
+  if (!document.hasFocus()) void notify(`${b.agent} needs you in Chrome`, `It reached ${what}${where}.`).catch(() => {});
+}
+
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+
 export function initBrowserView(): void {
+  document.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement;
+    const card = t.closest<HTMLElement>(".bv-ask");
+    if (!card) return;
+    const ok = !!t.closest("[data-ok]");
+    if (!ok && !t.closest("[data-no]")) return;
+    void invoke("browser_answer", { id: Number(card.dataset.ask), ok }).catch((err) => topNote(String(err)));
+  });
+  void invoke<Ask[]>("browser_asks").then(renderAsks).catch(() => {});
+  void listen<Ask[]>("browser-asks", (e) => renderAsks(e.payload));
+  void listen<Blocker>("browser-blocker", (e) => onBlocker(e.payload));
   void invoke<Activity[]>("browser_activity")
     .then((list) => { for (const a of list) acts.set(a.agent, a); paint(); })
     .catch(() => {});

@@ -9,12 +9,19 @@
  * screenshots and page JavaScript go through chrome.debugger (the Chrome
  * DevTools Protocol), so clicks and keys are real browser input. */
 
-import { snapshotPage, locateRef, fillRef, findInPage, pageText } from "./page.js";
+import { snapshotPage, locateRef, fillRef, findInPage, pageText, labelAt, blockerOf } from "./page.js";
 
 const HOST = "com.maestro.browser";
 const COLORS = ["blue", "purple", "green", "orange", "pink", "cyan", "red", "yellow"];
 const MAX_CONSOLE = 300;
 const MAX_NETWORK = 300;
+/** Clicks that are hard to take back: sending, posting, paying, deleting.
+ *  When Maestro asks for it (args._ask), such a click waits for the user's OK. */
+const RISKY = /^(gửi|gửi ngay|send|send now|đăng|đăng bài|đăng ngay|post|publish|share|chia sẻ|thanh toán|pay|pay now|mua|mua ngay|buy|buy now|đặt hàng|place order|checkout|xác nhận thanh toán|confirm payment|chuyển tiền|transfer|xóa|xoá|delete|remove)$/i;
+const BLOCKER_NOTE = {
+  login: "This page asks for a login. Stop here and ask the user to sign in in this tab themselves; carry on once they say it is done. Never type their password.",
+  captcha: "This page shows a CAPTCHA. Stop here and ask the user to solve it in this tab; carry on once they say it is done.",
+};
 
 let port = null;
 let status = { state: "connecting", detail: "" };
@@ -317,6 +324,17 @@ async function point(tabId, args) {
   throw new Error("Give a ref (from browser_read_page) or a coordinate [x, y] (from a screenshot).");
 }
 
+/** Add a note (and a flag Maestro reads) when the page wants a person. */
+async function withBlocker(tabId, result) {
+  let kind = "";
+  try { kind = (await inPage(tabId, blockerOf, [])) ?? ""; } catch {}
+  if (!kind) return result;
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  result.content.push({ type: "text", text: BLOCKER_NOTE[kind] });
+  result.blocker = { kind, url: tab?.url ?? "" };
+  return result;
+}
+
 // ---------------------------------------------------------------- tools
 
 async function run(agent, tool, a) {
@@ -331,7 +349,7 @@ async function run(agent, tool, a) {
       const tab = await chrome.tabs.create({ url: a.url ? withScheme(a.url) : "about:blank", active: true });
       await intoGroup(agent, tab.id);
       if (a.url) await waitLoaded(tab.id);
-      return text(brief(await chrome.tabs.get(tab.id)));
+      return withBlocker(tab.id, text(brief(await chrome.tabs.get(tab.id))));
     }
     case "tab_adopt": {
       const tab = await chrome.tabs.get(a.tabId);
@@ -351,12 +369,12 @@ async function run(agent, tool, a) {
       else await chrome.tabs.update(t.id, { url: withScheme(a.url) });
       await sleep(150);
       await waitLoaded(t.id);
-      return text(brief(await chrome.tabs.get(t.id)));
+      return withBlocker(t.id, text(brief(await chrome.tabs.get(t.id))));
     }
     case "read_page": {
       const t = await tabFor(agent, a.tabId);
       const r = await inPage(t.id, snapshotPage, [a.filter === "all" ? "all" : "interactive", a.max ?? 400]);
-      return text(`${r.title}\n${r.url}\nviewport ${r.viewport}\n\n${r.lines.join("\n")}${r.note ? `\n\n(${r.note})` : ""}`);
+      return withBlocker(t.id, text(`${r.title}\n${r.url}\nviewport ${r.viewport}\n\n${r.lines.join("\n")}${r.note ? `\n\n(${r.note})` : ""}`));
     }
     case "find": {
       const t = await tabFor(agent, a.tabId);
@@ -397,9 +415,17 @@ async function run(agent, tool, a) {
       const clicks = act === "double_click" ? 2 : act === "triple_click" ? 3 : 1;
       const button = act === "right_click" ? "right" : "left";
       if (!/click$/.test(act)) throw new Error(`Unknown action "${act}".`);
+      if (a._ask && !a.confirmed && button === "left") {
+        const label = (await inPage(t.id, labelAt, [x, y])) ?? "";
+        if (RISKY.test(label)) {
+          const r = text(`Waiting for the user to allow: click "${label}".`);
+          r.needsConfirm = { what: `Click "${label}"`, url: t.url ?? "" };
+          return r;
+        }
+      }
       await mouse(t.id, x, y, { button, clicks });
-      await sleep(250);
-      return text(`${act} at ${x},${y}.`);
+      await sleep(400);
+      return withBlocker(t.id, text(`${act} at ${x},${y}.`));
     }
     case "javascript": {
       const t = await tabFor(agent, a.tabId);

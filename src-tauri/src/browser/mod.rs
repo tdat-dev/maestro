@@ -40,12 +40,10 @@ pub struct BrowserStatus {
 /// Start the hub and (re)register the native host. Called once at startup.
 pub fn start(app: &AppHandle, state: &BrowserState) {
     let app2 = app.clone();
-    let manifest = std::path::Path::new(&extension_dir()).join("manifest.json");
+    let dir = std::path::PathBuf::from(extension_dir());
     let wanted = Box::new(move || {
-        std::fs::read_to_string(&manifest)
-            .ok()
-            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-            .and_then(|v| v["version"].as_str().map(String::from))
+        dev_sync(&dir);
+        manifest_version(&dir)
     });
     match hub::Hub::start(Box::new(move |ev| {
         let _ = match ev {
@@ -63,6 +61,39 @@ pub fn start(app: &AppHandle, state: &BrowserState) {
             eprintln!("browser host registration: {e}");
         }
     });
+}
+
+fn manifest_version(dir: &std::path::Path) -> Option<String> {
+    std::fs::read_to_string(dir.join("manifest.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v["version"].as_str().map(String::from))
+}
+
+/// In development, Tauri copies `browser-extension/` next to the exe only when
+/// it rebuilds, and Chrome loads that copy. Refresh it from the repo whenever
+/// the repo has another version, so an edit to the extension reaches Chrome
+/// (the hub then tells it to reload). Release builds ship their own copy.
+fn dev_sync(dst: &std::path::Path) {
+    if !cfg!(debug_assertions) {
+        return;
+    }
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("browser-extension");
+    if src == dst || !src.join("manifest.json").exists() || manifest_version(&src) == manifest_version(dst) {
+        return;
+    }
+    fn copy(from: &std::path::Path, to: &std::path::Path) {
+        let _ = std::fs::create_dir_all(to);
+        for e in std::fs::read_dir(from).into_iter().flatten().flatten() {
+            let (f, t) = (e.path(), to.join(e.file_name()));
+            if f.is_dir() {
+                copy(&f, &t);
+            } else {
+                let _ = std::fs::copy(&f, &t);
+            }
+        }
+    }
+    copy(&src, dst);
 }
 
 /// Where the unpacked extension lives: next to the app when installed,

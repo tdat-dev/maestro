@@ -279,28 +279,58 @@ function withScheme(url) {
   return "https://" + url;
 }
 
-async function screenshot(tabId, retried = false) {
-  const m = await cdp(tabId, "Page.getLayoutMetrics");
-  const v = m.cssVisualViewport;
-  const shot = await Promise.race([
-    cdp(tabId, "Page.captureScreenshot", {
-      format: "jpeg",
-      quality: 70,
-      clip: { x: v.pageX, y: v.pageY, width: v.clientWidth, height: v.clientHeight, scale: 1 },
-    }),
-    sleep(8000).then(() => null),
-  ]);
-  if (!shot) {
-    if (retried) throw new Error("The tab did not paint a screenshot in time.");
-    // A tab in the background may not paint: bring it forward once.
-    await chrome.tabs.update(tabId, { active: true });
-    await sleep(400);
-    return screenshot(tabId, true);
+/** A picture of what the tab shows, at most `maxW` wide, as base64 JPEG.
+ *
+ * It copies the frame Chrome already painted (captureVisibleTab), so the
+ * page is never touched: a CDP screenshot with a clip makes Chrome re-lay the
+ * view out, and the page visibly flashed on every frame of Maestro's live
+ * view. The CDP path is only the fallback, for a tab that isn't the one
+ * showing in its window, and it runs without a clip. */
+async function grab(tab, maxW, quality) {
+  let blob = null;
+  const win = await chrome.windows.get(tab.windowId).catch(() => null);
+  if (tab.active && win && win.state !== "minimized") {
+    try {
+      const url = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality });
+      blob = await (await fetch(url)).blob();
+    } catch { /* over Chrome's two-a-second limit, or a page it won't copy */ }
   }
+  if (!blob) {
+    await dbg(tab.id);
+    const shot = await Promise.race([
+      cdp(tab.id, "Page.captureScreenshot", { format: "jpeg", quality, optimizeForSpeed: true }),
+      sleep(2500).then(() => null),
+    ]);
+    if (!shot) throw new Error("The tab isn't showing right now.");
+    blob = await (await fetch(`data:image/jpeg;base64,${shot.data}`)).blob();
+  }
+  const bmp = await createImageBitmap(blob);
+  const scale = Math.min(1, maxW / bmp.width);
+  const w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
+  let out = blob;
+  if (scale < 1) {
+    const c = new OffscreenCanvas(w, h);
+    const g = c.getContext("2d");
+    g.imageSmoothingQuality = "high";
+    g.drawImage(bmp, 0, 0, w, h);
+    out = await c.convertToBlob({ type: "image/jpeg", quality: quality / 100 });
+  }
+  bmp.close();
+  const bytes = new Uint8Array(await out.arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { data: btoa(bin), width: w, height: h };
+}
+
+/** The agent's screenshot: in page (CSS) pixels, so its coordinates are the
+ *  ones clicks use. */
+async function screenshot(tab) {
+  const t = await chrome.tabs.get(tab.id);
+  const img = await grab(t, t.width || 1600, 70);
   return {
     content: [
-      { type: "image", data: shot.data, mimeType: "image/jpeg" },
-      { type: "text", text: `Screenshot ${Math.round(v.clientWidth)}x${Math.round(v.clientHeight)}; click coordinates use these pixels.` },
+      { type: "image", data: img.data, mimeType: "image/jpeg" },
+      { type: "text", text: `Screenshot ${img.width}x${img.height}; click coordinates use these pixels.` },
     ],
   };
 }
@@ -443,9 +473,11 @@ async function run(agent, tool, a) {
       guardDialog(t.id);
       const act = a.action;
       if (act === "screenshot") {
-        // The agent sees the page, not its own cursor.
+        // The agent sees the page, not its own cursor: hide it, let one
+        // frame paint, copy that frame.
         await cursor(t.id, agent, "hide");
-        try { return await screenshot(t.id); } finally { void cursor(t.id, agent, "unhide"); }
+        await sleep(50);
+        try { return await screenshot(t); } finally { void cursor(t.id, agent, "unhide"); }
       }
       if (act === "wait") { await sleep(Math.min(30, a.duration ?? 1) * 1000); return text("Waited."); }
       if (act === "type") {
@@ -516,16 +548,8 @@ async function run(agent, tool, a) {
       // Maestro's live view: a small frame of the agent's current tab. Never
       // brings the tab forward, so watching never gets in the agent's way.
       const t = await tabFor(agent, a.tabId);
-      await dbg(t.id);
-      const m = await cdp(t.id, "Page.getLayoutMetrics");
-      const v = m.cssVisualViewport;
-      const scale = Math.min(1, 720 / v.clientWidth);
-      const shot = await Promise.race([
-        cdp(t.id, "Page.captureScreenshot", { format: "jpeg", quality: 55, clip: { x: v.pageX, y: v.pageY, width: v.clientWidth, height: v.clientHeight, scale } }),
-        sleep(2500).then(() => null),
-      ]);
-      if (!shot) throw new Error("The tab isn't showing right now.");
-      return { content: [{ type: "image", data: shot.data, mimeType: "image/jpeg" }], tab: brief(t), dialog: dialogs.get(t.id) ?? null };
+      const img = await grab(t, 720, 55);
+      return { content: [{ type: "image", data: img.data, mimeType: "image/jpeg" }], tab: brief(t), dialog: dialogs.get(t.id) ?? null };
     }
     case "reload": {
       // Maestro saw this profile running an older copy than the folder on

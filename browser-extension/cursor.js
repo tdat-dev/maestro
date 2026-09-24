@@ -12,7 +12,7 @@
  *   the page is never laid out again;
  * - no backdrop blur and no per-frame filters: the cursor's shadow is part of
  *   its SVG;
- * - the pulsing dot stops whenever the overlay is idle;
+ * - nothing loops: the dot on the pill is still;
  * - the layer is `contain: strict` and never takes the mouse.
  *
  * op: "move" {x, y} (resolves on arrival) · "click" {x, y, button} ·
@@ -36,7 +36,7 @@ export function cursorAct(op, o) {
     background:#16161a;color:#f4f4f5;font:500 12.5px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.1px;
     box-shadow:0 6px 20px rgba(0,0,0,.3),0 0 0 1px rgba(255,255,255,.09);opacity:0;transform:translate(-50%,-6px);
     transition:opacity .3s ease,transform .3s cubic-bezier(.2,.8,.2,1);pointer-events:none}
-  .pill i{width:8px;height:8px;border-radius:50%;background:var(--c);box-shadow:0 0 0 3px var(--c-soft);animation:beat 1.6s ease-in-out infinite;animation-play-state:paused}
+  .pill i{width:8px;height:8px;border-radius:50%;background:var(--c);box-shadow:0 0 0 3px var(--c-soft)}
   .pill b{font-weight:650}
   .pill button{all:unset;cursor:pointer;padding:5px 11px;border-radius:999px;background:rgba(255,255,255,.1);color:#fff;font:600 12px/1 system-ui,-apple-system,"Segoe UI",sans-serif}
   .pill button:hover{background:#e5484d}
@@ -44,8 +44,6 @@ export function cursorAct(op, o) {
   .pill.stopped i{background:#f0bf6a;box-shadow:0 0 0 3px rgba(240,191,106,.3)}
   .on .frame{opacity:1}
   .on .pill{opacity:1;transform:translate(-50%,0);pointer-events:auto}
-  .on .pill i{animation-play-state:running}
-  .pill.stopped i{animation:none}
   .cur{position:fixed;left:0;top:0;opacity:0;transition:opacity .25s ease}
   .moving{will-change:transform}
   .on .cur{opacity:1}
@@ -61,8 +59,7 @@ export function cursorAct(op, o) {
   .dot{position:fixed;left:0;top:0;width:8px;height:8px;border-radius:50%;background:var(--c);animation:dot .45s ease-out forwards}
   @keyframes ring{0%{transform:translate(var(--x),var(--y)) translate(-50%,-50%) scale(.4);opacity:.9}100%{transform:translate(var(--x),var(--y)) translate(-50%,-50%) scale(4.2);opacity:0}}
   @keyframes dot{0%{transform:translate(var(--x),var(--y)) translate(-50%,-50%) scale(1);opacity:.9}100%{transform:translate(var(--x),var(--y)) translate(-50%,-50%) scale(.2);opacity:0}}
-  @keyframes beat{50%{opacity:.45}}
-  @media (prefers-reduced-motion:reduce){.ring,.dot{animation-duration:.01s}.pill i{animation:none}.cur,.frame,.pill,.chip{transition:none}}
+  @media (prefers-reduced-motion:reduce){.ring,.dot{animation-duration:.01s}.cur,.frame,.pill,.chip{transition:none}}
 </style>
 <div class="wrap">
   <div class="frame"></div>

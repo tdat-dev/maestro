@@ -19,6 +19,7 @@ const TOGGLES: Toggle[] = [
   { id: "prefReviewOnDone", key: "reviewOnDone" },
   { id: "prefRestore", key: "restore" },
   { id: "prefTips", key: "tips" },
+  { id: "prefChat", key: "chatView" },
 ];
 
 function markSeg(id: string, value: number): void {

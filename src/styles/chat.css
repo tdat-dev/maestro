@@ -1,0 +1,154 @@
+/* Chat view (chatview.ts): one agent as a conversation, over its terminal.
+   The terminal stays laid out underneath so the CLI keeps its size; the chat
+   only covers it. Cinema palette: black stage, white type, green/red only for
+   what was added, removed or failed. */
+
+.term-host { position: relative; }
+.cv { display: none; }
+.pane.chat-on .cv {
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; flex-direction: column;
+  background: var(--ib-panel, #0e0f11);
+  font-family: var(--sans);
+  color: var(--ib-ink, #f4f4f5);
+}
+.inbox-split .cv { display: none !important; }
+/* the find bar searches the terminal, which the chat hides */
+.pane.chat-on .pane-find { display: none; }
+
+.cv-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.cv-thread { width: min(780px, 100%); margin: 0 auto; padding: 28px 28px 24px; display: flex; flex-direction: column; gap: 14px; }
+
+/* you */
+.cv-u { display: flex; justify-content: flex-end; margin-top: 10px; }
+.cv-bubble {
+  max-width: min(78%, 620px); padding: 11px 15px; border-radius: 18px 18px 6px 18px;
+  background: #1d1e23; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  font-size: 14.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.cv-img { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 12px; color: var(--ib-ink-3, #8c8c96); background: rgba(255, 255, 255, 0.06); }
+
+/* the agent */
+.cv-a { font-size: 14.5px; line-height: 1.65; color: #e7e7ea; overflow-wrap: anywhere; }
+.cv-a > :first-child { margin-top: 0; }
+.cv-a > :last-child { margin-bottom: 0; }
+.cv-a p { margin: 0 0 10px; }
+.cv-a h1, .cv-a h2, .cv-a h3, .cv-a h4 { margin: 18px 0 8px; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--ib-ink, #f4f4f5); }
+.cv-a h1 { font-size: 17px; }
+.cv-a ul, .cv-a ol { margin: 0 0 10px; padding-left: 22px; }
+.cv-a li { margin: 3px 0; }
+.cv-a strong { color: var(--ib-ink, #f4f4f5); font-weight: 600; }
+.cv-a a { color: #b9cdf5; text-underline-offset: 3px; }
+.cv-a code { font: 12.5px var(--mono); padding: 1px 5px; border-radius: 5px; background: rgba(255, 255, 255, 0.07); }
+.cv-a pre { margin: 0 0 12px; padding: 12px 14px; border-radius: 10px; background: #08090a; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07); overflow-x: auto; }
+.cv-a pre code { padding: 0; background: none; font-size: 12.5px; line-height: 1.55; }
+.cv-a blockquote { margin: 0 0 10px; padding-left: 12px; border-left: 2px solid rgba(255, 255, 255, 0.15); color: var(--ib-ink-2, #c9c9cf); }
+.cv-a table { border-collapse: collapse; margin: 0 0 12px; font-size: 13px; display: block; overflow-x: auto; }
+.cv-a th, .cv-a td { padding: 6px 10px; border: 1px solid rgba(255, 255, 255, 0.09); text-align: left; }
+.cv-a th { font-weight: 600; background: rgba(255, 255, 255, 0.03); }
+.cv-a hr { border: 0; height: 1px; background: rgba(255, 255, 255, 0.08); margin: 14px 0; }
+
+/* what it did: a quiet list of steps between the messages */
+.cv-steps { display: flex; flex-direction: column; gap: 1px; margin: -4px 0; }
+.cv-more, .cv-earlier {
+  align-self: flex-start; margin: 2px 0 4px; padding: 4px 10px; border-radius: 999px;
+  font-size: 12.5px; color: var(--ib-ink-3, #8c8c96); background: rgba(255, 255, 255, 0.04);
+}
+.cv-earlier { align-self: center; margin-bottom: 8px; }
+.cv-more:hover, .cv-earlier:hover { color: var(--ib-ink, #f4f4f5); background: rgba(255, 255, 255, 0.08); }
+.cv-sh {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px;
+  padding: 4px 8px; margin-left: -8px; border-radius: 8px; text-align: left;
+  font-size: 13px; color: var(--ib-ink-3, #8c8c96);
+}
+.cv-sh:not([disabled]):hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-2, #c9c9cf); }
+.cv-sh[disabled] { cursor: default; }
+.cv-sh:focus-visible, .cv-more:focus-visible, .cv-earlier:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.cv-ic { flex: none; width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
+.cv-verb { flex: none; }
+.cv-tgt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ib-ink-2, #c9c9cf); }
+.cv-tgt.code { font-family: var(--mono); font-size: 12.5px; }
+.cv-n { flex: none; font: 12px var(--mono); }
+.cv-n .a, .cv-diff .a { color: var(--ib-work, #6fd6a0); font-weight: 400; }
+.cv-n .d, .cv-diff .d { color: var(--ib-del, #f2766b); font-weight: 400; }
+.cv-err { flex: none; font-size: 12px; color: var(--ib-del, #f2766b); }
+.cv-step.err .cv-ic { color: var(--ib-del, #f2766b); }
+.cv-chev { flex: none; width: 10px; height: 10px; margin-left: auto; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; transition: transform 0.15s; }
+.cv-step.open .cv-chev { transform: rotate(90deg); }
+.cv-spin {
+  flex: none; width: 12px; height: 12px; border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.15); border-top-color: var(--ib-ink-2, #c9c9cf);
+  animation: cv-spin 0.8s linear infinite;
+}
+@keyframes cv-spin { to { transform: rotate(360deg); } }
+
+.cv-sb { margin: 2px 0 8px 23px; display: flex; flex-direction: column; gap: 6px; }
+.cv-full { align-self: flex-start; max-width: 100%; font: 12px var(--mono); padding: 5px 8px; border-radius: 7px; background: rgba(255, 255, 255, 0.05); color: var(--ib-ink-2, #c9c9cf); white-space: pre-wrap; overflow-wrap: anywhere; }
+.cv-out, .cv-diff {
+  margin: 0; max-height: 320px; overflow: auto; padding: 10px 12px; border-radius: 10px;
+  background: #08090a; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  font: 12px/1.55 var(--mono); color: #cfcfd4; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.cv-out.err { color: #f4b1aa; }
+.cv-diff span { display: block; padding: 0 6px; margin: 0 -6px; }
+.cv-diff span.a { background: rgba(111, 214, 160, 0.08); }
+.cv-diff span.d { background: rgba(242, 118, 107, 0.08); }
+.cv-none { margin: 0; font-size: 12.5px; color: var(--ib-ink-3, #8c8c96); }
+.cv-todos { list-style: none; margin: 0; padding: 10px 12px; border-radius: 10px; background: rgba(255, 255, 255, 0.03); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07); display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+.cv-todos li { display: flex; align-items: baseline; gap: 9px; color: var(--ib-ink-2, #c9c9cf); }
+.cv-todos i { flex: none; width: 12px; height: 12px; border-radius: 4px; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.3); transform: translateY(1px); }
+.cv-todos .in_progress { color: var(--ib-ink, #f4f4f5); }
+.cv-todos .in_progress i { box-shadow: inset 0 0 0 1.5px var(--ib-ink, #f4f4f5), inset 0 0 0 4px var(--ib-panel, #0e0f11), inset 0 0 0 6px var(--ib-ink, #f4f4f5); }
+.cv-todos .completed { color: var(--ib-ink-3, #8c8c96); text-decoration: line-through; text-decoration-color: rgba(255, 255, 255, 0.25); }
+.cv-todos .completed i { background: var(--ib-work, #6fd6a0); box-shadow: none; }
+
+.cv-note { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--ib-ink-3, #8c8c96); }
+.cv-note::before, .cv-note::after { content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, 0.07); }
+
+.cv-empty { margin: 18vh auto 0; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.cv-empty b { font-size: 18px; font-weight: 600; }
+.cv-empty span { font-size: 14px; color: var(--ib-ink-3, #8c8c96); max-width: 360px; line-height: 1.5; }
+
+/* bottom: working line + composer */
+.cv-foot { flex: none; width: min(780px, 100%); margin: 0 auto; padding: 0 20px 18px; display: flex; flex-direction: column; gap: 8px; }
+.cv-working { margin: 0 8px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ib-ink-3, #8c8c96); }
+.cv-dots { display: inline-flex; gap: 3px; }
+.cv-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--ib-work, #6fd6a0); animation: cv-dot 1.2s ease-in-out infinite; }
+.cv-dots i:nth-child(2) { animation-delay: 0.15s; }
+.cv-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes cv-dot { 0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
+.cv-compose {
+  border-radius: 18px; background: #16171b;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  transition: box-shadow 0.15s;
+}
+.cv-compose:focus-within { box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.26); }
+.cv-compose textarea {
+  display: block; width: 100%; min-height: 48px; max-height: 200px; resize: none;
+  padding: 14px 16px 4px; border: 0; outline: none; background: transparent;
+  color: var(--ib-ink, #f4f4f5); font: 14.5px/1.5 var(--sans);
+}
+.cv-compose textarea::placeholder { color: var(--ib-ink-3, #8c8c96); }
+.cv-bar { display: flex; align-items: center; gap: 8px; padding: 4px 8px 8px 16px; }
+.cv-hint { flex: 1; font-size: 12px; color: #6d6d76; }
+.cv-stop { display: none; height: 30px; padding: 0 12px; border-radius: 999px; font: 600 12.5px var(--sans); color: var(--ib-ink, #f4f4f5); background: rgba(255, 255, 255, 0.08); }
+.cv.working .cv-stop { display: inline-flex; align-items: center; }
+.cv-stop:hover { background: rgba(255, 255, 255, 0.14); }
+.cv-send { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: #fff; color: #000; }
+.cv-send:hover { background: #e9e9ec; }
+.cv-send svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.cv-stop:focus-visible, .cv-send:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* while the answer card is up, it is the way to reply */
+.cv.asking .cv-compose { display: none; }
+
+/* Chat | Terminal on the stage header */
+.ib-view { display: inline-flex; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); margin-right: 4px; }
+.ib-view button { height: 26px; padding: 0 11px; border-radius: 999px; font: 500 12.5px var(--sans); color: var(--ib-ink-3, #8c8c96); }
+.ib-view button:hover { color: var(--ib-ink, #f4f4f5); }
+.ib-view button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.12); color: var(--ib-ink, #f4f4f5); }
+.ib-view button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-spin, .cv-dots i { animation: none; }
+  .cv-chev, .cv-compose { transition: none; }
+}

@@ -25,6 +25,7 @@ import { confirmModal } from "./confirmmodal";
 import { openMenu, type MenuItem } from "./ctxmenu";
 import { openHelpPage, openTool, isHelpKey } from "./inboxhelp";
 import { showTip, tipSeen } from "./tips";
+import { chatSupported, hideChat, showChat } from "./chatview";
 import { allTasks, answerOption, answerText, onTasksChange, type Task } from "./tasks";
 import type { AskOption } from "./askparse";
 import type { TaskState } from "./taskstate";
@@ -159,6 +160,27 @@ let splitBtn: HTMLButtonElement | null = null;
 let reviewer: ReturnType<typeof createReviewDrawer> | null = null;
 let historian: ReturnType<typeof createHistoryDrawer> | null = null;
 let dockEl: HTMLElement | null = null;
+/** Agents switched to Terminal on the stage; the rest show as a chat. */
+const termMode = new Set<string>();
+let chatFor: string | null = null;
+
+/** Whether the stage shows this agent as a conversation. */
+function wantsChat(p: Pane): boolean {
+  return getPref("chatView") && chatSupported(p) && !termMode.has(p.id);
+}
+
+/** The chat view follows the stage: on for the agent there (not in Split),
+ *  off for everyone else, so the terminals Split shows are the real ones. */
+function renderChat(list: Task[], pane: Pane | undefined): void {
+  const on = pane && !splitOn && wantsChat(pane) ? pane : undefined;
+  for (const ws of workspaces.values()) for (const p of ws.panes.values()) if (p !== on && p.el.classList.contains("chat-on")) hideChat(p);
+  for (const id of borrowed.keys()) { const p = paneById(id); if (p && p !== on && p.el.classList.contains("chat-on")) hideChat(p); }
+  if (!on) { chatFor = null; return; }
+  const t = list.find((x) => x.paneId === on.id);
+  showChat(on, { name: on.spec.name, state: t?.status.state ?? "idle" }, chatFor !== on.id);
+  chatFor = on.id;
+}
+
 /** Queue filter: one project's id, or null for all of them. */
 let projectFilter: string | null = null;
 
@@ -446,10 +468,12 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
       acts.dataset.mode = mode;
       acts.innerHTML = pinned
         ? `<button class="ib-icon" data-stage="full" title="Open full size" aria-label="Open ${esc(t.name)} full size">⤢</button><button class="ib-icon" data-stage="close" title="Take out of Split" aria-label="Take ${esc(t.name)} out of Split">✕</button>`
-        : `<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
+        : `${chatSupported(p) && getPref("chatView") ? `<span class="ib-view" role="group" aria-label="Show ${esc(t.name)} as"><button data-stage="chat" title="The conversation">Chat</button><button data-stage="term" title="The terminal, as the CLI draws it">Terminal</button></span>` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
       pill.after(acts);
     }
     acts.querySelector('[data-stage="review"]')?.setAttribute("aria-pressed", String(reviewer?.paneId === p.id));
+    acts.querySelector('[data-stage="chat"]')?.setAttribute("aria-pressed", String(!termMode.has(p.id)));
+    acts.querySelector('[data-stage="term"]')?.setAttribute("aria-pressed", String(termMode.has(p.id)));
     acts.querySelector('[data-stage="history"]')?.setAttribute("aria-pressed", String(historian?.paneId === p.id));
     // Just the branch: the project is already in the queue and the headline.
     // On a Split card the second line is the job, when there is one.
@@ -583,6 +607,7 @@ function render(): void {
   renderHead(list);
   renderHeaders(list, pane);
   renderAsk(list, pane);
+  renderChat(list, pane);
   renderStart();
   // History follows the stage: switch agents and it shows the new one's.
   if (historian?.paneId && pane && historian.paneId !== pane.id) historian.open(pane);
@@ -765,6 +790,8 @@ function onStageButton(e: MouseEvent): void {
   if (!b) return;
   e.stopPropagation();
   switch (b.dataset.stage) {
+    case "chat": if (pane) { termMode.delete(pane.id); chatFor = null; render(); } break;
+    case "term": if (pane) { termMode.add(pane.id); render(); pane.term.focus(); } break;
     case "review": if (reviewer?.paneId) reviewer.close(); else openReview(); break;
     case "history": if (historian?.paneId) historian.close(); else openHistory(); break;
     case "compare": { const r = pane && allTasks().find((x) => x.paneId === pane.id)?.race; if (r) openCompare(r.id); break; }

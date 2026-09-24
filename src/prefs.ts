@@ -29,6 +29,8 @@ export interface Prefs {
   restore: boolean;
   /** One-time tips when a feature first becomes useful. */
   tips: boolean;
+  /** Show the agent on screen as a conversation (Claude Code agents). */
+  chatView: boolean;
 }
 
 /** How many terminals Split may lay out: 2 side by side up to a 3 × 3 grid. */
@@ -48,6 +50,7 @@ export const DEFAULTS: Prefs = {
   reviewOnDone: false,
   restore: true,
   tips: true,
+  chatView: true,
 };
 
 const KEY = "maestro.prefs";

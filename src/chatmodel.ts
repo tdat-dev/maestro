@@ -16,6 +16,8 @@ export interface StepItem {
   target: string;
   /** Full path or command, for a tooltip. */
   full?: string;
+  /** The target is code (a file, a command, a pattern), not words. */
+  code?: boolean;
   /** Tool output, trimmed. */
   output?: string;
   error?: boolean;
@@ -87,13 +89,14 @@ export function describeTool(name: string, input: Input): Omit<StepItem, "kind" 
     case "Bash":
     case "PowerShell": {
       const cmd = str(input.command);
-      return { tool: name, verb: "Ran", target: str(input.description) || firstLine(cmd), full: cmd };
+      const said = str(input.description);
+      return { tool: name, verb: "Ran", target: said || firstLine(cmd), full: cmd, code: !said };
     }
     case "Read":
-      return { tool: name, verb: "Read", target: baseName(file), full: file };
+      return { tool: name, verb: "Read", target: baseName(file), full: file, code: true };
     case "Edit": {
       const diff = lineDiff(str(input.old_string), str(input.new_string)).slice(0, MAX_DIFF_LINES);
-      return { tool: name, verb: "Edited", target: baseName(file), full: file, diff, ...countDiff(diff) };
+      return { tool: name, verb: "Edited", target: baseName(file), full: file, code: true, diff, ...countDiff(diff) };
     }
     case "MultiEdit": {
       const edits = Array.isArray(input.edits) ? (input.edits as Input[]) : [];
@@ -101,21 +104,21 @@ export function describeTool(name: string, input: Input): Omit<StepItem, "kind" 
         ...(k ? [{ sign: " " as const, text: "⋯" }] : []),
         ...lineDiff(str(e.old_string), str(e.new_string)),
       ]).slice(0, MAX_DIFF_LINES);
-      return { tool: name, verb: "Edited", target: baseName(file), full: file, diff, ...countDiff(diff) };
+      return { tool: name, verb: "Edited", target: baseName(file), full: file, code: true, diff, ...countDiff(diff) };
     }
     case "Write": {
       const content = str(input.content);
       const diff = content.split(/\r?\n/).slice(0, MAX_DIFF_LINES).map((text) => ({ sign: "+" as const, text }));
-      return { tool: name, verb: "Wrote", target: baseName(file), full: file, diff, added: content ? content.split(/\r?\n/).length : 0, removed: 0 };
+      return { tool: name, verb: "Wrote", target: baseName(file), full: file, code: true, diff, added: content ? content.split(/\r?\n/).length : 0, removed: 0 };
     }
     case "NotebookEdit":
-      return { tool: name, verb: "Edited", target: baseName(file), full: file };
+      return { tool: name, verb: "Edited", target: baseName(file), full: file, code: true };
     case "Grep":
-      return { tool: name, verb: "Searched for", target: str(input.pattern), full: str(input.path) || undefined };
+      return { tool: name, verb: "Searched for", target: str(input.pattern), code: true, full: str(input.path) || undefined };
     case "Glob":
-      return { tool: name, verb: "Looked for files", target: str(input.pattern) };
+      return { tool: name, verb: "Looked for files", target: str(input.pattern), code: true };
     case "LS":
-      return { tool: name, verb: "Listed", target: baseName(file), full: file };
+      return { tool: name, verb: "Listed", target: baseName(file), full: file, code: true };
     case "WebSearch":
       return { tool: name, verb: "Searched the web for", target: str(input.query) };
     case "WebFetch": {

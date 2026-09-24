@@ -18,6 +18,7 @@ import { getPref } from "./prefs";
 import { revealPane } from "./agentbridge";
 import { focusPane } from "./panelayout";
 import { enhanceSelects } from "./selectmenu";
+import { openHelpPage } from "./inboxhelp";
 import type { Workspace } from "./panetypes";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -133,7 +134,8 @@ function composerHTML(): string {
         <button type="submit" class="st-go">Start<kbd>↵</kbd></button>
       </div>
     </form>
-    <div class="st-try" role="group" aria-label="Jobs to try">${STARTERS.map((s) => `<button type="button" class="st-starter" data-starter="${esc(s.job)}" title="${esc(s.job)}">${esc(s.label)}</button>`).join("")}</div>`;
+    <div class="st-try" role="group" aria-label="Jobs to try">${STARTERS.map((s) => `<button type="button" class="st-starter" data-starter="${esc(s.job)}" title="${esc(s.job)}">${esc(s.label)}</button>`).join("")}</div>
+    <button type="button" class="st-help" data-st="help">See everything Maestro can do <kbd>?</kbd></button>`;
 }
 
 /** The parts that follow live state; rebuilt only when that state changes, so
@@ -268,6 +270,7 @@ export function mountStart(): void {
     switch (t.closest<HTMLElement>("[data-st]")?.dataset.st) {
       case "choose": void chooseFolder(); break;
       case "shell": quickTerminal(getRecents()[0] ?? null); break;
+      case "help": openHelpPage(); break;
     }
   });
   renderStart();

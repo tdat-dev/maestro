@@ -27,6 +27,8 @@ export interface Prefs {
   reviewOnDone: boolean;
   /** Reopen last session's projects and agents (stopped) when Maestro starts. */
   restore: boolean;
+  /** One-time tips when a feature first becomes useful. */
+  tips: boolean;
 }
 
 /** How many terminals Split may lay out: 2 side by side up to a 3 × 3 grid. */
@@ -45,6 +47,7 @@ export const DEFAULTS: Prefs = {
   splitMax: 6,
   reviewOnDone: false,
   restore: true,
+  tips: true,
 };
 
 const KEY = "maestro.prefs";

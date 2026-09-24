@@ -42,12 +42,5 @@ export function initHint(): void {
   hintEl.appendChild(textEl);
   document.body.appendChild(hintEl);
 
-  // First-run onboarding tip — shown once, then remembered.
-  if (!localStorage.getItem("maestro.hintSeen")) {
-    localStorage.setItem("maestro.hintSeen", "1");
-    window.setTimeout(
-      () => topNote("Click a terminal to zoom · drag the title bar to move · type @ to target an agent", 5200),
-      900,
-    );
-  }
+  // The first-run tip lives in tips.ts now (welcome), with the others.
 }

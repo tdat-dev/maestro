@@ -5,6 +5,7 @@
 import { CLI_PRESETS } from "./crew";
 import { getPrefs, setPref, resetPrefs, SPLIT_SIZES, type Prefs } from "./prefs";
 import { loadCrew, saveSkipPerms } from "./spawnmodal";
+import { resetTips } from "./tips";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
 
@@ -17,6 +18,7 @@ const TOGGLES: Toggle[] = [
   { id: "prefAskCard", key: "askCard" },
   { id: "prefReviewOnDone", key: "reviewOnDone" },
   { id: "prefRestore", key: "restore" },
+  { id: "prefTips", key: "tips" },
 ];
 
 function markSeg(id: string, value: number): void {
@@ -71,6 +73,12 @@ export function initPrefsView(): void {
     const el = $<HTMLInputElement>(t.id);
     el?.addEventListener("change", () => setPref(t.key, el.checked as never));
   }
+  $("prefTipsAgain")?.addEventListener("click", (e) => {
+    resetTips();
+    setPref("tips", true);
+    syncPrefsView();
+    (e.currentTarget as HTMLButtonElement).textContent = "Tips will show again";
+  });
   $("prefReset")?.addEventListener("click", () => {
     resetPrefs();
     saveSkipPerms(false);

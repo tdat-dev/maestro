@@ -20,10 +20,11 @@ import { openPalette, closePalette, paletteOpen, type PaletteItem } from "./inbo
 import { createHistoryDrawer } from "./inboxhistory";
 import { mountStart, renderStart, unmountStart } from "./inboxstart";
 import { getPref } from "./prefs";
-import { dockToggle } from "./dock";
 import { activateWorkspace, removeWorkspace, renameWorkspace } from "./workspace";
 import { confirmModal } from "./confirmmodal";
 import { openMenu, type MenuItem } from "./ctxmenu";
+import { openHelpPage, openTool, isHelpKey } from "./inboxhelp";
+import { showTip, tipSeen } from "./tips";
 import { allTasks, answerOption, answerText, onTasksChange, type Task } from "./tasks";
 import type { AskOption } from "./askparse";
 import type { TaskState } from "./taskstate";
@@ -406,6 +407,7 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
           <span class="iq-mk" style="background:${esc(p?.color ?? "#888")}" aria-hidden="true">${esc((t.name.trim()[0] ?? "?").toUpperCase())}</span>
           <span class="iq-t">${esc(t.title ?? t.name)}</span>
           <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In Split">◫</span> ` : ""}${ago(now - t.since)}</span>
+          <span class="iq-more" data-more title="More (right-click)" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="12.5" cy="8" r="1.3" fill="currentColor"/></svg></span>
           <span class="iq-s"><span class="iq-p">${esc(t.title ? t.name : t.project)}</span>${t.race ? ` <span class="iq-race">race ${t.race.n}/${t.race.of}</span>` : ""} · <span class="iq-l">${esc(rowLine(t))}</span>${lineCounts(t)}</span>
         </button>`;
       }).join("") : `<p class="iq-empty">All clear. Nothing is waiting on you.</p>`}
@@ -564,11 +566,18 @@ function renderAsk(list: Task[], pane: Pane | undefined): void {
 
 const rank = (o: AskOption) => (o.always ? 0 : o.deny ? 1 : 2);
 
+/** Tips for what just became useful; showTip keeps them one at a time. */
+function teach(list: Task[]): void {
+  if (list.length >= 1 && !tipSeen("menu") && !splitOn) { if (showTip("menu")) return; }
+  if (list.length >= 2 && !tipSeen("split") && !splitOn) showTip("split");
+}
+
 function render(): void {
   if (!document.body.classList.contains("inbox-ui")) return;
   ensureStage();
   layoutSplit();
   const list = allTasks();
+  teach(list);
   const pane = stagePane();
   renderQueue(list, pane?.id, Date.now());
   renderHead(list);
@@ -690,7 +699,7 @@ export function paletteItems(): PaletteItem[] {
       run: () => openTask(t),
     };
   });
-  const act = (label: string, run: () => void, keys?: string): PaletteItem => ({ group: "Actions", label, run, keys });
+  const act = (label: string, run: () => void, keys?: string, sub?: string): PaletteItem => ({ group: "Actions", label, run, keys, sub });
   const ws = activeWs;
   const projects: PaletteItem[] = [...workspaces.values()].filter((w) => w !== ws).map((w) => ({
     group: "Projects", label: w.name, sub: `${w.panes.size} agent${w.panes.size === 1 ? "" : "s"}${w.dir ? ` · ${w.dir}` : ""}`,
@@ -702,17 +711,21 @@ export function paletteItems(): PaletteItem[] {
   ] : [];
   return [
     ...agents,
-    act("New agent", () => openNewAgent()),
-    act(splitOn ? "Leave Split" : "Split: pinned agents side by side", () => setSplit(!splitOn), "Alt+S"),
+    act("New agent", () => openNewAgent(), "Ctrl+Shift+T", "Give 2 or 3 the same job to race them"),
+    act(splitOn ? "Leave Split" : "Split: pinned agents side by side", () => setSplit(!splitOn), "Alt+S", "Each agent on its own card, answering in place"),
     act("Pin or unpin the current agent in Split", () => pinCurrent(), "Alt+P"),
-    act("Review what the current agent changed", () => openReview(), "Alt+R"),
-    act("History of the current agent", () => openHistory(), "Alt+H"),
-    act("Board", () => dockToggle("kanban")),
-    act("Files", () => document.getElementById("btnToggleCode")?.click(), "Ctrl+Shift+E"),
-    act("Settings", () => openSettings()),
-    act("Pomodoro timer", () => dockToggle("pomodoro")),
-    act("Flow", () => dockToggle("flow")),
-    act("Fleet", () => dockToggle("fleet")),
+    act("Review what the current agent changed", () => openReview(), "Alt+R", "Merge it, or send it back with a note"),
+    act("History of the current agent", () => openHistory(), "Alt+H", "What it did and what you answered"),
+    act("Board", () => openTool("kanban"), "Ctrl+Shift+K", "Cards the agents move as they work"),
+    act("Files", () => document.getElementById("btnToggleCode")?.click(), "Ctrl+Shift+E", "Folder tree and editor"),
+    act("Settings", () => openSettings(), "Ctrl+,"),
+    act("Pomodoro timer", () => openTool("pomodoro"), "Ctrl+Shift+J"),
+    act("Flow", () => openTool("flow"), "Ctrl+Shift+M", "Every hand-off between agents"),
+    act("Fleet", () => openTool("fleet"), "Ctrl+Shift+L", "Every agent in every project"),
+    act("Scheduled agents", () => openTool("schedule"), undefined, "Start a preset at a set time"),
+    act("Replays", () => openTool("replays"), undefined, "Watch a recorded session back"),
+    act("Usage", () => openTool("usage"), undefined, "Tokens and estimated cost"),
+    act("What Maestro can do", () => openHelpPage(), "?", "Every shortcut and hidden feature"),
     ...projects,
     ...here,
   ];
@@ -722,6 +735,8 @@ export function paletteItems(): PaletteItem[] {
  *  interface is on. Window capture runs before the switcher's document one. */
 function onCtrlK(e: KeyboardEvent): void {
   if (!document.body.classList.contains("inbox-ui")) return;
+  // ? or Ctrl+/ shows everything Maestro can do.
+  if (isHelpKey(e)) { e.preventDefault(); e.stopImmediatePropagation(); openHelpPage(); return; }
   // Ctrl+, opens Settings, as in most desktop apps.
   if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key === ",") { e.preventDefault(); e.stopImmediatePropagation(); openSettings(); return; }
   if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "k") return;
@@ -781,6 +796,7 @@ function onStateChanges(list: Task[]): void {
       openTask(t);
       return;
     }
+    if (t.status.state === "review" && before === "working" && !tipSeen("review")) showTip("review", `<b>${esc(t.name)}</b> finished. `);
     if (t.status.state === "review" && before === "working" && t.paneId === stage?.id &&
         getPref("reviewOnDone") && !reviewer?.paneId && !splitOn) openReview();
   }
@@ -822,10 +838,11 @@ function mount(): void {
       <button data-dock="queue" aria-pressed="true" title="One agent at a time">Queue</button>
       <button data-dock="split" aria-pressed="false" title="Pinned agents side by side (Alt+S; Alt+P pins)">Split</button>
     </div>
-    <button class="id-search" data-dock="search">
+    <button class="id-search" data-dock="search" title="Jump to an agent or run a command (Ctrl K)">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
       <span>Jump to an agent or run a command</span><kbd>Ctrl K</kbd></button>
-    <button class="id-new" data-dock="new">New agent</button>
+    <button class="id-new" data-dock="new" title="New agent (Ctrl+Shift+T)">New agent</button>
+    <button class="id-gear id-help" data-dock="help" aria-label="What Maestro can do" title="What Maestro can do (?)">?</button>
     <button class="id-gear" data-dock="settings" aria-label="Settings" title="Settings (Ctrl+,)">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>`;
   app.appendChild(dockEl);
@@ -838,6 +855,7 @@ function mount(): void {
       case "search": openPalette(paletteItems()); break;
       case "new": openNewAgent(); break;
       case "settings": openSettings(); break;
+      case "help": openHelpPage(); break;
     }
   });
   document.getElementById("workspaces")?.addEventListener("click", onStageButton);
@@ -867,7 +885,14 @@ function mount(): void {
     if (chipEl) { projectFilter = chipEl.dataset.ws || null; render(); return; }
     const row = (e.target as HTMLElement).closest<HTMLElement>(".iq-row");
     const t = row && allTasks().find((x) => x.paneId === row.dataset.id);
-    if (t) openTask(t);
+    if (!t || !row) return;
+    // The ⋯ on a row opens the same menu as a right-click.
+    if ((e.target as HTMLElement).closest("[data-more]")) {
+      const r = (e.target as HTMLElement).closest<HTMLElement>("[data-more]")!.getBoundingClientRect();
+      openMenu(r.left, r.bottom + 4, agentMenu(t), `${t.name} actions`);
+      return;
+    }
+    openTask(t);
   });
   askEl.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>("button");
@@ -897,6 +922,7 @@ function mount(): void {
   for (const t of allTasks()) lastState.set(t.paneId, t.status.state);
   offTasks = onTasksChange(() => { onStateChanges(allTasks()); render(); });
   timer = window.setInterval(render, 1000);
+  window.setTimeout(() => showTip("welcome"), 2600);
   render();
 }
 

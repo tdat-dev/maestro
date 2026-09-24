@@ -180,6 +180,18 @@ describe("inbox DOM", () => {
     expect(removed).toBe(1);
   });
 
+  it("shows the agent menu from a row's ⋯ and the help page from the dock", () => {
+    state.tasks = [task("a", "Ana", "working")];
+    setInbox(true);
+    (document.querySelector('.iq-row[data-id="a"] [data-more]') as HTMLElement).click();
+    expect(document.querySelector(".cm-menu")).not.toBeNull();
+    expect(state.focused.filter((x) => x === "a").length).toBeLessThanOrEqual(1); // ⋯ does not also open the agent
+    document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    (document.querySelector('[data-dock="help"]') as HTMLButtonElement).click();
+    expect(document.querySelector(".hp-back")).not.toBeNull();
+    document.querySelector(".hp-back")!.remove();
+  });
+
   it("mounts at startup", () => {
     initInbox();
     expect(document.body.classList.contains("inbox-ui")).toBe(true);

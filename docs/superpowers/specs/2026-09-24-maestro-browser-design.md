@@ -29,7 +29,53 @@ not have that limit.
 - The user's everyday Chrome is never touched, so an agent cannot wander into
   personal tabs.
 
+## Spike results (2026-09-24, Chrome 153.0.8010.53, this machine)
+
+**Copying a real profile does not work:**
+- **Logins are lost.** All 1,654 cookies in the source profile use `v20`
+  app-bound encryption. The copy came up with none of them. Only the 3
+  cookies Facebook set fresh were present.
+- **Extensions are wiped.** Chrome treats a copied `Secure Preferences` as
+  tampered: it writes `preference_reset_time`, empties the protected
+  extension settings, and garbage-collects the extension folders. The
+  service workers ran on the first start and were gone after that.
+- **It crashed.** Chrome crashed twice on the tampered copy, once during
+  `Extensions.triggerAction`.
+
+**A fresh Maestro profile plus CDP works:**
+- **Launch.** `--remote-debugging-port=0`, then read `DevToolsActivePort`.
+- **Unpacked extensions load over CDP.** `--load-extension` is ignored on
+  branded Chrome 153, even with
+  `--disable-features=DisableLoadExtensionCommandLineSwitch`. But
+  `Extensions.loadUnpacked({ path })` over the ordinary WebSocket
+  connection, with `--enable-unsafe-extension-debugging`, loads the
+  extension with the same id as in the real profile
+  (`hbffpofijgejjkeapalldifihkbibicl`). It runs the code live from the
+  user's folder.
+- **GravityCare's real interface is fully drivable.** It is not the toolbar
+  popup. `popup.html` is only an intro page, which also serves as the
+  new-tab page. The real interface is a Vue app that `content.js` writes
+  into `https://www.facebook.com/?window=auto-mkt`. Over CDP it read the
+  whole app, and a real mouse click on "VI" switched it to Vietnamese.
+- **The toolbar action works.** `Extensions.triggerAction({ id, targetId })`
+  needs the **tab** target id, not the page target id. On a clean profile it
+  returned `{}` and the popup appeared as its own `page` target. No crash.
+
+**What this changes:**
+- "Use every existing profile" becomes **mirror**, not copy. Each real
+  profile gets a Maestro profile with the same name:
+  - its unpacked extensions are loaded live from their folders;
+  - its Web Store extensions are listed with a one-click "Add" (Chrome Web
+    Store page) each;
+  - sites are logged into once and remembered.
+- The everyday-Chrome extension route ("Maestro for Chrome") is **not
+  blocked for GravityCare**, because GravityCare's app is an `https:` page
+  that `chrome.debugger` can attach to. That route keeps the user's live
+  logins. It remains the only way to reuse live logins.
+
 ## Every existing Chrome profile, not one blank one
+
+> Superseded in part by the spike above: copying fails, mirroring works.
 
 The user wants agents to work in each Chrome profile they already have, with
 its extensions and logins. There is a constraint: Chrome 136+ ignores

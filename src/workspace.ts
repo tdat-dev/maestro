@@ -147,6 +147,7 @@ export async function removeWorkspace(ws: Workspace) {
       title: "Close project",
       message: `Close "${ws.name}"? Its ${ws.panes.size} agent${ws.panes.size === 1 ? "" : "s"} will be stopped.`,
       okLabel: "Close project",
+      danger: true,
       dontAsk: true,
     });
     if (!ok) return;

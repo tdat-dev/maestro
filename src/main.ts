@@ -2,7 +2,8 @@
 // here) so the first paint is fully styled — see the note in index.html.
 import { resizePty, killAll, setTrayTooltip } from "./ipc";
 import { CLI_PRESETS } from "./crew";
-import { type Pane } from "./panetypes";
+import { type Pane, type Workspace } from "./panetypes";
+import { installModalTrap } from "./confirmmodal";
 import { configurePaneLayout } from "./panelayout";
 import { configureUsage, initUsage } from "./usage";
 import { configureReplay, initReplay } from "./replay";
@@ -104,13 +105,19 @@ function syncResume() {
   const c = document.getElementById("homeResumeCount");
   if (c) c.textContent = workspaces.size ? `${workspaces.size} project${workspaces.size > 1 ? "s" : ""}` : "";
 }
-/** Show the "Resume all" topbar button when the active workspace has any parked
- *  (stopped) or exited pane, with a live count — so the whole fleet can be booted
- *  in one click instead of hitting ⟳ on every pane. */
+/** Every agent that isn't running, in every project: the list on the left
+ *  shows them all, so Resume all covers them all. */
+function stoppedPanes(): Array<{ ws: Workspace; p: Pane }> {
+  const out: Array<{ ws: Workspace; p: Pane }> = [];
+  for (const ws of workspaces.values()) for (const p of ws.panes.values()) if (!p.running) out.push({ ws, p });
+  return out;
+}
+/** Show the "Resume all" topbar button when any agent is parked (stopped) or
+ *  exited, with a live count — so the whole fleet can be booted in one click. */
 function syncResumeAll() {
   const btn = document.getElementById("btnResumeAll");
   if (!btn) return;
-  const n = activeWs ? [...activeWs.panes.values()].filter((p) => !p.running).length : 0;
+  const n = stoppedPanes().length;
   btn.hidden = n === 0;
   const c = document.getElementById("btnResumeAllCount");
   if (c) c.textContent = n ? String(n) : "";
@@ -121,15 +128,14 @@ function syncResumeAll() {
 *  (see the sync-spawn freeze fix). */
 let resumingAll = false;
 async function resumeAllStopped() {
-  if (resumingAll || !activeWs) return;
-  const ws = activeWs;
-  const targets = [...ws.panes.values()].filter((p) => !p.running);
+  if (resumingAll) return;
+  const targets = stoppedPanes();
   if (!targets.length) return;
   resumingAll = true;
   const btn = document.getElementById("btnResumeAll") as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
   try {
-    for (const p of targets) {
+    for (const { ws, p } of targets) {
       if (!ws.panes.has(p.id)) continue; // killed before its turn
       await p.restart?.();
     }
@@ -221,7 +227,8 @@ configureBridges({ activateWorkspace, clearAttention, setStatus, updateCount, st
 initSettingsModal();
 initInbox(); // the Agent Inbox interface
 enhanceSelects(); // every drop-down uses the app menu, not the Windows popup
-blockNativeMenu(import.meta.env.DEV); // no Back/Refresh/Print page menu on right-click
+blockNativeMenu(import.meta.env.DEV);
+installModalTrap(); // no Back/Refresh/Print page menu on right-click
 initScheduler();
 initWorkspace();
 initBackground();
@@ -346,8 +353,10 @@ document.addEventListener("keydown", (e) => {
   // Any open backdrop (confirm / settings / …) swallows shortcuts.
   if (document.querySelector(".backdrop.open")) return;
 
-  // Alt+1..9 → focus that pane (no other modifiers).
+  // Alt+1..9 → focus that pane (no other modifiers). In the Inbox they answer
+  // the agent on screen instead (inbox.ts), and there is no row of panes.
   if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code.startsWith("Digit")) {
+    if (document.body.classList.contains("inbox-ui")) return;
     const n = Number(e.code.slice(5));
     if (n >= 1 && n <= 9 && activeWs) {
       const pane = [...activeWs.panes.values()][n - 1];

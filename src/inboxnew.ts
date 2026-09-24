@@ -3,6 +3,7 @@
 // (two or three is a race: compare their diffs, keep the best one).
 
 import { CLI_PRESETS, type CliPreset } from "./crew";
+import { topNote } from "./hint";
 import { activeWs } from "./appstate";
 import { loadCrew, presetAvailable, refreshCliAvailability, saveTemplate, spawnAgents } from "./spawnmodal";
 import { getPref } from "./prefs";
@@ -40,7 +41,7 @@ export function closeNewAgent(): void {
 export function openNewAgent(opts: { count?: number } = {}): void {
   const preset = Math.min(3, Math.max(1, opts.count ?? getPref("defaultCount")));
   const ws = activeWs;
-  if (!ws) return;
+  if (!ws) { topNote("Open a project first: <b>Home</b>, then pick a folder"); return; }
   el?.remove();
   returnTo = document.activeElement as HTMLElement | null;
   const presets = agentPresets();
@@ -75,7 +76,7 @@ export function openNewAgent(opts: { count?: number } = {}): void {
         <button type="button" class="im-btn quiet" data-save title="Keep this setup so Settings → Sessions → Scheduled agents can start it at a set time">Save as preset</button>
         <span class="im-sp"></span>
         <button type="button" class="im-btn" data-close>Cancel</button>
-        <button type="submit" class="im-btn primary" data-start>${startLabel(preset)}</button>
+        <button type="submit" class="im-btn primary" data-start title="Start (Ctrl+Enter)" aria-keyshortcuts="Control+Enter">${startLabel(preset)}</button>
       </footer>
     </form>`;
   document.body.appendChild(el);

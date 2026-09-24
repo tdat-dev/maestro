@@ -242,3 +242,7 @@ select.input{appearance:none;-webkit-appearance:none;padding-right:30px;cursor:p
 select.input option{background:var(--surface-2);color:var(--text)}
 input.input[type=time]{font-family:var(--mono)}
 .btn:focus-visible,.btn-ghost:focus-visible,.modal-head .x:focus-visible{outline:2px solid #fff;outline-offset:2px}
+
+/* a control that can't do anything right now says so */
+.stepper button:disabled, .sbtn:disabled { opacity: .35; cursor: default; }
+.stepper button:disabled:hover, .sbtn:disabled:hover { background: transparent; color: inherit; }

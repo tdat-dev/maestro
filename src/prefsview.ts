@@ -39,6 +39,11 @@ export function syncPrefsView(): void {
   markSeg("prefSplitMax", p.splitMax);
   const delay = $("prefJobDelay")?.querySelector("[data-n]");
   if (delay) delay.textContent = `${p.jobDelay} s`;
+  // The steppers stop at their ends instead of silently doing nothing.
+  $("prefJobDelay")?.querySelector<HTMLButtonElement>("[data-dec]")?.toggleAttribute("disabled", p.jobDelay <= 1);
+  $("prefJobDelay")?.querySelector<HTMLButtonElement>("[data-inc]")?.toggleAttribute("disabled", p.jobDelay >= 20);
+  const again = $("prefTipsAgain");
+  if (again && !again.dataset.pressed) again.textContent = "Show tips again";
   const ask = $<HTMLInputElement>("prefAsk");
   if (ask) ask.checked = !loadCrew().skipPerms;
   for (const t of TOGGLES) {
@@ -78,12 +83,17 @@ export function initPrefsView(): void {
     resetTips();
     setPref("tips", true);
     syncPrefsView();
-    (e.currentTarget as HTMLButtonElement).textContent = "Tips will show again";
+    const b = e.currentTarget as HTMLButtonElement;
+    b.textContent = "Tips will show again";
+    b.dataset.pressed = "1";
+    window.setTimeout(() => { delete b.dataset.pressed; b.textContent = "Show tips again"; }, 2500);
   });
-  $("prefReset")?.addEventListener("click", () => {
-    resetPrefs();
-    saveSkipPerms(false);
-    syncPrefsView();
-  });
+  syncPrefsView();
+}
+
+/** Maestro's own settings back to how it ships (Reset in Settings → System). */
+export function resetPrefsView(): void {
+  resetPrefs();
+  saveSkipPerms(false);
   syncPrefsView();
 }

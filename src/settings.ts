@@ -19,7 +19,7 @@ export function setHideToTray(on: boolean): void {
 const TERM_FONT_SIZE_KEY = "maestro.termFontSize";
 const TERM_FONT_MIN = 10;
 const TERM_FONT_MAX = 20;
-const TERM_FONT_DEFAULT = 13;
+export const TERM_FONT_DEFAULT = 13;
 
 function clampFont(n: number): number {
   if (!Number.isFinite(n)) return TERM_FONT_DEFAULT;

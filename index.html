@@ -82,7 +82,7 @@
     </div>
     
     <div class="tb-right">
-      <button class="tb-btn" id="btnResumeAll" hidden title="Resume every stopped agent in this project"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg> Resume all<span class="ra-count" id="btnResumeAllCount"></span></button>
+      <button class="tb-btn" id="btnResumeAll" hidden title="Resume every stopped agent"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg> Resume all<span class="ra-count" id="btnResumeAllCount"></span></button>
 
       <!-- Canvas controls. These used to float over the canvas top-right, which
            is exactly where the top-right pane keeps its own header buttons — the
@@ -127,12 +127,12 @@
 
 <!-- ===================== CONFIRM ===================== -->
 <div class="backdrop" id="confirmModal">
-  <div class="modal confirm" role="alertdialog" aria-modal="true">
+  <div class="modal confirm" role="alertdialog" aria-modal="true" aria-labelledby="cfTitle" aria-describedby="cfMsg">
     <div class="modal-head"><span class="t" id="cfTitle">Confirm</span></div>
     <div class="modal-body">
       <p class="cf-msg" id="cfMsg"></p>
       <div class="cf-input-row" id="cfInputRow" hidden>
-        <input class="input" id="cfInput" spellcheck="false" autocapitalize="off" autocomplete="off">
+        <input class="input" id="cfInput" aria-labelledby="cfTitle" spellcheck="false" autocapitalize="off" autocomplete="off">
       </div>
       <label class="cf-dontask" id="cfDontaskRow" hidden>
         <input type="checkbox" id="cfDontask">
@@ -142,7 +142,7 @@
     </div>
     <div class="modal-foot">
       <button class="btn-ghost" id="cfCancel">Cancel</button>
-      <button class="btn danger" id="cfOk">Confirm</button>
+      <button class="btn" id="cfOk">Confirm</button>
     </div>
   </div>
 </div>
@@ -186,9 +186,9 @@
           <h3>Inbox</h3>
           <label class="toggle"><input type="checkbox" id="prefNotify"><span class="tg"></span><span class="sr-txt"><b>Notify me when an agent needs me</b><span>A Windows notification that says what it wants (“Ana wants to run npm test”), only while Maestro is in the background.</span></span></label>
           <label class="toggle"><input type="checkbox" id="prefJump"><span class="tg"></span><span class="sr-txt"><b>Show the agent that needs me</b><span>When an agent starts waiting on you and the one on screen isn't busy, Maestro brings it up. Never while you are typing.</span></span></label>
-          <label class="toggle"><input type="checkbox" id="prefAskCard"><span class="tg"></span><span class="sr-txt"><b>Answer box over the terminal</b><span>Off keeps prompts as a small chip; open it when you are ready, or answer in the terminal.</span></span></label>
+          <label class="toggle"><input type="checkbox" id="prefAskCard"><span class="tg"></span><span class="sr-txt"><b>Answer card when an agent asks</b><span>The question and its answers float over the agent on screen. Off keeps it as a small chip until you open it.</span></span></label>
           <label class="toggle"><input type="checkbox" id="prefReviewOnDone"><span class="tg"></span><span class="sr-txt"><b>Open Changes when an agent finishes</b><span>When the agent on screen stops with changes on its branch, its diff opens on its own.</span></span></label>
-          <label class="toggle"><input type="checkbox" id="prefChat"><span class="tg"></span><span class="sr-txt"><b>Show one agent as a chat</b><span>With one agent on screen, see what it said and did as a conversation, and message it from a box. The Grid always shows terminals. Claude Code agents.</span></span></label>
+          <label class="toggle"><input type="checkbox" id="prefChat"><span class="tg"></span><span class="sr-txt"><b>Show one agent as a chat</b><span>With one agent on screen, see what it said and did as a conversation, and message it from a box. The Grid always shows terminals. For Claude Code agents.</span></span></label>
           <label class="toggle"><input type="checkbox" id="prefTips"><span class="tg"></span><span class="sr-txt"><b>Show tips</b><span>A one-line tip the first time a feature is useful: the right-click menu, the Grid, reviewing changes. Each shows once.</span></span></label>
           <div class="srow">
             <div class="sr-txt"><b>Tips you have seen</b><span>Bring them back, one at a time, as they become useful again. Press ? any time for the full list.</span></div>
@@ -214,7 +214,7 @@
         <section class="sec" data-sec="sessions">
           <h3>Sessions</h3>
           <div class="srow"><div class="sr-txt"><b>Scheduled agents</b><span>Start a saved preset at a set time. Save one from New agent → Save as preset.</span></div><button class="sbtn" type="button" id="setOpenSched">Manage</button></div>
-          <div class="srow"><div class="sr-txt"><b>Session replays</b><span>Watch back recorded agent sessions (● on any pane).</span></div><button class="sbtn" type="button" id="setOpenReplays">Open</button></div>
+          <div class="srow"><div class="sr-txt"><b>Session replays</b><span>Watch back recorded agent sessions. Record one from ··· on an agent's header.</span></div><button class="sbtn" type="button" id="setOpenReplays">Open</button></div>
           <div class="srow"><div class="sr-txt"><b>Token usage &amp; cost</b><span>Claude tokens used in this project, with an estimated cost.</span></div><button class="sbtn" type="button" id="setOpenUsage">View</button></div>
         </section>
         <section class="sec" data-sec="system">
@@ -222,7 +222,7 @@
           <label class="toggle"><input type="checkbox" id="prefRestore"><span class="tg"></span><span class="sr-txt"><b>Reopen my projects on start</b><span>Maestro brings back last session's projects and agents, stopped, so nothing heavy launches by itself. Resume the ones you need.</span></span></label>
           <label class="toggle"><input type="checkbox" id="setHideTray"><span class="tg"></span><span class="sr-txt"><b>Hide to tray</b><span>Minimizing tucks Maestro into the system tray; agents keep running.</span></span></label>
           <div class="srow"><div class="sr-txt"><b>Updates</b><span id="setVersion">Maestro</span></div><button class="sbtn" type="button" id="setCheckUpdate">Check for updates</button></div>
-          <div class="srow"><div class="sr-txt"><b>Reset settings</b><span>Put every setting on this page back to how Maestro ships. Projects and agents are not touched.</span></div><button class="sbtn" type="button" id="prefReset">Reset</button></div>
+          <div class="srow"><div class="sr-txt"><b>Reset settings</b><span>Agents, Inbox, text size and the tray go back to how Maestro ships. Projects, agents and the remote dashboard are not touched.</span></div><button class="sbtn" type="button" id="prefReset">Reset</button></div>
         </section>
       </div>
     </div>

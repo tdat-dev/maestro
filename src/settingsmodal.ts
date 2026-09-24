@@ -10,12 +10,15 @@ import {
   setHideToTray,
   getTermFontSize,
   setTermFontSize,
+  TERM_FONT_DEFAULT,
 } from "./settings";
+import { confirmModal } from "./confirmmodal";
+import { topNote } from "./hint";
 import { paneFont } from "./zoom";
 import { checkForUpdates } from "./updater";
 import { getVersion } from "@tauri-apps/api/app";
 import { workspaces } from "./appstate";
-import { initPrefsView, syncPrefsView } from "./prefsview";
+import { initPrefsView, resetPrefsView, syncPrefsView } from "./prefsview";
 
 /* ---------------- settings modal ---------------- */
 const settingsModal = document.getElementById("settingsModal") as HTMLElement | null;
@@ -29,7 +32,10 @@ const TERM_FONT_MIN = 10;
 const TERM_FONT_MAX = 20;
 
 function syncFontLabel() {
-  if (setFontN) setFontN.textContent = String(getTermFontSize());
+  const n = getTermFontSize();
+  if (setFontN) setFontN.textContent = String(n);
+  document.querySelector<HTMLButtonElement>("#setFontStepper [data-dec]")?.toggleAttribute("disabled", n <= TERM_FONT_MIN);
+  document.querySelector<HTMLButtonElement>("#setFontStepper [data-inc]")?.toggleAttribute("disabled", n >= TERM_FONT_MAX);
 }
 
 function applyTermFontSize(n: number) {
@@ -53,11 +59,12 @@ function navToSection(sec: string, scroll = true): void {
   if (!settingsModal) return;
   settingsModal.querySelectorAll<HTMLElement>(".sn[data-sec]").forEach((btn) => {
     btn.classList.toggle("on", btn.dataset.sec === sec);
+    if (btn.dataset.sec === sec) btn.setAttribute("aria-current", "true"); else btn.removeAttribute("aria-current");
   });
   if (!scroll) return;
   settingsModal
     .querySelector<HTMLElement>(`.sec[data-sec="${sec}"]`)
-    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    ?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
 }
 
 export function openSettings() {
@@ -66,10 +73,17 @@ export function openSettings() {
   syncPrefsView();
   document.getElementById("setContent")?.scrollTo(0, 0);
   navToSection("agents", false); // land on the first section
+  if (!settingsModal?.classList.contains("open")) settingsBack = document.activeElement as HTMLElement | null;
   settingsModal?.classList.add("open");
+  // The keyboard lands in the dialog (Esc closes it, Tab stays in it).
+  document.getElementById("setClose")?.focus();
 }
+/** Where the keyboard was before Settings opened; it goes back there. */
+let settingsBack: HTMLElement | null = null;
 export function closeSettings() {
   settingsModal?.classList.remove("open");
+  if (settingsBack?.isConnected) settingsBack.focus();
+  settingsBack = null;
 }
 
 /** Wire the settings modal's open/close controls, the Updates row, the
@@ -106,6 +120,21 @@ export function initSettingsModal(): void {
     const on = setHideTray.checked;
     setHideToTray(on);
     void setTrayVisible(on).catch((e) => console.warn("set tray visibility failed:", e));
+  });
+
+  // Reset: everything this page sets, after asking.
+  document.getElementById("prefReset")?.addEventListener("click", async () => {
+    const r = await confirmModal({
+      title: "Reset settings?",
+      message: "Agents, Inbox, text size and the tray go back to how Maestro ships. Projects, agents and the remote dashboard are not touched.",
+      okLabel: "Reset",
+      danger: true,
+    });
+    if (!r.ok) return;
+    resetPrefsView();
+    applyTermFontSize(TERM_FONT_DEFAULT);
+    if (setHideTray?.checked) { setHideTray.checked = false; setHideTray.dispatchEvent(new Event("change")); }
+    topNote("Settings are back to how Maestro ships");
   });
 
   settingsModal?.querySelectorAll<HTMLElement>(".sn[data-sec]").forEach((btn) => {

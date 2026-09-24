@@ -8,7 +8,7 @@ vi.mock("./ipc", () => ({
 }));
 
 import { DEFAULTS, getPref, getPrefs, onPrefs, resetPrefs, setPref } from "./prefs";
-import { initPrefsView, syncPrefsView } from "./prefsview";
+import { initPrefsView, resetPrefsView, syncPrefsView } from "./prefsview";
 import { loadCrew, prepareIsolation } from "./spawnmodal";
 import type { Workspace } from "./panetypes";
 
@@ -92,7 +92,8 @@ describe("Settings rows", () => {
     ask.checked = false; ask.dispatchEvent(new Event("change"));
     expect(getPrefs()).toMatchObject({ defaultCli: "codex", defaultCount: 3, splitMax: 2, jobDelay: 5, notifyNeeds: false });
     expect(loadCrew().skipPerms).toBe(true);
-    $("prefReset").click();
+    // Reset asks first (Settings), then puts these back
+    resetPrefsView();
     expect(getPrefs()).toEqual(DEFAULTS);
     expect(loadCrew().skipPerms).toBe(false);
     syncPrefsView();

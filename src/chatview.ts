@@ -16,6 +16,8 @@ export interface ChatState {
   /** "working" shows the working line and Stop; "needs" hides the composer
    *  while the answer card is up. */
   state: string;
+  /** Why it could not start, when it could not. */
+  problem?: string;
 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -134,7 +136,7 @@ function dirOf(pane: Pane): string | null {
 
 function draw(v: View, force = false): void {
   const items = v.chat.items;
-  const sig = `${items.length}|${items.filter((i) => i.kind === "step" && i.done).length}|${v.window}|${v.open.size}|${v.expanded.size}|${v.path ? 1 : 0}|${items.length ? "" : v.state.state}`;
+  const sig = `${items.length}|${items.filter((i) => i.kind === "step" && i.done).length}|${v.window}|${v.open.size}|${v.expanded.size}|${v.path ? 1 : 0}|${items.length ? "" : v.state.state + (v.state.problem ?? "")}`;
   const scroller = v.el.querySelector<HTMLElement>(".cv-scroll")!;
   const thread = v.el.querySelector<HTMLElement>(".cv-thread")!;
   if (sig !== v.sig || force) {
@@ -143,7 +145,7 @@ function draw(v: View, force = false): void {
     const start = Math.max(0, items.length - v.window);
     thread.innerHTML = (start > 0 ? `<button type="button" class="cv-earlier" data-earlier>Show earlier messages</button>` : "") +
       (items.length ? threadHtml(items.slice(start), v.open, v.expanded)
-        : `<div class="cv-empty"><b>${esc(v.state.name)}</b><span>${v.state.state === "stopped" ? "Stopped. Start it again to give it a job." : v.path ? "Nothing said yet." : "Starting… the conversation shows up here as soon as it begins."}</span></div>`);
+        : `<div class="cv-empty"><b>${esc(v.state.name)}</b><span>${v.state.problem ? esc(v.state.problem) : v.state.state === "stopped" ? "Stopped. Start it again to give it a job." : v.path ? "Nothing said yet." : "Starting… the conversation shows up here as soon as it begins."}</span></div>`);
     if (nearBottom || force) scroller.scrollTop = scroller.scrollHeight;
   }
   const working = v.state.state === "working";

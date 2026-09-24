@@ -357,6 +357,7 @@ export function createAgent(
         if (ws.panes.has(id)) term.write(bytes);
       });
       pane.running = true;
+      pane.error = undefined;
       pane.spawnedAt = Date.now();
       pane.lastOutputAt = Date.now();
       setStatus(pane, "running", "run");
@@ -367,8 +368,9 @@ export function createAgent(
         if (s.cols !== cols || s.rows !== rows) void resizePty(id, s.cols, s.rows);
       });
     } catch (e) {
+      pane.error = onErrMsg(e);
       setStatus(pane, "spawn failed", "err");
-      term.write(enc.encode(`\r\n\x1b[31m[spawn failed: ${onErrMsg(e)}]\x1b[0m\r\n`));
+      term.write(enc.encode(`\r\n\x1b[31m[spawn failed: ${pane.error}]\x1b[0m\r\n`));
     }
   };
 }

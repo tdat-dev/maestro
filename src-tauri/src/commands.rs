@@ -40,6 +40,13 @@ pub async fn pty_spawn(
         spec = spec.arg(a);
     }
     spec.cwd = cwd.filter(|s| !s.is_empty());
+    // portable-pty falls back to the home folder when the cwd is missing, so an
+    // agent would run somewhere nobody chose. Refuse and say which folder.
+    if let Some(dir) = &spec.cwd {
+        if !Path::new(dir).is_dir() {
+            return Err(CommandError::Failed(format!("The folder {dir} doesn't exist anymore.")));
+        }
+    }
     spec.env = env.unwrap_or_default();
     let size = PtySize {
         rows,

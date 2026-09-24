@@ -37,13 +37,21 @@ describe("needsCloseConfirm", () => {
   });
 });
 
-import { runDir } from "./workspaces";
+import { runDir, sameFolder } from "./workspaces";
 describe("runDir", () => {
   it("starts an agent in its worktree, else the project, else home, without a trailing slash", () => {
-    expect(runDir({ worktree: "D:\wt\a", cwd: "D:\app" }, "C:\Users\me")).toBe("D:\wt\a");
-    expect(runDir({ cwd: "D:\app\\" }, "C:\Users\me")).toBe("D:\app");
-    expect(runDir({ cwd: null }, "C:\Users\me\\")).toBe("C:\Users\me");
+    expect(runDir({ worktree: "D:\\wt\\a", cwd: "D:\\app" }, "C:\\Users\\me")).toBe("D:\\wt\\a");
+    expect(runDir({ cwd: "D:\\app\\" }, "C:\\Users\\me")).toBe("D:\\app");
+    expect(runDir({ cwd: null }, "C:\\Users\\me\\")).toBe("C:\\Users\\me");
     expect(runDir({ cwd: "C:\\" }, "")).toBe("C:\\");
     expect(runDir({ cwd: "/home/me/" }, "")).toBe("/home/me");
+  });
+});
+
+describe("sameFolder", () => {
+  it("matches a folder whatever its case, slashes or trailing separator", () => {
+    expect(sameFolder("D:\\App\\", "d:/app")).toBe(true);
+    expect(sameFolder("D:\\app", "D:\\app2")).toBe(false);
+    expect(sameFolder(null, "D:\\app")).toBe(false);
   });
 });

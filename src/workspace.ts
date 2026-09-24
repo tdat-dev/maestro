@@ -14,7 +14,7 @@ import { type Workspace, type AgentSpec } from "./panetypes";
 import { layoutGrid } from "./panelayout";
 import { saveSession } from "./session";
 import { workspaces, activeWs, setActiveWs, nextWsId } from "./appstate";
-import { nextWorkspaceName, pickNextActive } from "./workspaces";
+import { nextWorkspaceName, pickNextActive, sameFolder } from "./workspaces";
 import { dockSetContext } from "./dock";
 import { confirmModal } from "./confirmmodal";
 import {
@@ -71,6 +71,9 @@ const isDetachedWindow = DETACH_KEY !== null;
 
 const wsHost = document.getElementById("workspaces") as HTMLElement;
 export function createWorkspace(dir: string | null, name?: string): Workspace {
+  // One project per folder: a folder already open is that project.
+  const open = dir ? [...workspaces.values()].find((w) => sameFolder(w.dir, dir)) : undefined;
+  if (open) { activateWorkspace(open); return open; }
   const id = nextWsId();
   // A restored tab passes its original name; otherwise auto-name it.
   const wsName = name ?? nextWorkspaceName(dir, [...workspaces.values()].map((w) => w.name));

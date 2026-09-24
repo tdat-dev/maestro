@@ -15,6 +15,7 @@ import { openNewAgent } from "./inboxnew";
 import { loadCrew, presetAvailable, quickTerminal, spawnAgents } from "./spawnmodal";
 import { CLI_PRESETS } from "./crew";
 import { getPref } from "./prefs";
+import { sameFolder } from "./workspaces";
 import { revealPane } from "./agentbridge";
 import { focusPane } from "./panelayout";
 import { enhanceSelects } from "./selectmenu";
@@ -34,8 +35,6 @@ export const STARTERS: Array<{ label: string; job: string }> = [
   { label: "Review the last commit", job: "Review the last commit and point out anything risky" },
 ];
 
-const sameDir = (a: string | null | undefined, b: string) =>
-  !!a && a.replace(/[\\/]+$/, "").toLowerCase() === b.replace(/[\\/]+$/, "").toLowerCase();
 
 /** The last path segment, for a project's name. */
 export function folderName(dir: string): string {
@@ -65,14 +64,14 @@ export function statusSentence(tasks: Pick<Task, "name" | "status">[], firstRun:
 
 /** "4 agents · 1 needs you" for a recent project that is open. */
 export function projectLine(dir: string, tasks: Task[]): { agents: number; needs: number } {
-  const ws = [...workspaces.values()].find((w) => sameDir(w.dir, dir));
+  const ws = [...workspaces.values()].find((w) => sameFolder(w.dir, dir));
   const mine = ws ? tasks.filter((t) => t.wsId === ws.id) : [];
   return { agents: mine.length, needs: mine.filter((t) => t.status.state === "needs").length };
 }
 
 /** Switch to a folder's project, opening it when it isn't open yet. */
 function projectFor(dir: string): Workspace {
-  const open = [...workspaces.values()].find((w) => sameDir(w.dir, dir));
+  const open = [...workspaces.values()].find((w) => sameFolder(w.dir, dir));
   if (open) { activateWorkspace(open); addRecent(dir); return open; }
   const ws = createWorkspace(dir);
   addRecent(dir);

@@ -7,6 +7,12 @@ export function runDir(spec: { worktree?: string; cwd: string | null }, home: st
   return dir.replace(/(?<=[^:\\/])[\\/]+$/, "");
 }
 
+/** Whether two folder paths name the same folder (case and trailing separator aside). */
+export function sameFolder(a: string | null | undefined, b: string | null | undefined): boolean {
+  const norm = (p: string) => p.replace(/[\\/]+$/, "").replace(/\//g, "\\").toLowerCase();
+  return !!a && !!b && norm(a) === norm(b);
+}
+
 /** Last path segment, tolerant of trailing and mixed slashes. */
 export function basename(p: string): string {
   const parts = p.replace(/[/\\]+$/, "").split(/[/\\]/);

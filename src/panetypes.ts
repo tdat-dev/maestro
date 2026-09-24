@@ -37,6 +37,7 @@ export interface Pane {
   color: string;
   spec: AgentSpec; // the launch recipe — kept so the session can be serialized + re-booted
   toggleFind?: () => void; // open/close this pane's find bar (set by wirePaneSearch)
+  error?: string; // why the last start failed ("The folder … doesn't exist anymore.")
   recording?: string; // absolute path of the active recording file, when recording
 }
 

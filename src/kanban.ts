@@ -355,7 +355,12 @@ export function createKanban() {
       (active.tagName === "TEXTAREA" || active.tagName === "INPUT")
     )
       return;
-    const mtime = await statBoardFile(dir);
+    let mtime: number | null;
+    try {
+      mtime = await statBoardFile(dir);
+    } catch {
+      return; // the project folder is unreadable or gone; try again next tick
+    }
     if (mtime === null || mtime === boardMtime) return;
     try {
       const bf = await readBoardFile(dir);

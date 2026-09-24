@@ -653,10 +653,29 @@ body.inbox-ui .inbox-start {
   color: var(--ib-ink);
 }
 .st-in { width: min(760px, 100%); margin: 0 auto; }
-.st-brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 14px; color: var(--ib-ink-2); margin-bottom: 48px; }
-/* the Maestro mark, as in the app icon: the gradient M on its own */
-.st-brand i { display: grid; place-items: center; }
-.st-brand svg { width: 24px; height: auto; }
+.st-brand { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 22px; letter-spacing: -0.02em; color: var(--ib-ink); margin-bottom: 36px; }
+/* The living logo, as on the old Home: it breathes, its glow pulses, and a
+   bright dash runs along the M. transform/opacity only for the breathe and the
+   pulse; the dash is a small paint. Off-screen (display:none) it costs nothing. */
+.st-brand .logo-glow { position: relative; isolation: isolate; width: 84px; height: 84px; margin: -16px -10px -16px -16px; display: grid; place-items: center; }
+.st-brand .logo-glow svg { width: 84px; height: 84px; filter: drop-shadow(0 0 16px rgba(198, 241, 53, 0.2)); will-change: transform; animation: logoBreathe 4.2s ease-in-out infinite; }
+.st-brand .logo-glow::before {
+  content: ""; position: absolute; top: 50%; left: 50%; width: 150px; height: 150px;
+  transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none; z-index: -1;
+  background: radial-gradient(circle, rgba(163, 230, 53, 0.16), transparent 65%);
+  opacity: 0.5; animation: logoGlowPulse 4.2s ease-in-out infinite;
+}
+.st-brand .mFlow { stroke-dasharray: 0.16 0.84; stroke-dashoffset: 1; opacity: 0.85; animation: mFlow 3.2s linear infinite; }
+@keyframes logoBreathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
+@keyframes logoGlowPulse {
+  0%, 100% { opacity: 0.3; transform: translate(-50%, -50%) scale(0.95); }
+  50% { opacity: 0.62; transform: translate(-50%, -50%) scale(1.06); }
+}
+@keyframes mFlow { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .st-brand .logo-glow svg, .st-brand .logo-glow::before, .st-brand .mFlow { animation: none; }
+  .st-brand .mFlow { display: none; }
+}
 .inbox-start h1 { margin: 0; font-size: 40px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; }
 .st-status { margin: 10px 0 28px; font-size: 17px; line-height: 1.45; color: var(--ib-ink-3); }
 .st-status.needs { color: var(--ib-needs); }

@@ -13,6 +13,9 @@ const state = vi.hoisted(() => ({
   listeners: [] as Array<() => void>,
   reviewed: [] as Array<string | null>,
   settings: 0,
+  killed: [] as string[],
+  renamed: [] as Array<[string, string]>,
+  confirm: { ok: true, value: "" },
 }));
 vi.mock("./diffview", () => ({
   createDiffView: () => ({
@@ -34,10 +37,12 @@ vi.mock("./panelayout", () => ({
     pane.el.parentElement?.classList.add("has-focus");
     state.focused.push(pane.id);
   },
+  renamePane: (pane: { id: string; spec: { name: string } }, name: string) => { pane.spec.name = name; state.renamed.push([pane.id, name]); },
 }));
 vi.mock("./agentbridge", () => ({ revealPane: () => true }));
 vi.mock("./zoom", () => ({ paneFont: (_ws: unknown, bump = 0) => 13 + bump }));
-vi.mock("./ipc", () => ({ resizePty: async () => {} }));
+vi.mock("./ipc", () => ({ resizePty: async () => {}, killPty: async (id: string) => { state.killed.push(id); } }));
+vi.mock("./confirmmodal", () => ({ confirmModal: async () => ({ ok: state.confirm.ok, dontAsk: false, value: state.confirm.value }) }));
 vi.mock("./spawnmodal", () => ({ openModal: () => {} }));
 vi.mock("./settingsmodal", () => ({ openSettings: () => { state.settings++; } }));
 vi.mock("./dock", () => ({ dockToggle: () => {} }));
@@ -143,6 +148,36 @@ describe("inbox DOM", () => {
     (document.querySelector('[data-dock="settings"]') as HTMLButtonElement).click();
     window.dispatchEvent(new KeyboardEvent("keydown", { key: ",", ctrlKey: true }));
     expect(state.settings).toBe(2);
+  });
+
+  it("offers an agent's actions on right-click and runs them", async () => {
+    state.tasks = [task("a", "Ana", "working"), task("e", "Eli", "working")];
+    state.killed = []; state.renamed = [];
+    (panes[1] as unknown as { running: boolean }).running = true;
+    let removed = 0;
+    panes[1].el.insertAdjacentHTML("beforeend", '<button data-kill></button><button data-restart></button>');
+    panes[1].el.querySelector("[data-kill]")!.addEventListener("click", () => removed++);
+    setInbox(true);
+    const open = () => document.querySelector('.iq-row[data-id="e"]')!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 80 }));
+    const item = (label: string) => [...document.querySelectorAll<HTMLButtonElement>(".cm-item")].find((b) => b.textContent!.startsWith(label))!;
+    open();
+    expect([...document.querySelectorAll(".cm-item span")].map((x) => x.textContent))
+      .toEqual(["Open", "Rename…", "Add to Split", "Changes", "History", "Copy branch name", "Restart", "Stop", "Remove agent…"]);
+    item("Stop").click();
+    await Promise.resolve();
+    expect(state.killed).toEqual(["e"]);
+    expect(document.querySelector(".cm-menu")).toBeNull();
+    state.confirm = { ok: true, value: "Zed" };
+    open(); item("Rename").click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(state.renamed).toEqual([["e", "Zed"]]);
+    open(); item("Remove agent").click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(removed).toBe(1);
+    state.confirm = { ok: false, value: "" };
+    open(); item("Remove agent").click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(removed).toBe(1);
   });
 
   it("mounts at startup", () => {

@@ -8,10 +8,10 @@
 // existing focus mode, so the terminal is the real xterm you can type into.
 
 import { workspaces, activeWs } from "./appstate";
-import { focusPane } from "./panelayout";
+import { focusPane, renamePane } from "./panelayout";
 import { revealPane } from "./agentbridge";
 import { tileToFit, type Area, type Tile } from "./canvas";
-import { resizePty } from "./ipc";
+import { killPty, resizePty } from "./ipc";
 import { paneFont } from "./zoom";
 import { createReviewDrawer } from "./inboxreview";
 import { openSettings } from "./settingsmodal";
@@ -23,6 +23,7 @@ import { getPref } from "./prefs";
 import { dockToggle } from "./dock";
 import { activateWorkspace, removeWorkspace, renameWorkspace } from "./workspace";
 import { confirmModal } from "./confirmmodal";
+import { openMenu, type MenuItem } from "./ctxmenu";
 import { allTasks, answerOption, answerText, onTasksChange, type Task } from "./tasks";
 import type { AskOption } from "./askparse";
 import type { TaskState } from "./taskstate";
@@ -345,6 +346,37 @@ function ensureStage(): void {
   const inWs = allTasks().filter((t) => t.wsId === activeWs!.id);
   const first = inWs[0] ? activeWs.panes.get(inWs[0].paneId) : activeWs.panes.values().next().value;
   if (first) focusPane(activeWs, first);
+}
+
+/** What the right-click menu on an agent offers. */
+export function agentMenu(t: Task): MenuItem[] {
+  const pane = paneOf(t);
+  const ws = workspaces.get(t.wsId);
+  if (!pane || !ws) return [];
+  const pinned = pins.includes(pane.id);
+  const branch = pane.spec.branch;
+  const click = (sel: string) => pane.el.querySelector<HTMLElement>(sel)?.click();
+  const onStage = () => { openTask(t); };
+  return [
+    { label: "Open", run: onStage },
+    { label: "Rename…", run: () => void confirmModal({ title: "Rename agent", message: "What should this agent be called?", okLabel: "Rename", input: { value: pane.spec.name } })
+      .then((r) => { if (r.ok) { renamePane(pane, r.value); render(); } }) },
+    { label: pinned ? "Take out of Split" : "Add to Split", hint: "Alt+P", run: () => {
+      if (pinned) { pins = pins.filter((id) => id !== pane.id); if (splitOn) splitClosed.add(pane.id); }
+      else { splitClosed.delete(pane.id); pins = togglePin(pins, pane.id, stagePane()?.id, getPref("splitMax")); }
+      render();
+    } },
+    { label: "Changes", hint: "Alt+R", sep: true, disabled: !pane.spec.worktree && !pane.spec.cwd, run: () => { onStage(); openReview(); } },
+    { label: "History", hint: "Alt+H", run: () => { onStage(); openHistory(); } },
+    { label: "Copy branch name", disabled: !branch, run: () => { if (branch) void navigator.clipboard?.writeText(branch).catch(() => {}); } },
+    { label: pane.running ? "Restart" : "Start again", sep: true, run: () => click("[data-restart]") },
+    { label: "Stop", disabled: !pane.running, run: () => { void killPty(pane.id).catch(() => {}); } },
+    { label: "Remove agent…", danger: true, run: () => void confirmModal({
+      title: `Remove ${pane.spec.name}?`,
+      message: pane.running ? "It stops and its terminal closes. Its branch and the changes on it stay in git." : "Its terminal closes. Its branch and the changes on it stay in git.",
+      okLabel: "Remove",
+    }).then((r) => { if (r.ok) click("[data-kill]"); }) },
+  ];
 }
 
 function renderQueue(list: Task[], current: string | undefined, now: number): void {
@@ -812,6 +844,24 @@ function mount(): void {
   historian = createHistoryDrawer(app, render);
   reviewer = createReviewDrawer(app, render);
 
+  // Right-click an agent in the queue for everything you can do with it.
+  queueEl.addEventListener("contextmenu", (e) => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>(".iq-row");
+    const t = row && allTasks().find((x) => x.paneId === row.dataset.id);
+    if (!t) return;
+    e.preventDefault();
+    openMenu(e.clientX, e.clientY, agentMenu(t), `${t.name} actions`);
+  });
+  // Shift+F10 or the menu key opens the same menu on the focused row.
+  queueEl.addEventListener("keydown", (e) => {
+    if (!(e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey))) return;
+    const row = (e.target as HTMLElement).closest<HTMLElement>(".iq-row");
+    const t = row && allTasks().find((x) => x.paneId === row.dataset.id);
+    if (!t || !row) return;
+    e.preventDefault();
+    const r = row.getBoundingClientRect();
+    openMenu(r.left + 24, r.bottom - 4, agentMenu(t), `${t.name} actions`);
+  });
   queueEl.addEventListener("click", (e) => {
     const chipEl = (e.target as HTMLElement).closest<HTMLElement>(".iq-chip");
     if (chipEl) { projectFilter = chipEl.dataset.ws || null; render(); return; }

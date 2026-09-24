@@ -76,3 +76,42 @@ select.sm-native { display: none !important; }
   .sm-pop { animation: none; }
   .sm-btn .sm-chev { transition: none; }
 }
+
+/* The right-click menu (ctxmenu.ts): the same floating list, with actions. */
+.cm-menu {
+  position: fixed;
+  z-index: 2000;
+  min-width: 210px;
+  padding: 5px;
+  border-radius: 14px;
+  background: #16171b;
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  font: 13.5px/1.3 var(--sans);
+  color: var(--ib-ink, #f4f4f5);
+  animation: sm-in 0.12s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: top left;
+}
+.cm-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+}
+.cm-item.on { background: rgba(255, 255, 255, 0.08); }
+.cm-item.danger { color: var(--ib-del, #f2766b); }
+.cm-item.danger.on { background: rgba(242, 118, 107, 0.12); }
+.cm-item[aria-disabled="true"] { color: var(--ib-ink-3, #8c8c96); cursor: default; }
+.cm-item kbd { font: 11px var(--mono); color: var(--ib-ink-3, #8c8c96); }
+.cm-sep { height: 1px; margin: 5px 8px; background: rgba(255, 255, 255, 0.08); }
+@media (prefers-reduced-motion: reduce) { .cm-menu { animation: none; } }

@@ -17,6 +17,7 @@ import { configureWorkspace, initWorkspace, createWorkspace, activateWorkspace, 
 import { updateTasks } from "./tasks";
 import { initInbox } from "./inbox";
 import { enhanceSelects } from "./selectmenu";
+import { blockNativeMenu } from "./ctxmenu";
 import { openNewAgent } from "./inboxnew";
 import { getPref } from "./prefs";
 import { wirePaneSearch } from "./panesearch";
@@ -222,6 +223,7 @@ configureBridges({ activateWorkspace, clearAttention, setStatus, updateCount, st
 initSettingsModal();
 initInbox(); // the Agent Inbox interface
 enhanceSelects(); // every drop-down uses the app menu, not the Windows popup
+blockNativeMenu(import.meta.env.DEV); // no Back/Refresh/Print page menu on right-click
 initScheduler();
 initWorkspace();
 initBackground();

@@ -124,3 +124,20 @@ export function closeMenu(refocus: boolean): void {
 }
 
 export function menuShown(): boolean { return !!menu; }
+
+/** Whether the browser's own menu (Back, Refresh, Print, Inspect…) may show:
+ *  only where it helps, in text you can edit and in a terminal (Copy, Paste). */
+export function nativeMenuAllowed(target: EventTarget | null, shift: boolean, dev: boolean): boolean {
+  if (dev && shift) return true; // Inspect while developing
+  const el = target instanceof Element ? target : null;
+  if (!el) return false;
+  return !!el.closest("input, textarea, [contenteditable=''], [contenteditable='true'], .xterm");
+}
+
+/** Stop the WebView's page menu from showing anywhere else in the app. */
+export function blockNativeMenu(dev = false): void {
+  document.addEventListener("contextmenu", (e) => {
+    if (e.defaultPrevented) return; // one of our own menus took it
+    if (!nativeMenuAllowed(e.target, e.shiftKey, dev)) e.preventDefault();
+  });
+}

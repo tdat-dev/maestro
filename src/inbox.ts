@@ -11,7 +11,7 @@ import { workspaces, activeWs } from "./appstate";
 import { focusPane, renamePane } from "./panelayout";
 import { revealPane } from "./agentbridge";
 import { tileToFit, type Area, type Tile } from "./canvas";
-import { killPty, resizePty } from "./ipc";
+import { killPty, resizePty, sendInput } from "./ipc";
 import { paneFont } from "./zoom";
 import { createReviewDrawer } from "./inboxreview";
 import { openSettings } from "./settingsmodal";
@@ -26,6 +26,7 @@ import { openMenu, type MenuItem } from "./ctxmenu";
 import { openHelpPage, openTool, isHelpKey } from "./inboxhelp";
 import { showTip, tipSeen } from "./tips";
 import { chatSupported, hideChat, showChat } from "./chatview";
+import { profileOf } from "./cliprofile";
 import { allTasks, answerOption, answerText, onTasksChange, type Task } from "./tasks";
 import type { AskOption } from "./askparse";
 import type { TaskState } from "./taskstate";
@@ -177,7 +178,7 @@ function renderChat(list: Task[], pane: Pane | undefined): void {
   for (const id of borrowed.keys()) { const p = paneById(id); if (p && p !== on && p.el.classList.contains("chat-on")) hideChat(p); }
   if (!on) { chatFor = null; return; }
   const t = list.find((x) => x.paneId === on.id);
-  showChat(on, { name: on.spec.name, state: t?.status.state ?? "idle", problem: on.error, branch: t?.branch ?? on.spec.branch ?? null, onReview: openReview }, chatFor !== on.id);
+  showChat(on, { name: on.spec.name, state: t?.status.state ?? "idle", problem: on.error, branch: t?.branch ?? on.spec.branch ?? null, onReview: openReview, onTerminal: () => { termMode.add(on.id); render(); on.term.focus(); } }, chatFor !== on.id);
   chatFor = on.id;
 }
 
@@ -470,7 +471,7 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
       acts.dataset.mode = mode;
       acts.innerHTML = pinned
         ? `<button class="ib-icon" data-stage="full" title="Open full size" aria-label="Open ${esc(t.name)} full size">⤢</button><button class="ib-icon" data-stage="close" title="Take out of Grid" aria-label="Take ${esc(t.name)} out of the Grid">✕</button>`
-        : `${chatSupported(p) && getPref("chatView") ? `<span class="ib-view" role="group" aria-label="Show ${esc(t.name)} as"><button data-stage="chat" title="The conversation">Chat</button><button data-stage="term" title="The terminal, as the CLI draws it">Terminal</button></span>` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
+        : `${chatSupported(p) && getPref("chatView") ? `<span class="ib-view" role="group" aria-label="Show ${esc(t.name)} as"><button data-stage="chat" title="The conversation">Chat</button><button data-stage="term" title="The terminal, as the CLI draws it">Terminal</button></span>` : ""}<button class="ib-act ib-term" data-stage="cmds" title="Type / so ${esc(t.name)}'s CLI shows its own commands">Commands</button>${profileOf(p.spec.badge).modelCommand ? `<button class="ib-act ib-term" data-stage="model" title="Open the CLI's own model picker">Model</button>` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
       pill.after(acts);
     }
     acts.querySelector('[data-stage="review"]')?.setAttribute("aria-pressed", String(reviewer?.paneId === p.id));
@@ -793,6 +794,9 @@ function onStageButton(e: MouseEvent): void {
   e.stopPropagation();
   switch (b.dataset.stage) {
     case "chat": if (pane) { termMode.delete(pane.id); chatFor = null; render(); } break;
+    // The CLI's own menus, typed into its terminal as you would.
+    case "cmds": if (pane) { void sendInput(pane.id, "/"); pane.term.focus(); } break;
+    case "model": { const c = pane && profileOf(pane.spec.badge).modelCommand; if (pane && c) { void sendInput(pane.id, `${c}\r`); pane.term.focus(); } break; }
     case "term": if (pane) { termMode.add(pane.id); render(); pane.term.focus(); } break;
     case "review": if (reviewer?.paneId) reviewer.close(); else openReview(); break;
     case "history": if (historian?.paneId) historian.close(); else openHistory(); break;

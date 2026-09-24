@@ -40,16 +40,17 @@ export function closePalette(): void {
   returnTo = null;
 }
 
-export function openPalette(items: PaletteItem[]): void {
+export function openPalette(items: PaletteItem[], opts: { placeholder?: string } = {}): void {
+  const hint = (opts.placeholder ?? "Jump to an agent or run a command").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
   closePalette();
   returnTo = document.activeElement as HTMLElement | null;
   el = document.createElement("div");
   el.className = "inbox-modal-back pal-back";
   el.innerHTML = `
-    <div class="inbox-pal" role="dialog" aria-modal="true" aria-label="Jump to an agent or run a command">
+    <div class="inbox-pal" role="dialog" aria-modal="true" aria-label="${hint}">
       <div class="pal-in">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-        <input id="palQ" autocomplete="off" spellcheck="false" placeholder="Jump to an agent or run a command" role="combobox" aria-expanded="true" aria-controls="palList">
+        <input id="palQ" autocomplete="off" spellcheck="false" placeholder="${hint}" role="combobox" aria-expanded="true" aria-controls="palList">
       </div>
       <div class="pal-list" id="palList" role="listbox"></div>
       <footer class="pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> to move</span><span><kbd>↵</kbd> to open</span><span><kbd>Esc</kbd> to close</span><span class="pal-n"></span></footer>

@@ -218,7 +218,7 @@ describe("inbox DOM", () => {
     expect([...document.querySelectorAll(".ia-acts .ia-opt")].map((b) => b.querySelector("span")!.textContent))
       .toEqual(["Always allow here", "Deny", "Allow"]);
     expect(panes[0].el.querySelector(".ib-pill")!.textContent).toBe("Needs you");
-    expect([...panes[0].el.querySelectorAll(".ib-act")].map((b) => b.textContent)).toEqual(["Changes", "History"]);
+    expect([...panes[0].el.querySelectorAll(".ib-act")].map((b) => b.textContent)).toEqual(["Commands", "Changes", "History"]);
     (document.querySelector('.ia-opt[data-n="3"]') as HTMLButtonElement).click();
     await Promise.resolve();
     expect(state.answered).toEqual([["a", "\x1b"]]);

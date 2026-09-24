@@ -6,6 +6,7 @@ const io = vi.hoisted(() => ({
   asked: [] as Array<{ dir: string; sessionId: string | null; offset: number }>,
   sent: [] as Array<[string, string]>,
   keys: [] as Array<[string, string]>,
+  captured: [] as Array<{ program: string; args: string[]; cwd: string | null }>,
 }));
 vi.mock("./ipc", () => ({
   claudeTranscript: async (dir: string, sessionId: string | null, _since: number | null, offset: number) => {
@@ -15,6 +16,12 @@ vi.mock("./ipc", () => ({
   },
   sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); },
   sendInput: async (id: string, data: string) => { io.keys.push([id, data]); },
+  // Claude Code's own list, as its init event gives it.
+  runCapture: async (program: string, args: string[], cwd: string | null) => {
+    io.captured.push({ program, args, cwd });
+    return JSON.stringify({ type: "system", subtype: "hook_started" }) + "\n" +
+      JSON.stringify({ type: "system", subtype: "init", model: "claude-opus-5-5", slash_commands: ["compact", "review", "impeccable", "codex:rescue"], skills: ["impeccable"] }) + "\n";
+  },
 }));
 
 import { chatSupported, dropChat, hideChat, modelName, showChat, took, tokens, whereIn } from "./chatview";
@@ -122,7 +129,7 @@ describe("chat view", () => {
     (side.querySelector(".cs-review") as HTMLButtonElement).click();
     expect(reviewed).toBe(1);
     expect(p.el.querySelector(".cv-tf span")!.textContent).toBe("Worked for 1m 12s");
-    expect(p.el.querySelector(".cv-model")!.textContent).toBe("Opus 5.5");
+    expect(p.el.querySelector(".cv-model")!.textContent).toBe("Opus 5.5 ▾");
   });
 
   it("offers jobs to start from in an empty conversation, and commands from the composer", async () => {
@@ -133,7 +140,13 @@ describe("chat view", () => {
     first.click();
     expect(p.el.querySelector("textarea")!.value).toBe(first.dataset.starter);
     (p.el.querySelector("[data-cmds]") as HTMLButtonElement).click();
-    const compact = [...document.querySelectorAll<HTMLButtonElement>(".cm-item")].find((b) => b.textContent!.startsWith("/compact"))!;
+    await flush();
+    // The list is the CLI's own, asked in the agent's folder without a model call.
+    expect(io.captured[0].args).toEqual(expect.arrayContaining(["-p", "/cost", "--output-format", "stream-json"]));
+    expect(io.captured[0].cwd).toBe("D:/wt/p1");
+    const labels = [...document.querySelectorAll(".pal-row, [role=option]")].map((r) => r.textContent ?? "");
+    expect(labels.some((l) => l.includes("/codex:rescue"))).toBe(true);
+    const compact = [...document.querySelectorAll<HTMLElement>(".pal-row, [role=option]")].find((r) => r.textContent!.includes("/compact"))!;
     compact.click();
     expect(p.el.querySelector("textarea")!.value).toBe("/compact ");
   });

@@ -405,6 +405,82 @@ fn claude_transcript_impl(dir: &str, session_id: Option<&str>, since_ms: Option<
     }
 }
 
+/// Most output `run_capture` keeps: a CLI that prints more is cut here.
+const CAPTURE_MAX: usize = 8 * 1024 * 1024;
+
+/// Run a program to completion (no window, no stdin) in `cwd` and return its
+/// stdout. For asking an agent CLI about itself, e.g. Claude Code's
+/// `claude -p /cost --output-format stream-json --verbose`, whose first
+/// event lists its commands, skills and model without calling the model.
+/// Killed (with its child processes) after `timeout_ms`.
+#[tauri::command]
+pub async fn run_capture(
+    program: String,
+    args: Vec<String>,
+    cwd: Option<String>,
+    timeout_ms: Option<u64>,
+) -> Result<String, CommandError> {
+    run_blocking(move || run_capture_impl(&program, &args, cwd.as_deref(), timeout_ms.unwrap_or(60_000))).await
+}
+
+fn run_capture_impl(program: &str, args: &[String], cwd: Option<&str>, timeout_ms: u64) -> Result<String, CommandError> {
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+    let mut cmd = Command::new(program);
+    cmd.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+    if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
+        if !Path::new(dir).is_dir() {
+            return Err(CommandError::Failed(format!("The folder {dir} doesn't exist anymore.")));
+        }
+        cmd.current_dir(dir);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = cmd.spawn().map_err(|e| CommandError::Failed(format!("couldn't start {program}: {e}")))?;
+    let pid = child.id();
+    let mut out = child.stdout.take().ok_or_else(|| CommandError::Failed("no stdout".into()))?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 64 * 1024];
+        loop {
+            match out.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    if buf.len() < CAPTURE_MAX {
+                        buf.extend_from_slice(&chunk[..n.min(CAPTURE_MAX - buf.len())]);
+                    }
+                }
+            }
+        }
+        let _ = tx.send(buf);
+    });
+    match rx.recv_timeout(std::time::Duration::from_millis(timeout_ms)) {
+        Ok(buf) => {
+            let _ = child.wait();
+            Ok(String::from_utf8_lossy(&buf).into_owned())
+        }
+        Err(_) => {
+            // Take the whole tree down: a .cmd shim leaves its node process behind.
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                let _ = Command::new("taskkill")
+                    .args(["/T", "/F", "/PID", &pid.to_string()])
+                    .creation_flags(0x0800_0000)
+                    .status();
+            }
+            let _ = child.kill();
+            let _ = child.wait();
+            Err(CommandError::Failed(format!("{program} took longer than {} s", timeout_ms / 1000)))
+        }
+    }
+}
+
 /// Show or hide the system-tray icon. Driven by the frontend "Hide to tray"
 /// setting so the icon only appears for users who opt in.
 #[tauri::command]

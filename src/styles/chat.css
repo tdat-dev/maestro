@@ -221,3 +221,6 @@
 .cv-starters button { padding: 7px 13px; border-radius: 999px; font-size: 13px; color: var(--ib-ink-2, #c9c9cf); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
 .cv-starters button:hover { color: var(--ib-ink, #f4f4f5); background: rgba(255, 255, 255, 0.04); }
 .cv-starters button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* Commands / Model on the stage header act on the terminal: hidden over the chat */
+.pane.chat-on .ib-acts .ib-term { display: none; }

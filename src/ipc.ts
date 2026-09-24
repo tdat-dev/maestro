@@ -102,6 +102,12 @@ export async function claudeTranscript(
   return invoke("claude_transcript", { dir, sessionId, sinceMs, offset });
 }
 
+/** Run a program to completion in `cwd` (no window) and get its stdout. For
+ *  asking an agent CLI about itself; killed after `timeoutMs`. */
+export async function runCapture(program: string, args: string[], cwd: string | null, timeoutMs = 60_000): Promise<string> {
+  return invoke<string>("run_capture", { program, args, cwd, timeoutMs });
+}
+
 export async function resizePty(agentId: string, cols: number, rows: number): Promise<void> {
   await invoke("pty_resize", { agentId, cols, rows });
 }

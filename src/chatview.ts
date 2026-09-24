@@ -8,6 +8,8 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { createChat, turnsOf, type Chat, type ChatItem, type StepItem } from "./chatmodel";
 import { openMenu } from "./ctxmenu";
+import { openPalette, type PaletteItem } from "./inboxpalette";
+import { cliFacts, profileOf, type CliFacts } from "./cliprofile";
 import { STARTERS } from "./starters";
 import { claudeTranscript, sendInput, sendMessage } from "./ipc";
 import type { Pane } from "./panetypes";
@@ -24,6 +26,8 @@ export interface ChatState {
   branch?: string | null;
   /** Open the full Changes view for this agent. */
   onReview?: () => void;
+  /** Show this agent's terminal (for the CLI's own pickers). */
+  onTerminal?: () => void;
 }
 
 /** "claude-opus-5-5" → "Opus 5.5"; other ids as they are. */
@@ -188,6 +192,8 @@ interface View {
   state: ChatState;
   pane: Pane;
   sideSig: string;
+  /** What the CLI said about itself (its commands, its model). */
+  facts?: CliFacts;
 }
 
 const views = new Map<string, View>();
@@ -255,7 +261,11 @@ function draw(v: View, force = false): void {
   // the composer's model and context, the side panel
   const m = v.chat.meta;
   const model = v.el.querySelector<HTMLElement>(".cv-model");
-  if (model) { model.textContent = modelName(m.model); model.hidden = !m.model; }
+  if (model) {
+    const name = modelName(m.model ?? v.facts?.model ?? null);
+    model.textContent = name ? `${name} ▾` : "Model ▾";
+    model.hidden = !profileOf(v.pane.spec.badge).modelCommand;
+  }
   const ctx = v.el.querySelector<HTMLElement>(".cv-ctx");
   if (ctx) { ctx.textContent = m.context ? `${tokens(m.context)} in context` : ""; ctx.hidden = !m.context; }
   const sideSig = JSON.stringify([m.todos, m.files, m.model, m.context, m.output, m.started, v.state.branch, !!v.state.onReview, v.pane.spec.ranIn]);
@@ -309,7 +319,7 @@ function mount(pane: Pane): View {
         <label class="ia-sr" for="cv-in-${pane.id}">Message ${esc(pane.spec.name)}</label>
         <textarea id="cv-in-${pane.id}" rows="1" placeholder="Message ${esc(pane.spec.name)}…  Enter to send, Shift+Enter for a new line"></textarea>
         <div class="cv-bar">
-          <span class="cv-chip cv-model" title="The model answering" hidden></span>
+          <button type="button" class="cv-chip cv-model" data-model title="Change the model" hidden></button>
           <button type="button" class="cv-chip cv-cmds" data-cmds title="Claude Code commands">/ Commands</button>
           <span class="cv-ctx" title="How much the agent is holding in mind right now" hidden></span>
           <span class="cv-sp"></span>
@@ -336,7 +346,32 @@ function mount(pane: Pane): View {
     scroller.scrollTop = scroller.scrollHeight;
   };
   input.addEventListener("input", grow);
+  /** The CLI's own commands, searchable; the pick goes into the composer. */
+  const pickCommand = async (query = "") => {
+    const btn = el.querySelector<HTMLButtonElement>("[data-cmds]");
+    const asked = cliFacts(pane.spec.badge, pane.spec.program, pane.spec.ranIn ?? pane.spec.cwd);
+    if (!asked) return;
+    if (btn) btn.textContent = "Loading…";
+    try {
+      v.facts = await asked;
+    } catch (e) {
+      if (btn) btn.textContent = "/ Commands";
+      openMenu(btn?.getBoundingClientRect().left ?? 0, (btn?.getBoundingClientRect().top ?? 0) - 8,
+        [{ label: "Couldn't list its commands", hint: String((e as { Failed?: string })?.Failed ?? e).slice(0, 60), disabled: true, run: () => {} }], "Commands");
+      return;
+    }
+    if (btn) btn.textContent = "/ Commands";
+    const group = { command: "Commands", skill: "Skills", plugin: "Plugins" } as const;
+    const items: PaletteItem[] = v.facts.commands.map((c) => ({
+      group: group[c.kind], label: `/${c.name}`,
+      run: () => { input.value = `/${c.name} `; grow(); input.focus(); },
+    }));
+    openPalette(items, { placeholder: `${v.facts.commands.length} commands from ${pane.spec.name}'s CLI${query ? "" : ": type to search"}` });
+  };
+  // Warm the list up, so the first / opens at once.
+  void cliFacts(pane.spec.badge, pane.spec.program, pane.spec.ranIn ?? pane.spec.cwd)?.then((f) => { v.facts = f; draw(v); }).catch(() => {});
   input.addEventListener("keydown", (e) => {
+    if (e.key === "/" && !input.value && cliFacts(pane.spec.badge, pane.spec.program, pane.spec.ranIn ?? pane.spec.cwd)) { e.preventDefault(); void pickCommand(); return; }
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
     else if (e.key === "Escape" && v.state.state === "working") { e.preventDefault(); void sendInput(pane.id, "\x1b"); }
   });
@@ -347,18 +382,23 @@ function mount(pane: Pane): View {
     if (t.closest("[data-restart-agent]")) { void pane.restart?.(); return; }
     const starter = t.closest<HTMLElement>("[data-starter]");
     if (starter) { input.value = starter.dataset.starter ?? ""; grow(); input.focus(); return; }
-    const cmds = t.closest<HTMLElement>("[data-cmds]");
-    if (cmds) {
-      const r = cmds.getBoundingClientRect();
-      const use = (c: string) => () => { input.value = `${c} `; grow(); input.focus(); };
+    const cmds = t.closest<HTMLButtonElement>("[data-cmds]");
+    if (cmds) { void pickCommand(); return; }
+    const modelBtn = t.closest<HTMLElement>("[data-model]");
+    if (modelBtn) {
+      const p = profileOf(pane.spec.badge);
+      if (!p.modelCommand) return;
+      const r = modelBtn.getBoundingClientRect();
+      const now = v.chat.meta.model ?? v.facts?.model ?? "";
       openMenu(r.left, r.top - 8, [
-        { label: "/compact", hint: "Shrink the conversation", run: use("/compact") },
-        { label: "/clear", hint: "Start a fresh conversation", run: use("/clear") },
-        { label: "/review", hint: "Review the changes", run: use("/review") },
-        { label: "/context", hint: "What fills the context", run: use("/context") },
-        { label: "/model", hint: "Switch the model", run: use("/model") },
-        { label: "/init", hint: "Write a CLAUDE.md", run: use("/init") },
-      ], "Commands");
+        ...(p.models ?? []).map((m) => ({
+          label: m.label, hint: m.hint,
+          // The CLI switches itself: the same command you would type.
+          run: () => { void sendMessage(pane.id, `${p.modelCommand} ${m.value}`); },
+          disabled: !!now && now.includes(m.value),
+        })),
+        { label: "More in the terminal…", sep: true, hint: "Its own picker", run: () => { v.state.onTerminal?.(); void sendMessage(pane.id, p.modelCommand!); } },
+      ], "Model");
       return;
     }
     const copy = t.closest<HTMLElement>("[data-copy]");

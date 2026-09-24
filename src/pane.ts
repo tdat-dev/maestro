@@ -39,6 +39,7 @@ function homeFolder(): Promise<string> {
 import { paneLook } from "./background";
 import { MAESTRO_LAWS, DIRECTOR_LAWS } from "./laws";
 import { getZoom, setZoom, paneFont, autoFitRows } from "./zoom";
+import { openMenu } from "./ctxmenu";
 
 /** Re-theme every live pane in `ws` — called when the background, the tone, or
  *  the opacity changes, since all three decide the same palette. */
@@ -145,7 +146,7 @@ function buildPaneEl(
       <span class="pb-sp"></span>
       <div class="pb-ctrls ctrls">
         <div class="pb-more">
-          <button class="pctrl" data-more aria-label="More actions" title="More">${MORE_SVG}</button>
+          <button class="pctrl" data-more aria-haspopup="menu" aria-expanded="false" aria-label="More actions" title="More: search, record, restart">${MORE_SVG}</button>
           <div class="pb-more-menu" hidden>
             <button class="pctrl" data-search aria-label="Search output" title="Search output">${SEARCH_SVG}</button>
             <button class="pctrl rec-btn" data-record aria-label="Record session" title="Record">${REC_SVG}</button>
@@ -154,7 +155,7 @@ function buildPaneEl(
         </div>
         <button class="pctrl" data-edit aria-label="Rename agent" title="Rename">${EDIT_SVG}</button>
         <button class="pctrl" data-max aria-label="Focus pane" title="Focus"><span class="ic-max">${MAX_SVG}</span><span class="ic-back">${BACK_SVG}</span></button>
-        <button class="pctrl danger" data-kill aria-label="Kill agent (tree)" title="Kill (tree)">${KILL_SVG}</button>
+        <button class="pctrl danger" data-kill aria-label="Remove agent" title="Remove agent (stops it and closes its terminal)">${KILL_SVG}</button>
       </div>
     </div>
     <div class="pane-find" data-find hidden>
@@ -228,9 +229,10 @@ export function createAgent(
   term.setAutoFit(autoFitRows(PANE_MIN_ROWS, getZoom(ws)));
 
   // The persona name owns the title bar now; surface the terminal's own title
-  // as a hover tooltip instead of overwriting the name.
+  // as a hover tooltip on the name (not the whole pane, or it hangs over the chat).
   term.onTitleChange((title) => {
-    if (title.trim()) el.title = title;
+    const nameEl = el.querySelector<HTMLElement>(".pb-name");
+    if (title.trim() && nameEl) nameEl.title = title;
   });
 
   const pane: Pane = { id, el, term, running: false, spawnedAt: null, lastOutputAt: 0, lastInputAt: 0, attention: false, attentionClearedAt: 0, attentionNotified: false, color: spec.color, spec };
@@ -243,25 +245,32 @@ export function createAgent(
   if (restore) {
     setStatus(pane, "stopped", "");
     el.classList.add("stopped"); // dims the parked pane (cleared on boot)
-    term.write(enc.encode("\r\n\x1b[90m  [stopped — click ⟳ to resume]\x1b[0m\r\n"));
+    term.write(enc.encode("\r\n\x1b[90m  [stopped — Resume to carry on]\x1b[0m\r\n"));
   }
 
   el.querySelector("[data-kill]")?.addEventListener("click", () => void removeAgent(ws, id));
   el.querySelector("[data-record]")?.addEventListener("click", () => void toggleRecord(ws, pane));
   el.querySelector("[data-restart]")?.addEventListener("click", () => void pane.restart?.());
   el.querySelector("[data-max]")?.addEventListener("click", (e) => toggleMax(ws, pane, e as MouseEvent));
-  // "⋯ more" reveals the extra controls (search / record / restart) so the
-  // header shows the mockup's exact three by default. Toggle on click; close
-  // after a pick or when the pointer leaves the pane.
-  const moreMenu = el.querySelector<HTMLElement>(".pb-more-menu");
-  if (moreMenu) {
-    el.querySelector("[data-more]")?.addEventListener("click", (e) => {
-      e.stopPropagation();
-      moreMenu.hidden = !moreMenu.hidden;
-    });
-    moreMenu.addEventListener("click", () => { moreMenu.hidden = true; });
-    el.addEventListener("mouseleave", () => { moreMenu.hidden = true; });
-  }
+  // "⋯ more" opens the extra controls (search / record / restart) as a menu
+  // with words, keyboard and Esc included; the hidden buttons still do the work.
+  const moreBtn = el.querySelector<HTMLElement>("[data-more]");
+  moreBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const r = moreBtn.getBoundingClientRect();
+    const press = (sel: string) => () => el.querySelector<HTMLElement>(sel)?.click();
+    const chat = el.classList.contains("chat-on");
+    moreBtn.setAttribute("aria-expanded", "true");
+    openMenu(r.right - 200, r.bottom + 6, [
+      // The find bar searches the terminal, which the chat covers.
+      { label: "Search output", hint: chat ? "In Terminal" : undefined, disabled: chat, run: press("[data-search]") },
+      { label: pane.recording ? "Stop recording" : "Record session", run: press("[data-record]") },
+      { label: pane.running ? "Restart" : "Resume", run: press("[data-restart]") },
+    ], `${pane.spec.name} actions`);
+    const off = () => { moreBtn.setAttribute("aria-expanded", "false"); window.removeEventListener("pointerdown", off, true); window.removeEventListener("keydown", off, true); };
+    window.addEventListener("pointerdown", off, true);
+    window.addEventListener("keydown", off, true);
+  });
   el.querySelector<HTMLElement>("[data-drag]")?.addEventListener("dblclick", (e) => {
     const tgt = e.target as HTMLElement;
     if (tgt.closest(".pctrl") || tgt.closest(".pb-name") || tgt.closest("[data-edit]")) return; // buttons + rename aren't focus triggers

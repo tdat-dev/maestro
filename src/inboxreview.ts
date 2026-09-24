@@ -4,6 +4,7 @@
 // back", which types your feedback straight into the agent's terminal.
 
 import { createDiffView } from "./diffview";
+import { focusAgent } from "./chatview";
 import { answerText } from "./tasks";
 import type { Pane } from "./panetypes";
 
@@ -24,7 +25,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     const was = current;
     current = null;
     onClose();
-    was?.term.focus();
+    if (was) focusAgent(was);
   }
 
   function open(pane: Pane): void {
@@ -34,12 +35,13 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     const where = pane.spec.branch || pane.spec.worktree || pane.spec.cwd || "";
     el = document.createElement("aside");
     el.className = "inbox-review";
-    el.setAttribute("aria-label", `Review ${name}'s changes`);
+    el.setAttribute("role", "dialog");
+    el.setAttribute("aria-label", `${name}'s changes`);
     el.innerHTML = `
       <header class="ir-head">
-        <div class="ir-title"><b>Review ${esc(name)}'s changes</b>${where ? `<span class="ir-where">${esc(where)}</span>` : ""}</div>
+        <div class="ir-title"><b>${esc(name)}'s changes</b>${where ? `<span class="ir-where">${esc(where)}</span>` : ""}</div>
         <span class="ir-acts"></span>
-        <button class="ir-close" type="button" aria-label="Close review">Close</button>
+        <button class="ir-close" type="button" aria-label="Close changes" title="Close (Esc)">Close</button>
       </header>
       <div class="ir-body"></div>
       <form class="ir-back">
@@ -53,6 +55,8 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     view.setContext({ key: `inbox:${pane.id}`, dir: reviewDir(pane) });
     view.show();
     el.querySelector(".ir-close")!.addEventListener("click", close);
+    // The keyboard comes along, so Esc closes it straight away.
+    el.querySelector<HTMLElement>(".ir-close")!.focus({ preventScroll: true });
     el.addEventListener("keydown", (e) => {
       if (e.key === "Escape") { e.stopPropagation(); close(); }
     });
@@ -64,7 +68,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
       const target = current;
       void answerText(target.id, text);
       close();
-      target.term.focus();
+      focusAgent(target);
     });
   }
 

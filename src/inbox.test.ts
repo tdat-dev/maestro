@@ -77,6 +77,9 @@ describe("inbox helpers", () => {
       .toEqual({ lead: "2 agents need you.", rest: " 1 is ready to review, 1 is working." });
     expect(headline([task("e", "Eli", "working")]).lead).toBe("Nothing needs you.");
     expect(headline([]).lead).toBe("No agents yet.");
+    // only what is so: no "0 are ..." clauses; with nothing going on, who is idle or stopped
+    expect(headline([task("e", "Eli", "working")]).rest).toBe(" 1 is working.");
+    expect(headline([task("a", "Ana", "stopped"), task("b", "Bo", "stopped"), task("h", "Hal", "idle")]).rest).toBe(" 1 is waiting for a task, 2 are stopped.");
   });
 
   it("says what each agent wants on its row", () => {
@@ -180,6 +183,44 @@ describe("inbox DOM", () => {
     expect(removed).toBe(1);
   });
 
+  it("keeps the list as it is between ticks, so a focused row keeps the keyboard", () => {
+    state.tasks = [task("a", "Ana", "working"), task("e", "Eli", "working")];
+    setInbox(true);
+    const row = document.querySelector<HTMLButtonElement>('.iq-row[data-id="e"]')!;
+    row.focus();
+    state.listeners.forEach((cb) => cb()); // a tick with nothing new
+    expect(document.querySelector('.iq-row[data-id="e"]')).toBe(row);
+    expect(document.activeElement).toBe(row);
+    // something did change: rebuilt, and the keyboard stays on the same agent
+    state.tasks = [task("a", "Ana", "needs"), task("e", "Eli", "working")];
+    state.listeners.forEach((cb) => cb());
+    const again = document.querySelector<HTMLButtonElement>('.iq-row[data-id="e"]')!;
+    expect(again).not.toBe(row);
+    expect(document.activeElement).toBe(again);
+  });
+
+  it("asks before the ✕ on an agent's header removes it", async () => {
+    state.tasks = [task("a", "Ana", "working")];
+    let removed = 0;
+    panes[0].el.insertAdjacentHTML("beforeend", '<button data-kill></button>');
+    panes[0].el.querySelector("[data-kill]")!.addEventListener("click", () => removed++);
+    setInbox(true);
+    state.confirm = { ok: false, value: "" };
+    // a real click (trusted) is held for the question
+    const kill = panes[0].el.querySelector<HTMLElement>("[data-kill]")!;
+    const real = new MouseEvent("click", { bubbles: true, cancelable: true });
+    Object.defineProperty(real, "isTrusted", { value: true });
+    kill.dispatchEvent(real);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(removed).toBe(0);
+    state.confirm = { ok: true, value: "" };
+    const again = new MouseEvent("click", { bubbles: true, cancelable: true });
+    Object.defineProperty(again, "isTrusted", { value: true });
+    kill.dispatchEvent(again);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(removed).toBe(1);
+  });
+
   it("shows the agent menu from a row's ⋯ and the help page from the dock", () => {
     state.tasks = [task("a", "Ana", "working")];
     setInbox(true);
@@ -211,7 +252,7 @@ describe("inbox DOM", () => {
     state.tasks = [task("a", "Ana", "needs"), task("e", "Eli", "working")];
     setInbox(true);
     expect(state.focused[0]).toBe("a");
-    expect(document.querySelector(".inbox-head")!.textContent).toBe("1 agent needs you. 0 are ready to review, 1 is working.");
+    expect(document.querySelector(".inbox-head")!.textContent).toBe("1 agent needs you. 1 is working.");
     expect(document.querySelectorAll(".iq-row")).toHaveLength(2);
     expect(document.querySelector(".ia-code")!.textContent).toBe("npm run build");
     // Allow sits last and brightest, as in the design.
@@ -303,7 +344,7 @@ describe("inbox DOM", () => {
     expect(chip.textContent).toContain("Eli is ready · 3 files changed");
     chip.click();
     expect(state.reviewed).toEqual(["D:/wt/e"]);
-    expect(document.querySelector(".inbox-review")!.getAttribute("aria-label")).toBe("Review Eli's changes");
+    expect(document.querySelector(".inbox-review")!.getAttribute("aria-label")).toBe("Eli's changes");
     expect((document.querySelector(".inbox-ask") as HTMLElement).hidden).toBe(true);
     (document.getElementById("irBack") as HTMLInputElement).value = "add a test for the empty case";
     document.querySelector(".ir-back")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));

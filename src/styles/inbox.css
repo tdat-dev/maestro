@@ -39,7 +39,6 @@ body.inbox-ui .tb-right { flex: none; }
 /* the code-panel toggle stays in the DOM (Files in Ctrl K clicks it) but not on screen */
 body.inbox-ui .tb-right .tb-div,
 body.inbox-ui #btnToggleCode { display: none !important; }
-.inbox-stats { font: 12px var(--mono); color: var(--ib-ink-3); white-space: nowrap; margin-right: 6px; }
 
 /* the sentence that says what needs you */
 .inbox-head {
@@ -67,7 +66,8 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 }
 .iq-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 4px 4px; }
 .iq-chip {
-  height: 26px; padding: 0 10px;
+  height: 26px; padding: 0 10px; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   border-radius: 999px;
   font-size: 12px;
   color: var(--ib-ink-3);
@@ -77,7 +77,8 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .iq-chip[aria-pressed="true"] { background: var(--ib-raise); color: var(--ib-ink); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
 .iq-chip:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .iq-group { margin-top: 6px; }
-.iq-gt { display: flex; justify-content: space-between; padding: 10px 10px 6px; font-size: 12px; color: var(--ib-ink-3); }
+.iq-gt { display: flex; justify-content: space-between; margin: 0; padding: 10px 10px 6px; font: 400 12px var(--sans); color: var(--ib-ink-3); }
+.iq-rows { list-style: none; margin: 0; padding: 0; }
 .iq-n { font: 12px var(--mono); }
 .iq-row {
   display: grid;
@@ -108,13 +109,15 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .iq-row.st-needs .iq-l { color: var(--ib-needs); }
 .iq-row.st-review .iq-l { color: var(--ib-review); }
 .iq-row.st-working .iq-l { color: var(--ib-work); }
-.iq-row.st-stopped { opacity: 0.6; }
+.iq-row.st-stopped .iq-t { color: var(--ib-ink-2); font-weight: 400; }
+.iq-row.st-stopped .iq-mk { opacity: 0.55; }
 .iq-empty { margin: 0 10px 6px; font-size: 12.5px; color: var(--ib-ink-3); }
 
 /* ---------- stage: the focused pane, full width, no scrim, no avatar rail ---------- */
 body.inbox-ui .grid.canvas.has-focus::after { display: none; }
 /* Cinema is a black stage: the canvas wallpaper stays with the canvas UI */
 body.inbox-ui .grid.canvas { background: transparent !important; }
+body.inbox-ui .grid.canvas.has-focus .pane.focused.stopped { opacity: 1; }
 body.inbox-ui .grid.canvas.has-focus .pane.focused {
   left: 0 !important;
   top: 0 !important;
@@ -133,17 +136,8 @@ body.inbox-ui .grid.canvas.has-focus.inbox-split .pane.split-pin {
   top: var(--sy) !important;
   width: var(--sw) !important;
   height: var(--sh) !important;
-  border-radius: 14px;
   background: var(--ib-panel) !important;
-  box-shadow: inset 0 0 0 1px var(--ib-line);
   animation: none;
-}
-/* the one the decision card and Alt+number talk to */
-body.inbox-ui .grid.canvas.has-focus.inbox-split .pane.split-pin.focused {
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
-}
-body.inbox-ui .grid.canvas.has-focus.inbox-split .pane.split-pin.attention:not(.focused) {
-  box-shadow: inset 0 0 0 1px var(--ib-needs-line);
 }
 body.inbox-ui .grid.canvas .pane.split-pin .pane-bar { background: transparent; border-bottom: 0; }
 body.inbox-ui .grid.canvas .pane.split-pin[data-role="director"] .pb-name,
@@ -164,7 +158,12 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused[data-role="director"]
   background: transparent;
   border-bottom: 0;
   backdrop-filter: none;
+  cursor: default;
+  container-type: inline-size;
 }
+body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .pctrl { width: 30px; height: 30px; border-radius: 999px; }
+body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .pctrl:hover { background: rgba(255, 255, 255, 0.06); color: var(--ib-ink); }
+body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .pb-where { user-select: text; }
 body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .pb-av { grid-row: 1 / 3; grid-column: 1; width: 36px; height: 36px; border-radius: 10px; font-size: 14px; }
 body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .pb-cli { grid-row: 1; grid-column: 2; }
 body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .pb-role { grid-row: 1; grid-column: 3; }
@@ -292,7 +291,7 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
 .ia-top { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--ib-needs); flex-wrap: wrap; }
 .ia-dia { width: 9px; height: 9px; background: var(--ib-needs); transform: rotate(45deg); border-radius: 2px; display: inline-block; }
 .ia-title { color: var(--ib-ink-3); }
-.ia-min { margin-left: auto; font-size: 12px; color: var(--ib-ink-2); padding: 3px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); }
+.ia-min { margin-left: auto; display: inline-flex; align-items: center; height: 26px; font-size: 12px; color: var(--ib-ink-2); padding: 0 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); }
 .ia-min:hover { background: rgba(255, 255, 255, 0.12); color: var(--ib-ink); }
 .ia-q { margin: 8px 0 10px; font-size: 17px; font-weight: 500; letter-spacing: -0.01em; }
 .ia-code {
@@ -315,6 +314,9 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
 .ia-acts .ia-opt.allow { background: #fff; color: #000; }
 .ia-acts .ia-opt.allow .ia-k { color: #555; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2); }
 .ia-acts .ia-opt.allow:hover { background: #e9e9ec; }
+.ia-acts .ia-opt.always:hover { background: rgba(255, 255, 255, 0.08); }
+.ia-acts .ia-opt.deny:hover { background: oklch(0.72 0.15 25 / 0.2); }
+.ia-acts .ia-k { white-space: nowrap; }
 .ia-opts { display: flex; flex-direction: column; gap: 5px; }
 .ia-opt {
   display: flex; align-items: center; gap: 12px;
@@ -364,7 +366,7 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
   position: fixed;
   top: 60px;
   right: 16px;
-  bottom: 16px;
+  bottom: var(--ib-dock-h);
   width: min(620px, 48vw);
   z-index: 300;
   display: flex;
@@ -403,12 +405,10 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
   body.inbox-ui { --ib-q: 260px; }
   .inbox-ask { margin: 0 16px 24px 8px; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .iq-row, .ia-opt { transition: none; }
-}
 
 /* the old lime accent has no place in the Cinema palette */
-body.inbox-ui #btnResumeAll { background: rgba(255, 255, 255, 0.06); color: var(--ib-ink); border-color: transparent; box-shadow: none; }
+body.inbox-ui #btnResumeAll { height: 32px; padding: 0 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); color: var(--ib-ink); border-color: transparent; box-shadow: none; }
+body.inbox-ui #btnResumeAll:disabled { opacity: 0.5; cursor: default; }
 body.inbox-ui #btnResumeAll:hover { background: rgba(255, 255, 255, 0.12); }
 
 /* Split: every terminal wears the same header, so nothing jumps out except the
@@ -431,8 +431,6 @@ body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pb-role {
 }
 body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pb-where { display: none; }
 body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .ib-pill { height: 24px; font-size: 12px; padding: 0 10px; }
-body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pb-ctrls { opacity: 0; }
-body.inbox-ui .grid.canvas.inbox-split .pane.split-pin:hover .pb-ctrls { opacity: 1; }
 body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .term-host .xterm { padding: 4px 14px 10px; }
 
 /* ---------- modals: New agent, command palette ---------- */
@@ -554,9 +552,9 @@ body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .term-host .xterm { paddi
    means nothing here */
 body.inbox-ui .pane .pctrl[data-max] { display: none !important; }
 .id-new { white-space: nowrap; }
-.ib-acts { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); }
-.ib-act { height: 26px; padding: 0 12px; border-radius: 999px; font: 500 12.5px var(--sans); color: var(--ib-ink-2); }
-.ib-act:hover { color: var(--ib-ink); }
+.ib-acts { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); }
+.ib-act { height: 26px; padding: 0 12px; border-radius: 999px; font: 500 12.5px var(--sans); color: var(--ib-ink-2); white-space: nowrap; }
+.ib-act:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.06); }
 .ib-act[aria-pressed="true"] { background: rgba(255, 255, 255, 0.12); color: var(--ib-ink); }
 .ib-act:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 body.inbox-ui .grid.canvas.inbox-split .ib-acts { display: none; }
@@ -611,16 +609,22 @@ body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pb-ctrls { display: none
 }
 .ib-mini p { margin: 0 0 10px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .ib-mini .lb { font-size: 12.5px; color: var(--ib-needs); }
-.ib-mini code { padding: 4px 8px; border-radius: 6px; background: #0a0a0c; font: 12.5px var(--mono); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ib-mini code { padding: 4px 8px; border-radius: 6px; background: var(--surface-0); font: 12.5px var(--mono); max-width: 100%; max-height: 4.8em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .ib-mini-opts { display: flex; flex-wrap: wrap; gap: 6px; }
 .ib-mini .ia-opt { width: auto; height: 30px; padding: 0 12px; border-radius: 999px; font: 600 12.5px var(--sans); background: rgba(255, 255, 255, 0.07); color: var(--ib-ink); }
 .ib-mini .ia-opt.always { background: transparent; color: var(--ib-ink-2); }
 .ib-mini .ia-opt.deny { background: oklch(0.72 0.15 25 / 0.12); color: var(--ib-del); }
 .ib-mini .ia-opt.allow { background: #fff; color: #000; }
+.ib-mini .ia-opt:hover { background: rgba(255, 255, 255, 0.13); }
+.ib-mini .ia-opt.always:hover { background: rgba(255, 255, 255, 0.07); color: var(--ib-ink); }
+.ib-mini .ia-opt.deny:hover { background: oklch(0.72 0.15 25 / 0.22); }
+.ib-mini .ia-opt.allow:hover { background: #e9e9ec; }
 
 /* ---------- the job as the headline of an agent ---------- */
 .iq-s { display: flex; align-items: baseline; gap: 0 4px; }
-.iq-s .iq-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.iq-s .iq-p { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.iq-s .iq-dot { flex: none; }
+.iq-s .iq-l { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .iq-race { font: 11px var(--mono); padding: 1px 6px; border-radius: 5px; background: rgba(255, 255, 255, 0.07); color: var(--ib-ink-2); flex: none; }
 .iq-ln { margin-left: auto; flex: none; font: 12px var(--mono); padding-left: 8px; }
 .iq-ln .a { color: var(--ib-work); font-weight: 400; }
@@ -638,6 +642,7 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused.ib-has-title .ib-ttl 
   display: block; grid-row: 2; grid-column: 2 / 5;
   font: 600 22px/1.25 var(--sans); letter-spacing: -0.02em; color: var(--ib-ink);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  user-select: text;
 }
 
 /* ---------- start screen (Home) ----------
@@ -714,7 +719,7 @@ body.inbox-ui .inbox-start {
   font-size: 13px;
 }
 .st-chip:hover { background: rgba(255, 255, 255, 0.1); color: var(--ib-ink); }
-.st-chip:focus-within { outline: 2px solid #fff; outline-offset: 2px; }
+.st-chip:has(:focus-visible) { outline: 2px solid #fff; outline-offset: 2px; }
 .st-sp { flex: 1; }
 .st-go {
   display: inline-flex; align-items: center; gap: 8px;
@@ -879,7 +884,7 @@ body.inbox-ui .app.editor-max::before { background: rgba(0, 0, 0, 0.6); }
 .hp-row dd { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--ib-ink-2); }
 .hp kbd {
   display: inline-flex; align-items: center; min-width: 22px; height: 22px; padding: 0 7px; justify-content: center;
-  border-radius: 6px; font: 500 11.5px var(--sans); color: var(--ib-ink);
+  border-radius: 6px; font: 500 11px var(--mono); color: var(--ib-ink);
   background: rgba(255, 255, 255, 0.06); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(255, 255, 255, 0.06);
 }
 .hp-or { margin: 0 4px; font-size: 12px; color: var(--ib-ink-3); }
@@ -910,10 +915,33 @@ body.inbox-ui .app.editor-max::before { background: rgba(0, 0, 0, 0.6); }
   opacity: 0; transition: opacity 0.12s;
 }
 .iq-row:hover .iq-more, .iq-row:focus-visible .iq-more { opacity: 1; }
+.iq-row:hover .iq-tm, .iq-row:focus-visible .iq-tm { visibility: hidden; }
 .iq-more:hover { color: var(--ib-ink); background: #24252b; }
-@media (hover: none) { .iq-more { opacity: 1; } }
+@media (hover: none) { .iq-more { opacity: 1; } .iq-tm { visibility: hidden; } }
 .st-help { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; padding: 4px 2px; font-size: 13px; color: var(--ib-ink-3); }
 .st-help:hover { color: var(--ib-ink); }
 .st-help:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 6px; }
 .st-help kbd { font: 11px var(--mono); padding: 1px 6px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14); }
 .boot .inbox-start .st-help { opacity: 0; animation: focusIn .5s cubic-bezier(.2,.7,.2,1) 1.5s forwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .boot .inbox-start *, .boot .inbox-start .st-help { animation: none !important; opacity: 1 !important; transform: none !important; }
+}
+
+/* a project with no agents: one line and one button, in the middle of the stage */
+.ib-empty {
+  grid-column: 2; grid-row: 2; align-self: center; justify-self: center;
+  margin-bottom: var(--ib-dock-h); padding: 0 24px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+  font-family: var(--sans); color: var(--ib-ink);
+}
+.ib-empty[hidden] { display: none; }
+.ib-empty b { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.ib-empty span { max-width: 380px; font-size: 14px; line-height: 1.5; color: var(--ib-ink-3); }
+.ib-empty .im-btn { margin-top: 10px; }
+
+/* a narrow stage: the header's actions take their own row instead of squeezing
+   the name (after the header rules above, which it overrides) */
+@container (max-width: 860px) {
+  body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .ib-acts { grid-row: 3; grid-column: 2 / -1; justify-self: start; margin-top: 10px; }
+}

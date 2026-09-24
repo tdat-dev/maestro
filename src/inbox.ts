@@ -25,7 +25,8 @@ import { confirmModal } from "./confirmmodal";
 import { openMenu, type MenuItem } from "./ctxmenu";
 import { openHelpPage, openTool, isHelpKey } from "./inboxhelp";
 import { showTip, tipSeen } from "./tips";
-import { chatSupported, hideChat, showChat } from "./chatview";
+import { chatSupported, focusAgent, hideChat, showChat } from "./chatview";
+import { topNote } from "./hint";
 import { profileOf } from "./cliprofile";
 import { allTasks, answerOption, answerText, onTasksChange, type Task } from "./tasks";
 import type { AskOption } from "./askparse";
@@ -53,7 +54,17 @@ export function headline(list: Task[]): { lead: string; rest: string } {
   const are = (k: number) => (k === 1 ? "is" : "are");
   if (!list.length) return { lead: "No agents yet.", rest: " Start one with New agent." };
   const lead = needs ? `${needs} agent${needs === 1 ? " needs" : "s need"} you.` : "Nothing needs you.";
-  return { lead, rest: ` ${review} ${are(review)} ready to review, ${working} ${are(working)} working.` };
+  // Only what is so: the clauses with nobody in them are left out.
+  const parts = [
+    review ? `${review} ${are(review)} ready to review` : "",
+    working ? `${working} ${are(working)} working` : "",
+  ].filter(Boolean);
+  if (!parts.length) {
+    const idle = n("idle"), stopped = n("stopped");
+    if (idle) parts.push(`${idle} ${are(idle)} waiting for a task`);
+    if (stopped) parts.push(`${stopped} ${are(stopped)} stopped`);
+  }
+  return { lead, rest: parts.length ? ` ${parts.join(", ")}.` : "" };
 }
 
 /** Short second line of a queue row, from the agent's side. */
@@ -137,6 +148,8 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 let queueEl: HTMLElement | null = null;
 let headEl: HTMLElement | null = null;
 let askEl: HTMLElement | null = null;
+/** What the stage says when the shown project has no agents. */
+let emptyEl: HTMLElement | null = null;
 let timer: number | null = null;
 let offTasks: (() => void) | null = null;
 /** Prompts the user tucked away ("paneId|prompt"), so they can type in the terminal instead. */
@@ -178,7 +191,11 @@ function renderChat(list: Task[], pane: Pane | undefined): void {
   for (const id of borrowed.keys()) { const p = paneById(id); if (p && p !== on && p.el.classList.contains("chat-on")) hideChat(p); }
   if (!on) { chatFor = null; return; }
   const t = list.find((x) => x.paneId === on.id);
-  showChat(on, { name: on.spec.name, state: t?.status.state ?? "idle", problem: on.error, branch: t?.branch ?? on.spec.branch ?? null, onReview: openReview, onTerminal: () => { termMode.add(on.id); render(); on.term.focus(); } }, chatFor !== on.id);
+  // The full answer card (not the tucked-away chip) is up for this agent: it is
+  // the way to reply, and the conversation keeps its end above it.
+  const asking = !!askEl && !askEl.hidden && !askEl.classList.contains("min") && (askEl.dataset.key ?? "").startsWith(`${on.id}|`);
+  if (asking && askEl) on.el.style.setProperty("--ask-h", `${askEl.offsetHeight + 24}px`);
+  showChat(on, { name: on.spec.name, state: t?.status.state ?? "idle", problem: on.error, asking, branch: t?.branch ?? on.spec.branch ?? null, onReview: openReview, onTerminal: () => { termMode.add(on.id); render(); on.term.focus(); } }, chatFor !== on.id);
   chatFor = on.id;
 }
 
@@ -326,6 +343,7 @@ function layoutSplit(): void {
 
 export function setSplit(on: boolean): void {
   splitOn = on;
+  if (on && allTasks().length < 2) topNote("The Grid shows agents side by side: start another with <b>New agent</b>");
   if (!on) { splitClosed.clear(); miniAnswered.clear(); }
   splitBtn?.setAttribute("aria-pressed", String(on));
   dockEl?.querySelector('[data-dock="queue"]')?.setAttribute("aria-pressed", String(!on));
@@ -346,7 +364,8 @@ function closeFromSplit(id: string): void {
 function pinCurrent(): void {
   const cur = stagePane();
   if (!cur) return;
-  pins = togglePin(pins, cur.id, cur.id);
+  pins = togglePin(pins, cur.id, cur.id, getPref("splitMax"));
+  if (!splitOn) topNote(pins.includes(cur.id) ? `<b>${esc(cur.spec.name)}</b> is in the Grid · <kbd>Alt+S</kbd> shows it` : `<b>${esc(cur.spec.name)}</b> is out of the Grid`);
   if (!pins.includes(cur.id) && splitOn) {
     splitClosed.add(cur.id);
     // Taking the agent on the stage out hands the stage to another card.
@@ -383,26 +402,31 @@ export function agentMenu(t: Task): MenuItem[] {
   const branch = pane.spec.branch;
   const click = (sel: string) => pane.el.querySelector<HTMLElement>(sel)?.click();
   const onStage = () => { openTask(t); };
+  // Alt+R / Alt+H / Alt+P act on the agent on the stage, so they are only
+  // worth showing on that agent's menu.
+  const here = stagePane()?.id === pane.id;
+  const key = (k: string) => (here ? k : undefined);
   return [
     { label: "Open", run: onStage },
     { label: "Rename…", run: () => void confirmModal({ title: "Rename agent", message: "What should this agent be called?", okLabel: "Rename", input: { value: pane.spec.name } })
       .then((r) => { if (r.ok) { renamePane(pane, r.value); render(); } }) },
-    { label: pinned ? "Take out of Grid" : "Add to Grid", hint: "Alt+P", run: () => {
+    { label: pinned ? "Take out of Grid" : "Add to Grid", hint: key("Alt+P"), run: () => {
       if (pinned) { pins = pins.filter((id) => id !== pane.id); if (splitOn) splitClosed.add(pane.id); }
-      else { splitClosed.delete(pane.id); pins = togglePin(pins, pane.id, stagePane()?.id, getPref("splitMax")); }
+      else { splitClosed.delete(pane.id); pins = togglePin(pins, pane.id, stagePane()?.id, getPref("splitMax")); if (!splitOn) topNote(`<b>${esc(pane.spec.name)}</b> is in the Grid · <kbd>Alt+S</kbd> shows it`); }
       render();
     } },
-    { label: "Changes", hint: "Alt+R", sep: true, disabled: !pane.spec.worktree && !pane.spec.cwd, run: () => { onStage(); openReview(); } },
-    { label: "History", hint: "Alt+H", run: () => { onStage(); openHistory(); } },
+    { label: "Changes", hint: key("Alt+R"), sep: true, disabled: !pane.spec.worktree && !pane.spec.cwd, run: () => { onStage(); openReview(); } },
+    { label: "History", hint: key("Alt+H"), run: () => { onStage(); openHistory(); } },
     { label: "Copy branch name", disabled: !branch, run: () => { if (branch) void navigator.clipboard?.writeText(branch).catch(() => {}); } },
     // Starts it again in place; a Claude agent carries on its own conversation.
-    { label: pane.running ? "Restart" : chatSupported(pane) ? "Resume" : "Start again", sep: true, run: () => void pane.restart?.() },
+    { label: pane.running ? "Restart" : "Resume", sep: true, run: () => void pane.restart?.() },
     ...(chatSupported(pane) ? [{ label: "New conversation", run: () => void pane.restart?.({ fresh: true }) }] : []),
     { label: "Stop", disabled: !pane.running, run: () => { void killPty(pane.id).catch(() => {}); } },
     { label: "Remove agent…", danger: true, run: () => void confirmModal({
       title: `Remove ${pane.spec.name}?`,
       message: pane.running ? "It stops and its terminal closes. Its branch and the changes on it stay in git." : "Its terminal closes. Its branch and the changes on it stay in git.",
       okLabel: "Remove",
+      danger: true,
     }).then((r) => { if (r.ok) click("[data-kill]"); }) },
   ];
 }
@@ -424,28 +448,45 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
     ? `<div class="iq-chips" role="group" aria-label="Filter by project">${chip("", "All projects", list.length)}${[...projects].map(([id, p]) => chip(id, p.name, p.n)).join("")}</div>`
     : "";
   const groups = groupTasks(shown);
-  queueEl.innerHTML = chips +
-    `<div class="iq-list" role="list">` +
-    groups.map((g) => `<section class="iq-group" aria-label="${GROUP_LABEL[g.state]}">
-      <div class="iq-gt"><span>${GROUP_LABEL[g.state]}</span><span class="iq-n">${g.tasks.length}</span></div>
-      ${g.tasks.length ? g.tasks.map((t) => {
+  const html = chips +
+    `<div class="iq-list">` +
+    groups.map((g) => `<section class="iq-group" aria-labelledby="iq-g-${g.state}">
+      <h2 class="iq-gt" id="iq-g-${g.state}"><span>${GROUP_LABEL[g.state]}</span><span class="iq-n">${g.tasks.length}</span></h2>
+      ${g.tasks.length ? `<ul class="iq-rows">${g.tasks.map((t) => {
         const p = paneOf(t);
-        return `<button class="iq-row st-${t.status.state}" role="listitem" data-id="${esc(t.paneId)}" aria-current="${t.paneId === current}">
-          <span class="iq-mk" style="background:${esc(p?.color ?? "#888")}" aria-hidden="true">${esc((t.name.trim()[0] ?? "?").toUpperCase())}</span>
-          <span class="iq-t">${esc(t.title ?? t.name)}</span>
-          <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In the Grid">◫</span> ` : ""}${ago(now - t.since)}</span>
-          <span class="iq-more" data-more title="More (right-click)" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="12.5" cy="8" r="1.3" fill="currentColor"/></svg></span>
-          <span class="iq-s"><span class="iq-p">${esc(t.title ? t.name : t.project)}</span>${t.race ? ` <span class="iq-race">race ${t.race.n}/${t.race.of}</span>` : ""} · <span class="iq-l">${esc(rowLine(t))}</span>${lineCounts(t)}</span>
-        </button>`;
-      }).join("") : `<p class="iq-empty">All clear. Nothing is waiting on you.</p>`}
+        const main = t.title ?? t.name;
+        const sub = t.title ? t.name : t.project;
+        return `<li><button class="iq-row st-${t.status.state}" data-id="${esc(t.paneId)}" aria-current="${t.paneId === current}" aria-haspopup="menu" title="${esc(main)}${t.title ? ` · ${esc(t.name)}` : ""} · right-click for more">
+          <span class="iq-mk" style="background:${esc(p?.color ?? "var(--muted)")}" aria-hidden="true">${esc((t.name.trim()[0] ?? "?").toUpperCase())}</span>
+          <span class="iq-t">${esc(main)}</span>
+          <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In the Grid">◫</span> ` : ""}<span class="iq-ago" data-since="${t.since}">${ago(now - t.since)}</span></span>
+          <span class="iq-more" data-more aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="12.5" cy="8" r="1.3" fill="currentColor"/></svg></span>
+          <span class="iq-s"><span class="iq-p">${esc(sub)}</span>${t.race ? ` <span class="iq-race">race ${t.race.n}/${t.race.of}</span>` : ""}<span class="iq-dot" aria-hidden="true">·</span><span class="iq-l">${esc(rowLine(t))}</span>${lineCounts(t)}</span>
+        </button></li>`;
+      }).join("")}</ul>` : `<p class="iq-empty">All clear. Nothing is waiting on you.</p>`}
     </section>`).join("") +
     `</div>`;
+  // Rebuilding every second would take the keyboard focus (and a click in
+  // progress) away from the list; only a real change rebuilds it.
+  const sig = html.replace(/<span class="iq-ago"[^>]*>[^<]*<\/span>/g, "");
+  if (sig === queueSig) {
+    for (const el of queueEl.querySelectorAll<HTMLElement>(".iq-ago")) el.textContent = ago(now - Number(el.dataset.since));
+    return;
+  }
+  queueSig = sig;
+  const had = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>(".inbox-queue [data-id], .inbox-queue .iq-chip");
+  const back = had ? (had.dataset.id ? `.iq-row[data-id="${CSS.escape(had.dataset.id)}"]` : `.iq-chip[data-ws="${CSS.escape(had.dataset.ws ?? "")}"]`) : null;
+  queueEl.innerHTML = html;
+  if (back) queueEl.querySelector<HTMLElement>(back)?.focus({ preventScroll: true });
 }
+let queueSig = "";
 
 function renderHead(list: Task[]): void {
   if (!headEl) return;
   const h = headline(list);
-  headEl.innerHTML = `<b>${esc(h.lead)}</b>${esc(h.rest)}`;
+  // A live region: only a real change is worth reading out.
+  const html = `<b>${esc(h.lead)}</b>${esc(h.rest)}`;
+  if (headEl.innerHTML !== html) headEl.innerHTML = html;
 }
 
 /** Headers of the agents on screen: the state pill everywhere; Changes and
@@ -467,14 +508,16 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
     pill.textContent = GROUP_LABEL[t.status.state];
     // Grid is terminals only: no Chat/Terminal choice there, even for a lone agent.
     const mode = pinned ? "split" : splitOn ? "grid" : "stage";
-    if (!acts || acts.dataset.mode !== mode) {
+    const chatOk = mode === "stage" && chatSupported(p) && getPref("chatView");
+    const build = `${mode}|${t.name}|${t.race?.of ?? ""}|${chatOk}`;
+    if (!acts || acts.dataset.mode !== build) {
       acts?.remove();
       acts = document.createElement("span");
       acts.className = "ib-acts";
-      acts.dataset.mode = mode;
+      acts.dataset.mode = build;
       acts.innerHTML = pinned
         ? `<button class="ib-icon" data-stage="full" title="Open full size" aria-label="Open ${esc(t.name)} full size">⤢</button><button class="ib-icon" data-stage="close" title="Take out of Grid" aria-label="Take ${esc(t.name)} out of the Grid">✕</button>`
-        : `${mode === "stage" && chatSupported(p) && getPref("chatView") ? `<span class="ib-view" role="group" aria-label="Show ${esc(t.name)} as"><button data-stage="chat" title="The conversation">Chat</button><button data-stage="term" title="The terminal, as the CLI draws it">Terminal</button></span>` : ""}<button class="ib-act ib-term" data-stage="cmds" title="Type / so ${esc(t.name)}'s CLI shows its own commands">Commands</button>${profileOf(p.spec.badge).modelCommand ? `<button class="ib-act ib-term" data-stage="model" title="Open the CLI's own model picker">Model</button>` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
+        : `${chatOk ? `<span class="ib-view" role="group" aria-label="Show ${esc(t.name)} as"><button data-stage="chat" title="The conversation">Chat</button><button data-stage="term" title="The terminal, as the CLI draws it">Terminal</button></span>` : ""}<button class="ib-act ib-term" data-stage="cmds" title="Type / so ${esc(t.name)}'s CLI shows its own commands">Commands</button>${profileOf(p.spec.badge).modelCommand ? `<button class="ib-act ib-term" data-stage="model" title="Open the CLI's own model picker">Model</button>` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
       pill.after(acts);
     }
     acts.querySelector('[data-stage="review"]')?.setAttribute("aria-pressed", String(reviewer?.paneId === p.id));
@@ -484,7 +527,7 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
     // Just the branch: the project is already in the queue and the headline.
     // On a Split card the second line is the job, when there is one.
     const where = p.el.querySelector<HTMLElement>("[data-where]");
-    if (where) where.textContent = pinned ? t.title ?? t.branch ?? t.project : t.branch ?? "";
+    if (where) { where.textContent = pinned ? t.title ?? t.branch ?? t.project : t.branch ?? ""; where.title = where.textContent; }
     // On the stage the job is the big line, the agent's name moves up with the CLI.
     let ttl = p.el.querySelector<HTMLElement>(".ib-ttl");
     const showTtl = !pinned && !!t.title;
@@ -494,9 +537,13 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
       if (!ttl) {
         ttl = document.createElement("span");
         ttl.className = "ib-ttl";
-        p.el.querySelector(".pane-bar")?.appendChild(ttl);
+        ttl.setAttribute("role", "heading");
+        ttl.setAttribute("aria-level", "1");
+        const nameEl = p.el.querySelector(".pane-bar .pb-name");
+        if (nameEl) nameEl.after(ttl); else p.el.querySelector(".pane-bar")?.appendChild(ttl);
       }
       ttl.textContent = t.title!;
+      ttl.title = t.title!;
     }
     renderMini(p, t, pinned);
   }
@@ -523,7 +570,7 @@ function renderMini(p: Pane, t: Task, pinned: boolean): void {
         `<button class="ia-opt ${o.deny ? "deny" : o.always ? "always" : "allow"}" data-n="${o.n}" title="${esc(o.label)}">${esc(shortLabel(o))}</button>`)
     : a.options.map((o) => `<button class="ia-opt" data-n="${o.n}">${o.n}. ${esc(o.label)}</button>`);
   const lead = a.kind === "run" ? `${t.name} wants to run` : a.kind === "edit" ? `${t.name} wants to edit` : `${t.name} asks`;
-  mini.innerHTML = `<p><span class="lb">${esc(lead)}</span>${a.kind !== "question" && a.detail ? `<code>${esc(a.detail)}</code>` : esc(a.prompt)}</p><div class="ib-mini-opts">${btns.join("")}</div>`;
+  mini.innerHTML = `<p><span class="lb">${esc(lead)}</span>${a.kind !== "question" && a.detail ? `<code title="${esc(a.detail)}">${esc(a.detail)}</code>` : esc(a.prompt)}</p><div class="ib-mini-opts">${btns.join("")}</div>`;
 }
 
 function renderAsk(list: Task[], pane: Pane | undefined): void {
@@ -565,6 +612,11 @@ function renderAsk(list: Task[], pane: Pane | undefined): void {
     return;
   }
   askEl.className = "inbox-ask";
+  // Tucked away, the question waits on a chip; in the terminal you can answer it by typing.
+  // (whether the chat shows is decided after this card, so ask the same question it does)
+  const hideBtn = pane && !splitOn && wantsChat(pane)
+    ? `<button class="ia-min" data-act="hide" title="Tuck this away; the chip brings it back">Hide</button>`
+    : `<button class="ia-min" data-act="hide" title="Tuck this away and answer by typing in the terminal">Hide · type in terminal</button>`;
   const lead = a.kind === "run" ? `${t.name} wants to run a command` : a.kind === "edit" ? `${t.name} wants to edit a file` : `${t.name} has a question`;
   askEl.dataset.key = key;
   if (isYesNo(a)) {
@@ -573,28 +625,42 @@ function renderAsk(list: Task[], pane: Pane | undefined): void {
     const order = [...a.options].sort((x, y) => rank(x) - rank(y));
     askEl.innerHTML = `
     <div class="ia-top"><i class="ia-dia" aria-hidden="true"></i><span>${esc(lead)}</span>${a.title ? `<span class="ia-title">${esc(a.title)}</span>` : ""}
-      <button class="ia-min" data-act="hide" title="Type in the terminal instead">Hide · type in terminal</button></div>
+      ${hideBtn}</div>
     ${a.detail ? `<p class="ia-why">${esc(a.prompt)}</p><code class="ia-code">${esc(a.detail)}</code>` : `<p class="ia-q">${esc(a.prompt)}</p>`}
     <div class="ia-row">
       <form class="ia-free"><label class="ia-sr" for="iaFree">Tell ${esc(t.name)} what to do instead</label>
-        <input id="iaFree" autocomplete="off" placeholder="Or tell ${esc(t.name)} what to do instead…"></form>
+        <input id="iaFree" autocomplete="off" placeholder="Or tell ${esc(t.name)} what to do instead…" title="Alt+A to type here"></form>
       <div class="ia-acts">${order.map((o) => `<button class="ia-opt ${o.deny ? "deny" : o.always ? "always" : "allow"}" data-n="${o.n}" title="${esc(o.label)} (Alt+${o.n})">
-        <span>${esc(shortLabel(o))}</span><kbd class="ia-k">${o.n}</kbd></button>`).join("")}</div>
+        <span>${esc(shortLabel(o))}</span><kbd class="ia-k">Alt ${o.n}</kbd></button>`).join("")}</div>
     </div>`;
     return;
   }
   askEl.innerHTML = `
     <div class="ia-top"><i class="ia-dia" aria-hidden="true"></i><span>${esc(lead)}</span>${a.title ? `<span class="ia-title">${esc(a.title)}</span>` : ""}
-      <button class="ia-min" data-act="hide" title="Type in the terminal instead">Hide · type in terminal</button></div>
+      ${hideBtn}</div>
     ${a.kind === "question" ? `<p class="ia-q">${esc(a.prompt)}</p>` : a.detail ? `<code class="ia-code">${esc(a.detail)}</code>` : `<p class="ia-q">${esc(a.prompt)}</p>`}
     <div class="ia-opts">${a.options.map((o, i) => `<button class="ia-opt${o.deny ? " deny" : ""}${i === 0 ? " first" : ""}" data-n="${o.n}">
       <span class="ia-k">${o.n}</span><span>${esc(o.label)}</span></button>`).join("")}</div>
     <form class="ia-free"><label class="ia-sr" for="iaFree">Answer ${esc(t.name)} in your own words</label>
       <input id="iaFree" autocomplete="off" placeholder="${a.kind === "question" ? "Something else…" : `Or tell ${esc(t.name)} what to do instead…`}"><button type="submit">Send</button></form>
-    <p class="ia-hint">Alt+1…${a.options.length} picks an option · Alt+↑/↓ moves through the queue</p>`;
+    <p class="ia-hint">Alt+1…${a.options.length} picks an option · Alt+A types an answer · Alt+↑/↓ moves through the list</p>`;
 }
 
 const rank = (o: AskOption) => (o.always ? 0 : o.deny ? 1 : 2);
+
+/** A project with no agents: say so, and offer the one thing to do. */
+function renderEmpty(): void {
+  if (!emptyEl) return;
+  const ws = activeWs;
+  const none = !!ws && ws.panes.size === 0;
+  emptyEl.hidden = !none;
+  if (!none || !ws) return;
+  const sig = ws.id + ws.name;
+  if (emptyEl.dataset.sig === sig) return;
+  emptyEl.dataset.sig = sig;
+  emptyEl.innerHTML = `<b>No agents in ${esc(ws.name)} yet</b><span>Say what you want done and one starts on it in this folder.</span>
+    <button type="button" class="im-btn primary" data-empty-new>New agent</button>`;
+}
 
 /** Tips for what just became useful; showTip keeps them one at a time. */
 function teach(list: Task[]): void {
@@ -614,6 +680,7 @@ function render(): void {
   renderHeaders(list, pane);
   renderAsk(list, pane);
   renderChat(list, pane);
+  renderEmpty();
   renderStart();
   // History follows the stage: switch agents and it shows the new one's.
   if (historian?.paneId && pane && historian.paneId !== pane.id) historian.open(pane);
@@ -626,8 +693,9 @@ async function pick(option: AskOption): Promise<void> {
   if (!pane) return;
   if (key) answered.add(key);
   render();
+  if (splitOn) { const a = currentAsk(); if (a) { miniAnswered.set(pane.id, askKey(a)); pane.el.querySelector(".ib-mini")?.remove(); } }
   await answerOption(pane.id, option);
-  pane.term.focus();
+  focusAgent(pane);
 }
 
 function currentAsk() {
@@ -637,7 +705,7 @@ function currentAsk() {
 }
 
 function move(delta: number): void {
-  const list = allTasks();
+  const list = allTasks().filter((t) => !projectFilter || t.wsId === projectFilter);
   if (!list.length) return;
   const cur = stagePane()?.id;
   const i = list.findIndex((t) => t.paneId === cur);
@@ -645,17 +713,25 @@ function move(delta: number): void {
   if (next) openTask(next);
 }
 
+/** A dialog is up (Settings, New agent, Help, the palette, a confirm). */
+function dialogOpen(): boolean {
+  return !!document.querySelector(".inbox-modal-back, .backdrop.open");
+}
+
 function onKey(e: KeyboardEvent): void {
   if (!document.body.classList.contains("inbox-ui") || !e.altKey || e.ctrlKey || e.metaKey) return;
+  if (dialogOpen()) return;
   if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); move(e.key === "ArrowDown" ? 1 : -1); return; }
   const k = e.key.toLowerCase();
   if (k === "s") { e.preventDefault(); setSplit(!splitOn); return; }
   if (k === "p") { e.preventDefault(); pinCurrent(); return; }
   if (k === "r") { e.preventDefault(); if (reviewer?.paneId) reviewer.close(); else openReview(); return; }
   if (k === "h") { e.preventDefault(); if (historian?.paneId) historian.close(); else openHistory(); return; }
+  // Alt+A: answer in your own words, from wherever the keyboard is.
+  if (k === "a") { const f = askEl?.querySelector<HTMLInputElement>("#iaFree"); if (f) { e.preventDefault(); f.focus(); } return; }
   if (/^[1-9]$/.test(e.key)) {
     const o = currentAsk()?.options.find((x) => x.n === Number(e.key));
-    if (o) { e.preventDefault(); void pick(o); }
+    if (o) { e.preventDefault(); e.stopPropagation(); void pick(o); }
   }
 }
 
@@ -702,7 +778,8 @@ function openCompare(raceId: string): void {
       </section>`;
     }).join("")}</div></div>`;
   document.body.appendChild(back);
-  const close = () => back.remove();
+  const was = document.activeElement as HTMLElement | null;
+  const close = () => { back.remove(); if (was?.isConnected) was.focus(); };
   back.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
     if (t === back || t.closest("[data-close]")) { close(); return; }
@@ -743,9 +820,9 @@ export function paletteItems(): PaletteItem[] {
   return [
     ...agents,
     act("New agent", () => openNewAgent(), "Ctrl+Shift+T", "Give 2 or 3 the same job to race them"),
-    act(splitOn ? "Back to Focus: one agent, as a chat" : "Grid: agents side by side", () => setSplit(!splitOn), "Alt+S", "Each agent on its own card, answering in place"),
+    act(splitOn ? "Back to Focus: one agent, full size" : "Grid: agents side by side", () => setSplit(!splitOn), "Alt+S", splitOn ? undefined : "Each agent on its own card, answering in place"),
     act("Add the current agent to the Grid, or take it out", () => pinCurrent(), "Alt+P"),
-    act("Review what the current agent changed", () => openReview(), "Alt+R", "Merge it, or send it back with a note"),
+    act("Changes of the current agent", () => openReview(), "Alt+R", "Merge them, or send it back with a note"),
     act("History of the current agent", () => openHistory(), "Alt+H", "What it did and what you answered"),
     act("Board", () => openTool("kanban"), "Ctrl+Shift+K", "Cards the agents move as they work"),
     act("Files", () => document.getElementById("btnToggleCode")?.click(), "Ctrl+Shift+E", "Folder tree and editor"),
@@ -789,7 +866,7 @@ function onStageButton(e: MouseEvent): void {
     if (!a || !o) return;
     miniAnswered.set(pane.id, askKey(a));
     pane.el.querySelector(".ib-mini")?.remove();
-    void answerOption(pane.id, o).then(() => pane.term.focus());
+    void answerOption(pane.id, o).then(() => focusAgent(pane));
     return;
   }
   const b = target.closest<HTMLElement>("[data-stage]");
@@ -812,6 +889,23 @@ function onStageButton(e: MouseEvent): void {
       break;
     }
   }
+}
+
+/** The ✕ on an agent's header removes it: ask first, as the menu's Remove does.
+ *  The confirmed click is replayed (untrusted), which pane.ts then acts on. */
+function onKillClick(e: MouseEvent): void {
+  const b = (e.target as HTMLElement).closest<HTMLElement>("[data-kill]");
+  if (!b || !e.isTrusted) return;
+  const pane = screenPanes().find((p) => p.el.contains(b));
+  if (!pane) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  void confirmModal({
+    title: `Remove ${pane.spec.name}?`,
+    message: pane.running ? "It stops and its terminal closes. Its branch and the changes on it stay in git." : "Its terminal closes. Its branch and the changes on it stay in git.",
+    okLabel: "Remove",
+    danger: true,
+  }).then((r) => { if (r.ok) b.click(); });
 }
 
 const lastState = new Map<string, TaskState>();
@@ -854,6 +948,7 @@ function mount(): void {
   mountStart();
   queueEl = document.createElement("aside");
   queueEl.className = "inbox-queue";
+  queueSig = ""; // a new, empty list: the first render fills it
   queueEl.setAttribute("aria-label", "Agents");
   app.appendChild(queueEl);
   askEl = document.createElement("section");
@@ -861,6 +956,12 @@ function mount(): void {
   askEl.hidden = true;
   askEl.setAttribute("aria-live", "polite");
   app.appendChild(askEl);
+  emptyEl = document.createElement("section");
+  emptyEl.className = "ib-empty";
+  emptyEl.hidden = true;
+  emptyEl.setAttribute("aria-label", "No agents yet");
+  emptyEl.addEventListener("click", (e) => { if ((e.target as HTMLElement).closest("[data-empty-new]")) openNewAgent(); });
+  app.appendChild(emptyEl);
   headEl = document.createElement("p");
   headEl.className = "inbox-head";
   headEl.setAttribute("aria-live", "polite");
@@ -871,12 +972,12 @@ function mount(): void {
   dockEl.setAttribute("aria-label", "Maestro");
   dockEl.innerHTML = `
     <div class="id-seg">
-      <button data-dock="queue" aria-pressed="true" title="Focus: one agent at a time, as a chat (Alt+S switches)"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/><path d="M5.5 6.5h5M5.5 9.5h3"/></svg><span>Focus</span></button>
+      <button data-dock="queue" aria-pressed="true" title="Focus: one agent at a time, full size (Alt+S switches)"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/><path d="M5.5 6.5h5M5.5 9.5h3"/></svg><span>Focus</span></button>
       <button data-dock="split" aria-pressed="false" title="Grid: several agents side by side, as terminals (Alt+S switches, Alt+P adds one)"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.4"/><rect x="9" y="2" width="5" height="5" rx="1.4"/><rect x="2" y="9" width="5" height="5" rx="1.4"/><rect x="9" y="9" width="5" height="5" rx="1.4"/></svg><span>Grid</span></button>
     </div>
-    <button class="id-search" data-dock="search" title="Jump to an agent or run a command (Ctrl K)">
+    <button class="id-search" data-dock="search" title="Jump to an agent or run a command (Ctrl+K)">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-      <span>Jump to an agent or run a command</span><kbd>Ctrl K</kbd></button>
+      <span>Jump to an agent or run a command</span><kbd>Ctrl+K</kbd></button>
     <button class="id-new" data-dock="new" title="New agent (Ctrl+Shift+T)">New agent</button>
     <button class="id-gear id-help" data-dock="help" aria-label="What Maestro can do" title="What Maestro can do (?)">?</button>
     <button class="id-gear" data-dock="settings" aria-label="Settings" title="Settings (Ctrl+,)">
@@ -886,7 +987,7 @@ function mount(): void {
   dockEl.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>("[data-dock]");
     switch (b?.dataset.dock) {
-      case "queue": reviewer?.close(); setSplit(false); break;
+      case "queue": setSplit(false); break;
       case "split": setSplit(!splitOn); break;
       case "search": openPalette(paletteItems()); break;
       case "new": openNewAgent(); break;
@@ -895,6 +996,7 @@ function mount(): void {
     }
   });
   document.getElementById("workspaces")?.addEventListener("click", onStageButton);
+  document.getElementById("workspaces")?.addEventListener("click", onKillClick, true);
   historian = createHistoryDrawer(app, render);
   reviewer = createReviewDrawer(app, render);
 
@@ -934,7 +1036,7 @@ function mount(): void {
     const b = (e.target as HTMLElement).closest<HTMLElement>("button");
     if (!b || !askEl) return;
     const key = askEl.dataset.key ?? "";
-    if (b.dataset.act === "hide") { hidden.add(key); render(); stagePane()?.term.focus(); return; }
+    if (b.dataset.act === "hide") { hidden.add(key); render(); const p = stagePane(); if (p) focusAgent(p); return; }
     if (b.dataset.act === "show") { hidden.clear(); render(); return; }
     if (b.dataset.act === "review") { openReview(); return; }
     const o = currentAsk()?.options.find((x) => x.n === Number(b.dataset.n));
@@ -947,7 +1049,7 @@ function mount(): void {
     if (!input?.value.trim() || !pane) return;
     const key = askEl?.dataset.key;
     if (key) answered.add(key);
-    void answerText(pane.id, input.value).then(() => pane.term.focus());
+    void answerText(pane.id, input.value).then(() => focusAgent(pane));
     render();
   });
   document.addEventListener("keydown", onKey, true);
@@ -969,7 +1071,7 @@ function unmount(): void {
   splitOn = false; pins = []; splitSig = ""; splitWs = null;
   if (reviewer?.paneId) reviewer.close();
   for (const ws of workspaces.values()) for (const p of ws.panes.values()) { p.el.querySelector(".ib-pill")?.remove(); p.el.querySelector(".ib-acts")?.remove(); p.el.querySelector(".ib-mini")?.remove(); p.el.querySelector(".ib-ttl")?.remove(); p.el.classList.remove("ib-needs", "ib-has-title"); }
-  queueEl?.remove(); askEl?.remove(); headEl?.remove(); dockEl?.remove();
+  queueEl?.remove(); askEl?.remove(); headEl?.remove(); dockEl?.remove(); emptyEl?.remove(); emptyEl = null;
   queueEl = askEl = headEl = dockEl = null; splitBtn = null; reviewer = null; historian = null;
   projectFilter = null;
   if (timer !== null) { clearInterval(timer); timer = null; }
@@ -977,6 +1079,7 @@ function unmount(): void {
   document.removeEventListener("keydown", onKey, true);
   document.removeEventListener("focusin", onFocusIn);
   document.getElementById("workspaces")?.removeEventListener("click", onStageButton);
+  document.getElementById("workspaces")?.removeEventListener("click", onKillClick, true);
   window.removeEventListener("keydown", onCtrlK, true);
   closePalette();
   window.removeEventListener("resize", render);

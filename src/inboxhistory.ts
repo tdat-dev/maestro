@@ -3,6 +3,7 @@
 // not scrolling back through a terminal.
 
 import { historyOf, type HistoryEvent } from "./tasks";
+import { focusAgent } from "./chatview";
 import type { Pane } from "./panetypes";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -44,7 +45,7 @@ export function createHistoryDrawer(host: HTMLElement, onClose: () => void) {
     current = null;
     drawn = -1;
     onClose();
-    was?.term.focus();
+    if (was) focusAgent(was);
   }
 
   /** Redraw when new events arrived (cheap to call every tick). */
@@ -67,15 +68,17 @@ export function createHistoryDrawer(host: HTMLElement, onClose: () => void) {
     drawn = -1;
     el = document.createElement("aside");
     el.className = "inbox-review inbox-history";
+    el.setAttribute("role", "dialog");
     el.setAttribute("aria-label", `${pane.spec.name}'s history`);
     el.innerHTML = `
       <header class="ir-head">
         <div class="ir-title"><b>${esc(pane.spec.name)}'s history</b><span class="ir-where">Kept while Maestro is open</span></div>
-        <button class="ir-close" type="button" aria-label="Close history">Close</button>
+        <button class="ir-close" type="button" aria-label="Close history" title="Close (Esc)">Close</button>
       </header>
       <div class="ih-body" tabindex="0"></div>`;
     host.appendChild(el);
     el.querySelector(".ir-close")!.addEventListener("click", close);
+    el.querySelector<HTMLElement>(".ir-close")!.focus({ preventScroll: true });
     el.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } });
     refresh();
   }

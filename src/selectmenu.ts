@@ -66,12 +66,16 @@ function watchValue(sel: HTMLSelectElement): void {
   }
 }
 
+/** The select classes that style its button; any other class stays on the select. */
+const KEEP_CLASSES = new Set(["set-select", "input", "rpl-speed"]);
+
 export function enhanceSelect(sel: HTMLSelectElement): HTMLButtonElement {
   const had = done.get(sel);
   if (had) return had;
   const btn = document.createElement("button");
   btn.type = "button";
-  btn.className = `sm-btn ${sel.className}`.trim();
+  const keep = [...sel.classList].filter((c) => KEEP_CLASSES.has(c));
+  btn.className = ["sm-btn", ...keep].join(" ");
   btn.setAttribute("aria-haspopup", "listbox");
   btn.setAttribute("aria-expanded", "false");
   const name = nameOf(sel);

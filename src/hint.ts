@@ -1,14 +1,16 @@
-// Top-center notification pill — the mockup's #hint. `topNote(msg, ms)` fades a
+// Notification card over the agent list, bottom left (clear of the stage's
+// header and composer) — the mockup's #hint. `topNote(msg, ms)` fades a
 // short message in and out; used for the first-run tip and the Tidy / background
 // confirmations. Self-contained: injects its own markup + style, no app imports.
 
 const STYLE = `
-.hint{position:fixed;left:50%;top:76px;z-index:180;display:flex;align-items:center;gap:8px;
-  font-size:13px;color:var(--text);background:var(--surface-2);
-  border:0;box-shadow:0 18px 40px rgba(0,0,0,.55),inset 0 0 0 1px rgba(255,255,255,.1);padding:9px 16px;border-radius:999px;
-  opacity:0;visibility:hidden;transform:translateX(-50%) translateY(-8px);pointer-events:none;
-  transition:opacity .28s,transform .28s,visibility .28s;box-shadow:0 12px 30px -12px rgba(0,0,0,.7)}
-.hint.on{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
+.hint{position:fixed;left:24px;bottom:calc(var(--ib-dock-h, 84px) + 12px);z-index:180;display:block;
+  width:max-content;max-width:min(calc(var(--ib-q, 320px) - 48px), calc(100vw - 48px));font-size:13px;line-height:1.5;color:var(--text);background:var(--surface-2);
+  border:0;box-shadow:0 18px 40px rgba(0,0,0,.55),inset 0 0 0 1px rgba(255,255,255,.1);padding:10px 14px;border-radius:14px;
+  opacity:0;visibility:hidden;transform:translateY(8px);pointer-events:none;
+  transition:opacity .28s,transform .28s,visibility .28s}
+.hint.on{opacity:1;visibility:visible;transform:translateY(0)}
+@media (prefers-reduced-motion:reduce){.hint,.hint.on{transition:opacity .2s,visibility .2s;transform:none}}
 .hint b{color:var(--text)}
 .hint kbd{font-family:var(--mono);font-size:11px;background:transparent;
   border:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);border-radius:6px;padding:1px 6px;color:var(--muted)}
@@ -37,6 +39,7 @@ export function initHint(): void {
   hintEl = document.createElement("div");
   hintEl.className = "hint";
   hintEl.id = "hint";
+  hintEl.setAttribute("role", "status");
   textEl = document.createElement("span");
   textEl.id = "hintText";
   hintEl.appendChild(textEl);

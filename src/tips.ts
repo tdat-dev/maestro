@@ -12,7 +12,7 @@ let lastAt = 0;
 
 export const TIPS = {
   welcome: "Press <kbd>?</kbd> to see everything Maestro can do · <kbd>Ctrl</kbd> <kbd>K</kbd> jumps anywhere",
-  menu: "Right-click an agent, or its <b>⋯</b>, to rename it, add it to the Grid, stop or remove it",
+  menu: "<b>Right-click</b> an agent in the list to rename it, add it to the Grid, stop or remove it",
   split: "Several agents? <b>Grid</b> (<kbd>Alt</kbd> <kbd>S</kbd>) shows them side by side, each answering on its own card",
   review: "<kbd>Alt</kbd> <kbd>R</kbd> shows what it changed, to merge or send back",
 } as const;
@@ -30,6 +30,8 @@ export function tipSeen(id: TipId): boolean {
  *  Returns whether it showed. `lead` goes before the tip (an agent's name). */
 export function showTip(id: TipId, lead = "", now = Date.now()): boolean {
   if (!getPref("tips")) return false;
+  // Not while the splash plays or Home is up: the tip would be about a screen you can't see.
+  if (document.querySelector(".intro") || document.getElementById("app")?.hidden) return false;
   const s = seen();
   if (s.has(id) || now - lastAt < GAP_MS) return false;
   s.add(id);

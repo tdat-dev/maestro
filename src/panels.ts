@@ -54,12 +54,13 @@ function wireSplitter(
 
 /** Wire a show/hide toggle for one side panel: persists the collapsed state,
  *  reflects it on the `.app` class + the button's `.on` (visible) state. */
-function wireToggle(app: HTMLElement, btn: HTMLElement, cls: string, key: string): void {
+function wireToggle(app: HTMLElement, btn: HTMLElement, cls: string, key: string, hiddenFirst = false): void {
   const apply = (hidden: boolean) => {
     app.classList.toggle(cls, hidden);
     btn.classList.toggle("on", !hidden); // lit when the panel is visible
   };
-  apply(localStorage.getItem(key) === "1");
+  const saved = localStorage.getItem(key);
+  apply(saved === null ? hiddenFirst : saved === "1");
   btn.addEventListener("click", () => {
     const hidden = !app.classList.contains(cls);
     localStorage.setItem(key, hidden ? "1" : "0");
@@ -76,7 +77,9 @@ export function initPanels(): void {
   wireSplitter(app, codeSplit, CODE, "right");
 
   const codeBtn = document.getElementById("btnToggleCode");
-  if (codeBtn) wireToggle(app, codeBtn, "code-hidden", "maestro.codeHidden");
+  // Files start put away: the first screen is the agents and the one on stage;
+  // Ctrl+Shift+E (or Files in Ctrl+K) brings them in.
+  if (codeBtn) wireToggle(app, codeBtn, "code-hidden", "maestro.codeHidden", true);
   // The code panel's own "›‹" header button mirrors the topbar toggle.
   document.getElementById("cpClose")?.addEventListener("click", () => codeBtn?.click());
 

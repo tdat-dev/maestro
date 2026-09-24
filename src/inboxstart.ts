@@ -125,7 +125,7 @@ function composerHTML(): string {
         <label class="st-chip"><span class="ia-sr">How many agents</span>
           <select id="stCount">${[1, 2, 3].map((n) => `<option value="${n}"${n === count ? " selected" : ""}>${n === 1 ? "1 agent" : `${n} agents, same job`}</option>`).join("")}</select></label>
         <span class="st-sp"></span>
-        <button type="submit" class="st-go">Start<kbd>↵</kbd></button>
+        <button type="submit" class="st-go" aria-keyshortcuts="Enter">Start<kbd aria-hidden="true">↵</kbd></button>
       </div>
     </form>
     <div class="st-try" role="group" aria-label="Jobs to try">${STARTERS.map((s) => `<button type="button" class="st-starter" data-starter="${esc(s.job)}" title="${esc(s.job)}">${esc(s.label)}</button>`).join("")}</div>
@@ -163,15 +163,15 @@ export function renderStart(): void {
     (firstRun ? `<section class="st-sec" aria-label="Getting started"><h2>Getting started</h2><ol class="st-steps">
         <li><b>Choose a folder</b><span>Any project on your disk. Each agent gets its own git branch there, so your checkout stays clean.</span></li>
         <li><b>Say what you want done</b><span>In plain words, in the box above. Pick Claude Code, Codex, Gemini or another CLI you have installed.</span></li>
-        <li><b>Answer when it asks</b><span>When an agent wants to run a command or has a question, it shows up at the top of the queue with buttons to answer.</span></li>
+        <li><b>Answer when it asks</b><span>When an agent wants to run a command or has a question, it shows up at the top of the list with buttons to answer.</span></li>
       </ol></section>`
       : `<section class="st-sec" aria-label="Projects"><h2>Projects</h2><div class="st-projects">${rows.map((r) => `
         <button class="st-proj" data-dir="${esc(r.dir)}">
-          <span class="st-ic">${FOLDER_SVG}</span><b>${esc(folderName(r.dir))}</b>
+          <span class="st-ic" aria-hidden="true">${FOLDER_SVG}</span><b>${esc(folderName(r.dir))}</b>
           <span class="st-p" title="${esc(r.dir)}">${esc(shortPath(r.dir))}</span>
           <span class="st-n${r.needs ? " needs" : ""}">${r.needs ? `${r.needs} waiting on you` : r.agents ? `${r.agents} agent${r.agents === 1 ? "" : "s"}` : "Not open"}</span></button>`).join("")}
-        <button class="st-proj st-add" data-st="choose"><span class="st-ic">+</span><b>Open a folder</b><span class="st-p">Start a new project</span></button>
-        <button class="st-proj st-add" data-st="shell"><span class="st-ic">›_</span><b>Plain terminal</b><span class="st-p">A shell, no agent</span></button>
+        <button class="st-proj st-add" data-st="choose"><span class="st-ic" aria-hidden="true">+</span><b>Open a folder</b><span class="st-p">Start a new project</span></button>
+        <button class="st-proj st-add" data-st="shell"><span class="st-ic" aria-hidden="true">›_</span><b>Plain terminal</b><span class="st-p">A shell, no agent</span></button>
       </div></section>`);
 }
 

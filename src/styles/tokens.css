@@ -5,7 +5,7 @@
      you, red stop/deny). The inbox's --ib-* names map onto the same values. */
   --bg:#050506; --surface-0:#0a0a0c; --surface-1:#0e0f11; --surface-2:#15161a; --surface-3:#1d1e23;
   --line:rgba(255,255,255,.07); --line-strong:rgba(255,255,255,.12);
-  --text:#f4f4f5; --text-2:#b4b4bc; --muted:#8c8c96; --muted-2:#76767f;
+  --text:#f4f4f5; --text-2:#b4b4bc; --muted:#8c8c96; --muted-2:#83838c;
   --accent:#f4f4f5; --accent-dim:rgba(255,255,255,.45); --accent-ink:#050506; --accent-glow:rgba(255,255,255,.08);
   --teal:#6fd6a0; --grad:linear-gradient(#f4f4f5,#f4f4f5); --line-2:rgba(255,255,255,.12);
   --info:#9ab8ee; --run:#6fd6a0; --idle:#76767f; --err:#f2766b;

@@ -19,6 +19,7 @@ export const HELP: HelpSection[] = [
     { keys: [["Right-click"], ["Shift", "F10"]], what: "An agent in the list: rename it, add it to the Grid, see its changes, restart, stop or remove it." },
     { keys: [["Alt", "↑"], ["Alt", "↓"]], what: "Move through the agents in the list." },
     { keys: [["Alt", "1…9"]], what: "Answer the agent on screen with that option, without the mouse." },
+    { keys: [["Alt", "A"]], what: "Tell the agent on screen what to do instead, in your own words." },
     { keys: [["Ctrl", "Shift", "T"]], what: "New agent. Give 2 or 3 agents the same job to race them, then Compare and keep the best." },
   ] },
   { title: "Focus, Grid and review", rows: [
@@ -27,10 +28,15 @@ export const HELP: HelpSection[] = [
     { keys: [["Alt", "R"]], what: "What the agent changed, file by file. Merge it, or send it back with a note." },
     { keys: [["Alt", "H"]], what: "What the agent did, and what you answered, by day." },
   ] },
+  { title: "Chat", rows: [
+    { keys: [["/"]], what: "In an empty message: the agent's own commands, to search and pick. /resume and /clear switch conversations." },
+    { keys: [["Esc"]], what: "Stop what the agent is doing." },
+    { keys: [["Enter"], ["Shift", "Enter"]], what: "Send, or start a new line." },
+  ] },
   { title: "Terminal", rows: [
     { keys: [["Select"]], what: "Selecting text copies it. Right-click a selection to copy it again." },
     { keys: [["Right-click"]], what: "With nothing selected: Paste, Select all, Clear." },
-    { keys: [["Drag a file"]], what: "Drop files from Explorer or Files onto a terminal to type their paths." },
+    { keys: [["Drag a file"]], what: "Drop files from Explorer or Files onto an agent to type their paths, in its chat or its terminal." },
     { keys: [["Ctrl", "Shift", "F"]], what: "Find in the output." },
     { keys: [["Ctrl", "wheel"], ["Ctrl", "+ − 0"]], what: "Bigger or smaller text." },
   ] },

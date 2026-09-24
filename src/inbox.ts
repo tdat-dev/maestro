@@ -395,7 +395,9 @@ export function agentMenu(t: Task): MenuItem[] {
     { label: "Changes", hint: "Alt+R", sep: true, disabled: !pane.spec.worktree && !pane.spec.cwd, run: () => { onStage(); openReview(); } },
     { label: "History", hint: "Alt+H", run: () => { onStage(); openHistory(); } },
     { label: "Copy branch name", disabled: !branch, run: () => { if (branch) void navigator.clipboard?.writeText(branch).catch(() => {}); } },
-    { label: pane.running ? "Restart" : "Start again", sep: true, run: () => click("[data-restart]") },
+    // Starts it again in place; a Claude agent carries on its own conversation.
+    { label: pane.running ? "Restart" : chatSupported(pane) ? "Resume" : "Start again", sep: true, run: () => void pane.restart?.() },
+    ...(chatSupported(pane) ? [{ label: "New conversation", run: () => void pane.restart?.({ fresh: true }) }] : []),
     { label: "Stop", disabled: !pane.running, run: () => { void killPty(pane.id).catch(() => {}); } },
     { label: "Remove agent…", danger: true, run: () => void confirmModal({
       title: `Remove ${pane.spec.name}?`,

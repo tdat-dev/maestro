@@ -39,7 +39,9 @@ export interface Pane {
   toggleFind?: () => void; // open/close this pane's find bar (set by wirePaneSearch)
   error?: string; // why the last start failed ("The folder … doesn't exist anymore.")
   run?: number; // run number of the current process (pty_spawn); an older run's exit is ignored
-  restart?: () => Promise<void>; // start again in this same pane (keeps id, stage, chat, Grid spot)
+  /** Start again in this same pane (keeps id, stage, chat, Grid spot): its own
+   *  conversation again, a new one (fresh), or an earlier one (session). */
+  restart?: (opts?: { fresh?: boolean; session?: string }) => Promise<void>;
   recording?: string; // absolute path of the active recording file, when recording
 }
 

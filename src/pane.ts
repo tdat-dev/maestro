@@ -10,6 +10,7 @@ import {
   resizePty,
   killPty,
   spawnPty,
+  claudeSessionExists,
   attachPty,
   openExternal,
   worktreeAdd,
@@ -308,7 +309,7 @@ export function createAgent(
       // tools + server instructions. New array — never mutate spec.args, or a
       // restart would append the flag again and again.
       const laws = spec.role === "conductor" ? DIRECTOR_LAWS : MAESTRO_LAWS;
-      const own = spec.badge === "claude" ? claudeSessionArgs(spec) : [];
+      const own = spec.badge === "claude" ? await claudeSessionArgs(spec, cwd) : [];
       if (own.length) saveSession(); // the chat view finds this run's transcript after a restart too
       const args =
         spec.badge === "claude" ? [...spec.args, ...own, "--append-system-prompt", laws] : spec.args;
@@ -350,10 +351,13 @@ export function createAgent(
    *  boot. The old process's exit event carries its run number, so it can't
    *  mark the new run as exited (bridges.ts). */
   let restarting = false;
-  pane.restart = async () => {
+  pane.restart = async (opts = {}) => {
     if (restarting) return;
     restarting = true;
     try {
+      // A new conversation, or a given earlier one; otherwise its own again.
+      if (opts.fresh) delete spec.sessionId;
+      else if (opts.session) spec.sessionId = opts.session;
       if (pane.recording) await stopRecording(pane);
       await killPty(id).catch(() => {});
       pane.running = false;
@@ -401,11 +405,19 @@ export function createAgent(
   return boot;
 }
 
-/** A fresh Claude session id for this run (`--session-id`), remembered on the
- *  spec; none when the preset already picks or resumes a session itself. */
-export function claudeSessionArgs(spec: AgentSpec): string[] {
+/** Claude's session for this run, remembered on the spec: its own one again
+ *  (`--resume`) when it exists, else a new one (`--session-id`); none when the
+ *  preset already picks or resumes a session itself. */
+export async function claudeSessionArgs(
+  spec: AgentSpec,
+  dir: string,
+  exists: (dir: string, id: string) => Promise<boolean> = claudeSessionExists,
+): Promise<string[]> {
   const picks = spec.args.some((a) => /^(--session-id|--resume|--continue|-r|-c)(=|$)/.test(a));
   if (picks) { delete spec.sessionId; return []; }
+  // Its own conversation, when Claude still has it: a restart, an app restart
+  // or Resume all carries on where it was instead of starting blank.
+  if (spec.sessionId && (await exists(dir, spec.sessionId).catch(() => false))) return ["--resume", spec.sessionId];
   spec.sessionId = crypto.randomUUID();
   return ["--session-id", spec.sessionId];
 }

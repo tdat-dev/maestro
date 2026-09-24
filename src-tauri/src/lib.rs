@@ -90,6 +90,8 @@ pub fn run() {
             commands::claude_usage,
             commands::claude_transcript,
             commands::run_capture,
+            commands::claude_session_exists,
+            commands::claude_sessions,
             worktree::git_repo_root,
             worktree::worktree_add,
             worktree::worktree_remove,

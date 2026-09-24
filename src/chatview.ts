@@ -11,8 +11,26 @@ import { openMenu } from "./ctxmenu";
 import { openPalette, type PaletteItem } from "./inboxpalette";
 import { cliFacts, profileOf, type CliFacts } from "./cliprofile";
 import { STARTERS } from "./starters";
-import { claudeTranscript, sendInput, sendMessage } from "./ipc";
+import { claudeSessions, claudeTranscript, sendInput, sendMessage, type ClaudeSession } from "./ipc";
 import type { Pane } from "./panetypes";
+
+/** "3m ago", "2h ago", "Sep 20". */
+export function ago(at: number, now = Date.now()): string {
+  const m = Math.round((now - at) / 60_000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return new Date(at).toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+/** A Claude command the chat answers itself, because in the CLI it opens a
+ *  picker or swaps the session underneath the chat: /resume and /clear. */
+export function chatCommand(text: string): { kind: "resume"; query: string } | { kind: "clear" } | null {
+  const m = /^\/(resume|clear)\b\s*(.*)$/i.exec(text.trim());
+  if (!m) return null;
+  return m[1].toLowerCase() === "resume" ? { kind: "resume", query: m[2] } : { kind: "clear" };
+}
 
 /** What the chat view needs to know about the agent from the inbox. */
 export interface ChatState {
@@ -196,6 +214,9 @@ interface View {
   sideSig: string;
   /** What the CLI said about itself (its commands, its model). */
   facts?: CliFacts;
+  /** Earlier conversations in its folder, newest first (asked now and then). */
+  sessions?: ClaudeSession[];
+  sessionsAt?: number;
 }
 
 const views = new Map<string, View>();
@@ -223,6 +244,12 @@ function sideHtml(v: View): string {
     html += `<section class="cs-sec" aria-label="Files changed"><h3>Files changed <span>${m.files.length} · <b class="a">+${add}</b> <b class="d">−${del}</b></span></h3>
       <ul class="cs-files">${m.files.map((f) => `<li><button type="button" ${s.onReview ? "data-review" : "disabled"} title="${esc(f.path)}"><span class="cs-fn">${esc(f.name)}</span><span class="cs-fd">${esc(whereIn(f.path, v.pane.spec.ranIn))}</span><span class="cv-n"><b class="a">+${f.added}</b> <b class="d">−${f.removed}</b></span></button></li>`).join("")}</ul>
       ${s.onReview ? `<button type="button" class="cs-review" data-review>Review changes</button>` : ""}</section>`;
+  }
+  const others = (v.sessions ?? []).filter((x) => x.id !== v.pane.spec.sessionId).slice(0, 5);
+  if (others.length) {
+    html += `<section class="cs-sec" aria-label="Earlier conversations"><h3>Earlier conversations <span>${v.sessions!.length}</span></h3>
+      <ul class="cs-convos">${others.map((x) => `<li><button type="button" data-resume="${esc(x.id)}" title="Resume this conversation"><span class="cs-ct">${esc(x.title || "Untitled")}</span><span class="cs-cm">${x.messages} message${x.messages === 1 ? "" : "s"} · ${ago(x.modified_ms)}</span></button></li>`).join("")}</ul>
+      ${v.sessions!.length > others.length + 1 ? `<button type="button" class="cs-review" data-resume-pick>All conversations</button>` : ""}</section>`;
   }
   const rows: Array<[string, string]> = [
     ["Model", modelName(m.model)],
@@ -270,7 +297,7 @@ function draw(v: View, force = false): void {
   }
   const ctx = v.el.querySelector<HTMLElement>(".cv-ctx");
   if (ctx) { ctx.textContent = m.context ? `${tokens(m.context)} in context` : ""; ctx.hidden = !m.context; }
-  const sideSig = JSON.stringify([m.todos, m.files, m.model, m.context, m.output, m.started, v.state.branch, !!v.state.onReview, v.pane.spec.ranIn]);
+  const sideSig = JSON.stringify([m.todos, m.files, m.model, m.context, m.output, m.started, v.state.branch, !!v.state.onReview, v.pane.spec.ranIn, v.sessions?.map((x) => x.id + x.modified_ms), v.pane.spec.sessionId]);
   if (sideSig !== v.sideSig) {
     v.sideSig = sideSig;
     const side = v.el.querySelector<HTMLElement>(".cv-side");
@@ -280,6 +307,11 @@ function draw(v: View, force = false): void {
 
 async function poll(pane: Pane, v: View): Promise<void> {
   if (!pane.el.isConnected) { dropChat(pane.id); return; }
+  const dir0 = dirOf(pane);
+  if (dir0 && (!v.sessionsAt || Date.now() - v.sessionsAt > 30_000)) {
+    v.sessionsAt = Date.now();
+    void claudeSessions(dir0).then((s) => { v.sessions = s; draw(v); }).catch(() => {});
+  }
   if (v.busy) return;
   v.busy = true;
   try {
@@ -316,7 +348,7 @@ function mount(pane: Pane): View {
     <div class="cv-scroll"><div class="cv-thread" role="log" aria-live="polite"></div></div>
     <div class="cv-foot">
       <p class="cv-working" hidden><span class="cv-dots" aria-hidden="true"><i></i><i></i><i></i></span>Working</p>
-      <p class="cv-stopped">Stopped <button type="button" class="cv-restart" data-restart-agent>Start again</button></p>
+      <p class="cv-stopped">Stopped <button type="button" class="cv-restart" data-restart-agent>Resume</button><button type="button" class="cv-new" data-new-convo>New conversation</button></p>
       <form class="cv-compose">
         <label class="ia-sr" for="cv-in-${pane.id}">Message ${esc(pane.spec.name)}</label>
         <textarea id="cv-in-${pane.id}" rows="1" placeholder="Message ${esc(pane.spec.name)}…  Enter to send, Shift+Enter for a new line"></textarea>
@@ -341,6 +373,14 @@ function mount(pane: Pane): View {
   const send = () => {
     const text = input.value.trim();
     if (!text) return;
+    const own = chatCommand(text);
+    if (own) {
+      input.value = "";
+      grow();
+      if (own.kind === "resume") void pickConversation(own.query);
+      else void pane.restart?.({ fresh: true });
+      return;
+    }
     input.value = "";
     grow();
     void sendMessage(pane.id, text);
@@ -348,6 +388,23 @@ function mount(pane: Pane): View {
     scroller.scrollTop = scroller.scrollHeight;
   };
   input.addEventListener("input", grow);
+  /** Claude's conversations in this folder; picking one resumes it here
+   *  (claude --resume <id>), so the chat knows which conversation it shows. */
+  const pickConversation = async (query: string) => {
+    const dir = pane.spec.ranIn ?? pane.spec.cwd;
+    if (!dir) return;
+    try { v.sessions = await claudeSessions(dir); v.sessionsAt = Date.now(); } catch { v.sessions = v.sessions ?? []; }
+    const items: PaletteItem[] = (v.sessions ?? []).map((x) => ({
+      group: x.id === pane.spec.sessionId ? "This conversation" : "Conversations",
+      label: x.title || "Untitled",
+      sub: `${x.messages} message${x.messages === 1 ? "" : "s"} · ${ago(x.modified_ms)}`,
+      run: () => { if (x.id !== pane.spec.sessionId || !pane.running) void pane.restart?.({ session: x.id }); },
+    }));
+    if (!items.length) items.push({ group: "Conversations", label: "No earlier conversations in this folder", run: () => {} });
+    openPalette(items, { placeholder: query ? `Resume a conversation: ${query}` : "Resume a conversation" });
+    const q = document.getElementById("palQ") as HTMLInputElement | null;
+    if (q && query) { q.value = query; q.dispatchEvent(new Event("input", { bubbles: true })); }
+  };
   /** The CLI's own commands, searchable; the pick goes into the composer. */
   const pickCommand = async (query = "") => {
     const btn = el.querySelector<HTMLButtonElement>("[data-cmds]");
@@ -364,7 +421,9 @@ function mount(pane: Pane): View {
     }
     if (btn) btn.textContent = "/ Commands";
     const group = { command: "Commands", skill: "Skills", plugin: "Plugins" } as const;
-    const items: PaletteItem[] = v.facts.commands.map((c) => ({
+    const listed = new Set(v.facts.commands.map((c) => c.name));
+    const mine = (["resume", "clear"] as const).filter((n) => !listed.has(n)).map((n) => ({ name: n, kind: "command" as const }));
+    const items: PaletteItem[] = [...mine, ...v.facts.commands].map((c) => ({
       group: group[c.kind], label: `/${c.name}`,
       run: () => { input.value = `/${c.name} `; grow(); input.focus(); },
     }));
@@ -382,6 +441,10 @@ function mount(pane: Pane): View {
     const t = e.target as HTMLElement;
     // The pane's own restart button knows how to start this agent again.
     if (t.closest("[data-restart-agent]")) { void pane.restart?.(); return; }
+    if (t.closest("[data-new-convo]")) { void pane.restart?.({ fresh: true }); return; }
+    const resumeOne = t.closest<HTMLElement>("[data-resume]");
+    if (resumeOne) { void pane.restart?.({ session: resumeOne.dataset.resume }); return; }
+    if (t.closest("[data-resume-pick]")) { void pickConversation(""); return; }
     const starter = t.closest<HTMLElement>("[data-starter]");
     if (starter) { input.value = starter.dataset.starter ?? ""; grow(); input.focus(); return; }
     const cmds = t.closest<HTMLButtonElement>("[data-cmds]");

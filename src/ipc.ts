@@ -102,6 +102,19 @@ export async function claudeTranscript(
   return invoke("claude_transcript", { dir, sessionId, sinceMs, offset });
 }
 
+/** Whether `claude --resume <sessionId>` can pick this session up in `dir`. */
+export async function claudeSessionExists(dir: string, sessionId: string): Promise<boolean> {
+  return invoke<boolean>("claude_session_exists", { dir, sessionId });
+}
+
+/** One earlier Claude Code conversation in a folder. */
+export interface ClaudeSession { id: string; modified_ms: number; title: string; messages: number }
+
+/** The conversations Claude Code has in `dir`, newest first. */
+export async function claudeSessions(dir: string): Promise<ClaudeSession[]> {
+  return invoke<ClaudeSession[]>("claude_sessions", { dir });
+}
+
 /** Run a program to completion in `cwd` (no window) and get its stdout. For
  *  asking an agent CLI about itself; killed after `timeoutMs`. */
 export async function runCapture(program: string, args: string[], cwd: string | null, timeoutMs = 60_000): Promise<string> {

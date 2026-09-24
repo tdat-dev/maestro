@@ -405,6 +405,118 @@ fn claude_transcript_impl(dir: &str, session_id: Option<&str>, since_ms: Option<
     }
 }
 
+/// Where Claude Code keeps the transcripts of sessions run in `dir`.
+fn claude_project_dir(dir: &str) -> Option<std::path::PathBuf> {
+    let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok()?;
+    Some(Path::new(&home).join(".claude").join("projects").join(claude_project_slug(dir)))
+}
+
+/// A session id is a UUID; anything else never reaches the filesystem.
+fn is_session_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+}
+
+/// Whether Claude Code has a transcript for this session in `dir`, i.e.
+/// whether `claude --resume <id>` can pick it up.
+#[tauri::command]
+pub async fn claude_session_exists(dir: String, session_id: String) -> Result<bool, CommandError> {
+    run_blocking(move || {
+        Ok(is_session_id(&session_id)
+            && claude_project_dir(&dir).map_or(false, |p| p.join(format!("{session_id}.jsonl")).is_file()))
+    })
+    .await
+}
+
+/// One earlier conversation in a folder, for "resume a conversation".
+#[derive(Serialize, Clone)]
+pub struct SessionInfo {
+    pub id: String,
+    pub modified_ms: u64,
+    /// Claude's own title for it, else your first message.
+    pub title: String,
+    pub messages: u32,
+}
+
+/// The conversations Claude Code has in `dir`, newest first. Sessions with
+/// nothing you typed (a local /cost, a /model) are left out. Only the start of
+/// each file is read: the title and the first message are near the top.
+#[tauri::command]
+pub async fn claude_sessions(dir: String) -> Result<Vec<SessionInfo>, CommandError> {
+    run_blocking(move || Ok(claude_sessions_impl(&dir))).await
+}
+
+fn claude_sessions_impl(dir: &str) -> Vec<SessionInfo> {
+    use std::io::Read;
+    let Some(proj) = claude_project_dir(dir) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(&proj) else { return Vec::new() };
+    let mut out = Vec::new();
+    for ent in entries.flatten() {
+        let path = ent.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+            continue;
+        }
+        let Some(id) = path.file_stem().and_then(|s| s.to_str()).map(str::to_string) else { continue };
+        if !is_session_id(&id) {
+            continue;
+        }
+        let modified_ms = ent
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        let Ok(file) = std::fs::File::open(&path) else { continue };
+        let mut head = Vec::new();
+        let _ = file.take(768 * 1024).read_to_end(&mut head);
+        let text = String::from_utf8_lossy(&head);
+        let mut title: Option<String> = None;
+        let mut first: Option<String> = None;
+        let mut messages = 0u32;
+        for line in text.lines() {
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+            match v.get("type").and_then(|t| t.as_str()) {
+                Some("ai-title") => {
+                    if let Some(t) = v.get("aiTitle").and_then(|t| t.as_str()) {
+                        title = Some(t.to_string());
+                    }
+                }
+                Some("user") => {
+                    if v.get("isMeta").and_then(|x| x.as_bool()) == Some(true) {
+                        continue;
+                    }
+                    let human = v.get("origin").and_then(|o| o.get("kind")).and_then(|k| k.as_str()).map_or(true, |k| k == "human");
+                    let content = v.get("message").and_then(|m| m.get("content"));
+                    let said = match content {
+                        Some(serde_json::Value::String(s)) => Some(s.clone()),
+                        Some(serde_json::Value::Array(parts)) => parts
+                            .iter()
+                            .find(|p| p.get("type").and_then(|t| t.as_str()) == Some("text"))
+                            .and_then(|p| p.get("text").and_then(|t| t.as_str()).map(str::to_string)),
+                        _ => None,
+                    };
+                    let Some(said) = said else { continue };
+                    if !human || said.starts_with('<') || said.starts_with("[Request interrupted") {
+                        continue; // commands, their output, caveats, tool results
+                    }
+                    messages += 1;
+                    if first.is_none() {
+                        first = Some(said.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(90).collect());
+                    }
+                }
+                _ => {}
+            }
+        }
+        if messages == 0 {
+            continue;
+        }
+        out.push(SessionInfo { id, modified_ms, title: title.or(first).unwrap_or_default(), messages });
+    }
+    out.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms));
+    out.truncate(40);
+    out
+}
+
 /// Most output `run_capture` keeps: a CLI that prints more is cut here.
 const CAPTURE_MAX: usize = 8 * 1024 * 1024;
 

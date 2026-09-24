@@ -7,6 +7,7 @@ const io = vi.hoisted(() => ({
   sent: [] as Array<[string, string]>,
   keys: [] as Array<[string, string]>,
   captured: [] as Array<{ program: string; args: string[]; cwd: string | null }>,
+  sessions: [] as Array<{ id: string; modified_ms: number; title: string; messages: number }>,
 }));
 vi.mock("./ipc", () => ({
   claudeTranscript: async (dir: string, sessionId: string | null, _since: number | null, offset: number) => {
@@ -16,6 +17,7 @@ vi.mock("./ipc", () => ({
   },
   sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); },
   sendInput: async (id: string, data: string) => { io.keys.push([id, data]); },
+  claudeSessions: async () => io.sessions,
   // Claude Code's own list, as its init event gives it.
   runCapture: async (program: string, args: string[], cwd: string | null) => {
     io.captured.push({ program, args, cwd });
@@ -24,7 +26,7 @@ vi.mock("./ipc", () => ({
   },
 }));
 
-import { chatSupported, dropChat, hideChat, modelName, showChat, took, tokens, whereIn } from "./chatview";
+import { ago, chatCommand, chatSupported, dropChat, hideChat, modelName, showChat, took, tokens, whereIn } from "./chatview";
 import type { Pane } from "./panetypes";
 
 const T = "2026-09-24T10:00:00.000Z";
@@ -45,7 +47,7 @@ function pane(badge = "claude"): Pane {
 const flush = async () => { for (let k = 0; k < 6; k++) await new Promise((r) => setTimeout(r, 0)); };
 
 describe("chat view", () => {
-  beforeEach(() => { io.chunks = []; io.asked = []; io.sent = []; io.keys = []; });
+  beforeEach(() => { io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; });
   afterEach(() => { dropChat("p1"); document.body.innerHTML = ""; });
 
   it("is for Claude Code agents", () => {
@@ -150,9 +152,54 @@ describe("chat view", () => {
     compact.click();
     expect(p.el.querySelector("textarea")!.value).toBe("/compact ");
   });
+it("answers /resume itself: its conversations to pick from, the pick resumed here", async () => {
+    io.sessions = [
+      { id: "11111111-2222-3333-4444-555555555555", modified_ms: Date.now(), title: "This one", messages: 3 },
+      { id: "aaaaaaaa-2222-3333-4444-555555555555", modified_ms: Date.now() - 3_600_000, title: "Fix the login", messages: 12 },
+    ];
+    const p = pane();
+    const restarts: unknown[] = [];
+    (p as unknown as { restart: (o?: unknown) => Promise<void> }).restart = async (o) => { restarts.push(o); };
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    // the side panel offers the other one
+    expect(p.el.querySelector(".cs-ct")!.textContent).toBe("Fix the login");
+    const input = p.el.querySelector("textarea")!;
+    input.value = "/resume";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+    expect(io.sent).toEqual([]); // not typed into the hidden terminal picker
+    const row = [...document.querySelectorAll<HTMLElement>("[role=option]")].find((r) => r.textContent!.includes("Fix the login"))!;
+    row.click();
+    expect(restarts).toEqual([{ session: "aaaaaaaa-2222-3333-4444-555555555555" }]);
+    input.value = "/clear";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(restarts[1]).toEqual({ fresh: true });
+  });
+
+  it("offers Resume and New conversation when stopped", async () => {
+    const p = pane();
+    const restarts: unknown[] = [];
+    (p as unknown as { restart: (o?: unknown) => Promise<void> }).restart = async (o) => { restarts.push(o); };
+    showChat(p, { name: "Ana", state: "stopped" });
+    await flush();
+    (p.el.querySelector("[data-restart-agent]") as HTMLButtonElement).click();
+    (p.el.querySelector("[data-new-convo]") as HTMLButtonElement).click();
+    expect(restarts).toEqual([undefined, { fresh: true }]);
+  });
 });
 
 describe("chat view words", () => {
+  it("knows which commands the chat answers itself", () => {
+    expect(chatCommand("/resume")).toEqual({ kind: "resume", query: "" });
+    expect(chatCommand(" /resume login bug ")).toEqual({ kind: "resume", query: "login bug" });
+    expect(chatCommand("/clear")).toEqual({ kind: "clear" });
+    expect(chatCommand("/resumes")).toBeNull();
+    expect(chatCommand("please /resume")).toBeNull();
+    const now = Date.parse("2026-09-24T12:00:00Z");
+    expect([ago(now - 20_000, now), ago(now - 5 * 60_000, now), ago(now - 3 * 3_600_000, now)]).toEqual(["just now", "5m ago", "3h ago"]);
+  });
+
   it("names models, sizes and durations the way people say them", () => {
     expect(modelName("claude-opus-5-5")).toBe("Opus 5.5");
     expect(modelName("claude-haiku-4-5-20251001")).toBe("Haiku 4.5");

@@ -40,9 +40,16 @@ pub struct BrowserStatus {
 /// Start the hub and (re)register the native host. Called once at startup.
 pub fn start(app: &AppHandle, state: &BrowserState) {
     let app2 = app.clone();
-    match hub::Hub::start(Box::new(move |list| {
-        let _ = app2.emit("browser-hub", list);
-    })) {
+    let wanted = std::fs::read_to_string(std::path::Path::new(&extension_dir()).join("manifest.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v["version"].as_str().map(String::from));
+    match hub::Hub::start(Box::new(move |ev| {
+        let _ = match ev {
+            hub::HubEvent::Browsers(list) => app2.emit("browser-hub", list),
+            hub::HubEvent::Activity(list) => app2.emit("browser-activity", list),
+        };
+    }), wanted) {
         Ok(h) => *state.hub.lock().unwrap() = Some(h),
         Err(e) => eprintln!("browser hub: {e}"),
     }
@@ -161,4 +168,28 @@ pub fn browser_open_profile(browser: String, dir: String) -> Result<(), String> 
         .spawn()
         .map(|_| ())
         .map_err(|e| e.to_string())
+}
+
+fn hub_of(state: &State<'_, BrowserState>) -> Result<Arc<hub::Hub>, String> {
+    state.hub.lock().unwrap().clone().ok_or_else(|| "The browser hub isn't running.".to_string())
+}
+
+#[tauri::command]
+pub fn browser_activity(state: State<'_, BrowserState>) -> Vec<hub::Activity> {
+    state.hub.lock().unwrap().as_ref().map(|h| h.activity()).unwrap_or_default()
+}
+
+#[tauri::command]
+pub fn browser_pause(state: State<'_, BrowserState>, agent: String, paused: bool) -> Result<(), String> {
+    hub_of(&state)?.set_paused(&agent, paused);
+    Ok(())
+}
+
+/// A small frame of the tab `agent` works in, for the live view.
+#[tauri::command]
+pub async fn browser_peek(state: State<'_, BrowserState>, agent: String) -> Result<serde_json::Value, String> {
+    let hub = hub_of(&state)?;
+    tauri::async_runtime::spawn_blocking(move || hub.app_call(&agent, "peek", serde_json::json!({}), std::time::Duration::from_secs(4)))
+        .await
+        .map_err(|e| e.to_string())?
 }

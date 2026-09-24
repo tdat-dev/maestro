@@ -426,6 +426,27 @@ async function run(agent, tool, a) {
       if (a.clear) networkLog.delete(t.id);
       return text(list.length ? list.slice(-(a.limit ?? 100)).map((e) => `${e.method} ${e.status || e.error || "…"} ${e.url}`).join("\n") : "No requests yet (recording starts when Maestro first controls the tab).");
     }
+    case "peek": {
+      // Maestro's live view: a small frame of the agent's current tab. Never
+      // brings the tab forward, so watching never gets in the agent's way.
+      const t = await tabFor(agent, a.tabId);
+      await dbg(t.id);
+      const m = await cdp(t.id, "Page.getLayoutMetrics");
+      const v = m.cssVisualViewport;
+      const scale = Math.min(1, 720 / v.clientWidth);
+      const shot = await Promise.race([
+        cdp(t.id, "Page.captureScreenshot", { format: "jpeg", quality: 55, clip: { x: v.pageX, y: v.pageY, width: v.clientWidth, height: v.clientHeight, scale } }),
+        sleep(2500).then(() => null),
+      ]);
+      if (!shot) throw new Error("The tab isn't showing right now.");
+      return { content: [{ type: "image", data: shot.data, mimeType: "image/jpeg" }], tab: brief(t), dialog: dialogs.get(t.id) ?? null };
+    }
+    case "reload": {
+      // Maestro saw this profile running an older copy than the folder on
+      // disk: load the new one. The port drops and reconnects by itself.
+      setTimeout(() => chrome.runtime.reload(), 100);
+      return text("Reloading.");
+    }
     case "dialog": {
       const t = await tabFor(agent, a.tabId);
       await dbg(t.id);

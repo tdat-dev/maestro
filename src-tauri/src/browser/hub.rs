@@ -58,26 +58,70 @@ struct Peer {
     role: Role,
 }
 
+/// Who asked. Maestro itself (the live view) asks too, and waits on a channel.
+enum Asker {
+    Agent(u64, Value),
+    App(mpsc::Sender<Value>),
+}
+
 struct Pending {
-    agent: u64,
-    id: Value,
+    asker: Asker,
     browser: u64,
+}
+
+/// What an agent last did in a browser, for the live view and the Stop button.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct Activity {
+    pub agent: String,
+    pub browser: u64,
+    pub label: String,
+    pub tool: String,
+    pub action: String,
+    pub at: u64,
+    pub paused: bool,
 }
 
 #[derive(Default)]
 struct Inner {
     peers: HashMap<u64, Peer>,
     pending: HashMap<u64, Pending>,
+    activity: HashMap<String, Activity>,
+    /// Browsers already told to reload onto the extension on disk (once each).
+    reloaded: std::collections::HashSet<String>,
     next: u64,
 }
 
-type OnChange = Box<dyn Fn(Vec<BrowserInfo>) + Send + Sync>;
+pub enum HubEvent {
+    Browsers(Vec<BrowserInfo>),
+    Activity(Vec<Activity>),
+}
+
+type OnChange = Box<dyn Fn(HubEvent) + Send + Sync>;
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
+fn activities(inner: &Inner) -> Vec<Activity> {
+    let mut v: Vec<Activity> = inner.activity.values().cloned().collect();
+    v.sort_by(|a, b| a.agent.cmp(&b.agent));
+    v
+}
+
+fn browsers_of(inner: &Inner) -> Vec<BrowserInfo> {
+    let mut l: Vec<BrowserInfo> = inner.peers.values().filter_map(|p| match &p.role { Role::Browser(b) => Some(b.clone()), _ => None }).collect();
+    l.sort_by_key(|b| b.id);
+    l
+}
 
 pub struct Hub {
     inner: Mutex<Inner>,
     token: String,
     pub port: u16,
     on_change: OnChange,
+    /// The version of the extension on disk. A browser running another one is
+    /// told to reload, so an update reaches every profile without a click.
+    pub wanted_version: Option<String>,
     /// Maps a browser's signed-in email to its profile name. Swappable in tests.
     profile_of: Box<dyn Fn(&str, &str) -> String + Send + Sync>,
 }
@@ -107,19 +151,21 @@ fn fail(id: &Value, error: String) -> String {
 
 impl Hub {
     pub fn new(token: String, port: u16, on_change: OnChange) -> Self {
-        Hub { inner: Mutex::new(Inner::default()), token, port, on_change, profile_of: Box::new(super::profiles::profile_name) }
+        Hub { inner: Mutex::new(Inner::default()), token, port, on_change, wanted_version: None, profile_of: Box::new(super::profiles::profile_name) }
     }
 
     #[cfg(test)]
     pub fn for_test(token: &str, profile_of: impl Fn(&str, &str) -> String + Send + Sync + 'static) -> Self {
-        Hub { inner: Mutex::new(Inner::default()), token: token.into(), port: 0, on_change: Box::new(|_| {}), profile_of: Box::new(profile_of) }
+        Hub { inner: Mutex::new(Inner::default()), token: token.into(), port: 0, on_change: Box::new(|_| {}), wanted_version: None, profile_of: Box::new(profile_of) }
     }
 
     /// Bind 127.0.0.1 on a free port, publish it, and serve in the background.
-    pub fn start(on_change: OnChange) -> std::io::Result<Arc<Hub>> {
+    pub fn start(on_change: OnChange, wanted_version: Option<String>) -> std::io::Result<Arc<Hub>> {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
         let port = listener.local_addr()?.port();
-        let hub = Arc::new(Hub::new(random_token(), port, on_change));
+        let mut hub = Hub::new(random_token(), port, on_change);
+        hub.wanted_version = wanted_version;
+        let hub = Arc::new(hub);
         if let Some(f) = hub_file() {
             if let Some(dir) = f.parent() {
                 let _ = std::fs::create_dir_all(dir);
@@ -137,17 +183,55 @@ impl Hub {
     }
 
     pub fn browsers(&self) -> Vec<BrowserInfo> {
-        let inner = self.inner.lock().unwrap();
-        let mut list: Vec<BrowserInfo> = inner
-            .peers
-            .values()
-            .filter_map(|p| match &p.role {
-                Role::Browser(b) => Some(b.clone()),
-                _ => None,
-            })
-            .collect();
-        list.sort_by_key(|b| b.id);
-        list
+        browsers_of(&self.inner.lock().unwrap())
+    }
+
+    pub fn activity(&self) -> Vec<Activity> {
+        activities(&self.inner.lock().unwrap())
+    }
+
+    /// Stop (or let go on) an agent's browser use. While paused, every browser
+    /// call from that agent is refused with a message telling it to wait.
+    pub fn set_paused(&self, agent: &str, paused: bool) {
+        let list = {
+            let mut inner = self.inner.lock().unwrap();
+            let e = inner.activity.entry(agent.to_string()).or_insert_with(|| Activity {
+                agent: agent.to_string(), browser: 0, label: String::new(), tool: String::new(), action: String::new(), at: now_ms(), paused,
+            });
+            e.paused = paused;
+            activities(&inner)
+        };
+        (self.on_change)(HubEvent::Activity(list));
+    }
+
+    /// Maestro's own call into a browser on behalf of `agent` (the live view),
+    /// answered on a channel. Uses the browser the agent last used.
+    pub fn app_call(&self, agent: &str, tool: &str, args: Value, timeout: Duration) -> Result<Value, String> {
+        let (tx, rx) = mpsc::channel();
+        let hid = {
+            let mut inner = self.inner.lock().unwrap();
+            let browsers = browsers_of(&inner);
+            let target = inner
+                .activity
+                .get(agent)
+                .map(|a| a.browser)
+                .filter(|b| browsers.iter().any(|x| x.id == *b))
+                .or_else(|| if browsers.len() == 1 { Some(browsers[0].id) } else { None })
+                .ok_or_else(|| format!("{agent} isn't using a connected browser."))?;
+            inner.next += 1;
+            let hid = inner.next;
+            inner.pending.insert(hid, Pending { asker: Asker::App(tx), browser: target });
+            let msg = json!({ "type": "call", "id": hid, "agent": agent, "tool": tool, "args": args }).to_string();
+            let _ = inner.peers[&target].tx.send(msg);
+            hid
+        };
+        let got = rx.recv_timeout(timeout);
+        self.inner.lock().unwrap().pending.remove(&hid);
+        match got {
+            Ok(v) if v["type"] == "result" => Ok(v["result"].clone()),
+            Ok(v) => Err(v["error"].as_str().unwrap_or("The browser did not answer.").to_string()),
+            Err(_) => Err("The browser took too long.".into()),
+        }
     }
 
     pub fn add(&self, tx: mpsc::Sender<String>) -> u64 {
@@ -166,21 +250,33 @@ impl Hub {
                 Role::Browser(b) => Some(b.label()),
                 _ => None,
             };
-            let gone: Vec<u64> = inner.pending.iter().filter(|(_, p)| p.browser == id || p.agent == id).map(|(k, _)| *k).collect();
+            let gone: Vec<u64> = inner
+                .pending
+                .iter()
+                .filter(|(_, p)| p.browser == id || matches!(&p.asker, Asker::Agent(a, _) if *a == id))
+                .map(|(k, _)| *k)
+                .collect();
             let mut orphans = vec![];
             for k in gone {
                 let p = inner.pending.remove(&k).unwrap();
-                if let (Some(l), Some(agent)) = (&label, inner.peers.get(&p.agent)) {
-                    orphans.push((agent.tx.clone(), fail(&p.id, format!("{l} disconnected before it answered."))));
+                let Some(l) = &label else { continue };
+                let why = format!("{l} disconnected before it answered.");
+                match p.asker {
+                    Asker::Agent(a, cid) => {
+                        if let Some(agent) = inner.peers.get(&a) {
+                            let _ = agent.tx.send(fail(&cid, why));
+                        }
+                    }
+                    Asker::App(tx) => orphans.push((tx, json!({ "type": "error", "error": why }))),
                 }
             }
             (label.is_some(), orphans)
         };
-        for (tx, msg) in orphans {
-            let _ = tx.send(msg);
+        for (tx, v) in orphans {
+            let _ = tx.send(v);
         }
         if was_browser {
-            (self.on_change)(self.browsers());
+            (self.on_change)(HubEvent::Browsers(self.browsers()));
         }
     }
 
@@ -204,7 +300,7 @@ impl Hub {
                 let is_browser = matches!(peer.role, Role::Browser(_));
                 drop(inner);
                 if is_browser {
-                    (self.on_change)(self.browsers());
+                    (self.on_change)(HubEvent::Browsers(self.browsers()));
                 }
                 true
             }
@@ -215,16 +311,29 @@ impl Hub {
                         info.email = v["email"].as_str().unwrap_or("").to_string();
                         info.version = v["version"].as_str().unwrap_or("").to_string();
                         info.profile = (self.profile_of)(&info.browser, &info.email);
+                        let key = format!("{}|{}", info.browser, info.email);
+                        let stale = self.wanted_version.as_ref().is_some_and(|w| *w != info.version);
+                        let tx = peer.tx.clone();
+                        if stale && inner.reloaded.insert(key) {
+                            let _ = tx.send(json!({ "type": "call", "id": 0, "agent": "Maestro", "tool": "reload", "args": {} }).to_string());
+                        }
                         drop(inner);
-                        (self.on_change)(self.browsers());
+                        (self.on_change)(HubEvent::Browsers(self.browsers()));
                     }
                     "result" | "error" => {
                         let Some(hid) = v["id"].as_u64() else { return true };
                         let Some(p) = inner.pending.remove(&hid) else { return true };
-                        if let Some(agent) = inner.peers.get(&p.agent) {
-                            let mut out = v.clone();
-                            out["id"] = p.id;
-                            let _ = agent.tx.send(out.to_string());
+                        match p.asker {
+                            Asker::Agent(a, cid) => {
+                                if let Some(agent) = inner.peers.get(&a) {
+                                    let mut out = v.clone();
+                                    out["id"] = cid;
+                                    let _ = agent.tx.send(out.to_string());
+                                }
+                            }
+                            Asker::App(tx) => {
+                                let _ = tx.send(v);
+                            }
                         }
                     }
                     _ => {}
@@ -232,26 +341,25 @@ impl Hub {
                 true
             }
             Role::Agent { .. } => {
-                if ty == "call" {
-                    self.call(&mut inner, from, &v);
+                if ty == "call" && self.call(&mut inner, from, &v) {
+                    let list = activities(&inner);
+                    drop(inner);
+                    (self.on_change)(HubEvent::Activity(list));
                 }
                 true
             }
         }
     }
 
-    fn call(&self, inner: &mut Inner, from: u64, v: &Value) {
+    /// Route one agent call. True when the agent's activity changed.
+    fn call(&self, inner: &mut Inner, from: u64, v: &Value) -> bool {
         let id = v["id"].clone();
         let tool = v["tool"].as_str().unwrap_or("");
         let args = v.get("args").cloned().unwrap_or(json!({}));
-        let browsers: Vec<BrowserInfo> = {
-            let mut l: Vec<BrowserInfo> = inner.peers.values().filter_map(|p| match &p.role { Role::Browser(b) => Some(b.clone()), _ => None }).collect();
-            l.sort_by_key(|b| b.id);
-            l
-        };
+        let browsers = browsers_of(inner);
         let (name, pick) = match &inner.peers[&from].role {
             Role::Agent { name, pick } => (name.clone(), *pick),
-            _ => return,
+            _ => return false,
         };
         let tx = inner.peers[&from].tx.clone();
         let pick = pick.filter(|p| browsers.iter().any(|b| b.id == *p));
@@ -268,6 +376,7 @@ impl Hub {
                         .join("\n")
                 };
                 let _ = tx.send(reply(&id, text));
+                false
             }
             "select_browser" => {
                 let want = args["browser"].as_str().map(|s| s.to_lowercase()).or_else(|| args["browser"].as_u64().map(|n| n.to_string())).unwrap_or_default();
@@ -289,28 +398,37 @@ impl Hub {
                         let _ = tx.send(fail(&id, format!("\"{want}\" matches more than one browser; be more specific. {}", listing(&browsers))));
                     }
                 }
+                false
             }
             _ => {
+                if inner.activity.get(&name).is_some_and(|a| a.paused) {
+                    let _ = tx.send(fail(&id, format!("The user stopped {name}'s browser use from Maestro. Don't use the browser; tell the user where you are and wait until they say to go on.")));
+                    return false;
+                }
                 let target = match (pick, browsers.as_slice()) {
                     (Some(p), _) => p,
                     (None, [only]) => only.id,
                     (None, []) => {
                         let _ = tx.send(fail(&id, NONE_CONNECTED.to_string()));
-                        return;
+                        return false;
                     }
                     (None, _) => {
                         let _ = tx.send(fail(&id, format!("More than one browser is connected; pick one with browser_select first. {}", listing(&browsers))));
-                        return;
+                        return false;
                     }
                 };
+                let label = browsers.iter().find(|b| b.id == target).map(|b| b.label()).unwrap_or_default();
+                let action = args["action"].as_str().unwrap_or("").to_string();
+                inner.activity.insert(name.clone(), Activity { agent: name.clone(), browser: target, label, tool: tool.to_string(), action, at: now_ms(), paused: false });
                 inner.next += 1;
                 let hid = inner.next;
-                inner.pending.insert(hid, Pending { agent: from, id: id.clone(), browser: target });
+                inner.pending.insert(hid, Pending { asker: Asker::Agent(from, id.clone()), browser: target });
                 let msg = json!({ "type": "call", "id": hid, "agent": name, "tool": tool, "args": args }).to_string();
                 if inner.peers[&target].tx.send(msg).is_err() {
                     inner.pending.remove(&hid);
                     let _ = tx.send(fail(&id, "That browser just disconnected.".into()));
                 }
+                true
             }
         }
     }
@@ -437,6 +555,59 @@ mod tests {
         assert_eq!(last(&arx)["type"], "result");
         hub.on_message(ag, r#"{"type":"call","id":3,"tool":"tabs","args":{}}"#);
         assert_eq!(last(&r2)["tool"], "tabs");
+    }
+
+    #[test]
+    fn a_stopped_agent_is_refused_until_let_go_on() {
+        let hub = Hub::for_test("t", |_, _| "P".into());
+        let (br, brx) = peer(&hub);
+        let (ag, arx) = peer(&hub);
+        hub.on_message(br, r#"{"type":"hello","role":"browser","token":"t"}"#);
+        hub.on_message(ag, r#"{"type":"hello","role":"agent","token":"t","agent":"Ana"}"#);
+        hub.on_message(ag, r#"{"type":"call","id":1,"tool":"computer","args":{"action":"left_click"}}"#);
+        let a = &hub.activity()[0];
+        assert_eq!((a.agent.as_str(), a.tool.as_str(), a.action.as_str(), a.paused), ("Ana", "computer", "left_click", false));
+        last(&brx);
+
+        hub.set_paused("Ana", true);
+        hub.on_message(ag, r#"{"type":"call","id":2,"tool":"navigate","args":{"url":"x"}}"#);
+        let e = last(&arx);
+        assert_eq!((e["type"].as_str(), e["id"].as_u64()), (Some("error"), Some(2)));
+        assert!(e["error"].as_str().unwrap().contains("wait"));
+        assert_eq!(last(&brx), Value::Null, "nothing reached the browser");
+
+        hub.set_paused("Ana", false);
+        hub.on_message(ag, r#"{"type":"call","id":3,"tool":"navigate","args":{"url":"x"}}"#);
+        assert_eq!(last(&brx)["tool"], "navigate");
+    }
+
+    #[test]
+    fn maestro_can_ask_a_browser_for_an_agent() {
+        let hub = std::sync::Arc::new(Hub::for_test("t", |_, _| "P".into()));
+        let (br, brx) = peer(&hub);
+        hub.on_message(br, r#"{"type":"hello","role":"browser","token":"t"}"#);
+        last(&brx);
+        let h = hub.clone();
+        let t = std::thread::spawn(move || h.app_call("Ana", "peek", json!({}), Duration::from_secs(2)));
+        let fwd = loop {
+            if let Ok(s) = brx.recv_timeout(Duration::from_secs(2)) { break serde_json::from_str::<Value>(&s).unwrap(); }
+        };
+        assert_eq!((fwd["tool"].as_str(), fwd["agent"].as_str()), (Some("peek"), Some("Ana")));
+        hub.on_message(br, &json!({ "type": "result", "id": fwd["id"], "result": { "content": [] } }).to_string());
+        assert_eq!(t.join().unwrap().unwrap(), json!({ "content": [] }));
+    }
+
+    #[test]
+    fn a_browser_on_an_old_extension_is_told_to_reload_once() {
+        let mut hub = Hub::for_test("t", |_, _| "P".into());
+        hub.wanted_version = Some("0.2.0".into());
+        let (br, brx) = peer(&hub);
+        hub.on_message(br, r#"{"type":"hello","role":"browser","token":"t"}"#);
+        last(&brx);
+        hub.on_message(br, r#"{"type":"browser_info","browser":"Google Chrome","email":"a@x.com","version":"0.1.0"}"#);
+        assert_eq!(last(&brx)["tool"], "reload");
+        hub.on_message(br, r#"{"type":"browser_info","browser":"Google Chrome","email":"a@x.com","version":"0.1.0"}"#);
+        assert_eq!(last(&brx), Value::Null, "only once, so a folder that never updates can't loop");
     }
 
     #[test]

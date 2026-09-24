@@ -17,6 +17,7 @@ import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setS
 import { configureWorkspace, initWorkspace, createWorkspace, activateWorkspace, bootDetached } from "./workspace";
 import { updateTasks } from "./tasks";
 import { initInbox } from "./inbox";
+import { initBrowserView } from "./browserview";
 import { enhanceSelects } from "./selectmenu";
 import { blockNativeMenu } from "./ctxmenu";
 import { openNewAgent } from "./inboxnew";
@@ -226,6 +227,7 @@ configureZoomUi({ getActiveWs: () => activeWs, applyZoom: (ws, z) => void applyZ
 configureBridges({ activateWorkspace, clearAttention, setStatus, updateCount, stopRecording });
 initSettingsModal();
 initInbox(); // the Agent Inbox interface
+initBrowserView(); // live view + Stop for the agent using a browser
 enhanceSelects(); // every drop-down uses the app menu, not the Windows popup
 blockNativeMenu(import.meta.env.DEV);
 installModalTrap(); // no Back/Refresh/Print page menu on right-click

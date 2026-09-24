@@ -130,6 +130,9 @@ pub fn run() {
             browser::browser_status,
             browser::browser_profiles,
             browser::browser_open_profile,
+            browser::browser_activity,
+            browser::browser_pause,
+            browser::browser_peek,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

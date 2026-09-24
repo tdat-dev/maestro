@@ -115,6 +115,42 @@ machine's install:
   clicks Load unpacked once per profile. After Web Store publication, a
   registry external-extension entry can offer it to every profile.
 
+### As built (2026-09-24)
+
+These are the ways the build differs from the plan above.
+
+- **The hub is a WebSocket server, not two named pipes.**
+  - It listens on 127.0.0.1 on a free port.
+  - Port and token are in `~/.maestro/browser-hub.json`, and every peer's
+    first message must carry the token.
+  - It reuses the `tungstenite` code already written for the dashboard, and
+    Node's built-in WebSocket on the maestro-mcp side.
+  - Code: `src-tauri/src/browser/hub.rs`.
+- **The native host is a copy of maestro.exe.**
+  - The copy is `%LOCALAPPDATA%/Maestro/NativeHost/maestro-host-<size>-<mtime>.exe`.
+  - Reason: Chrome keeps the host running for as long as the extension is
+    connected. Running maestro.exe itself locked the file, which broke a dev
+    rebuild and would have blocked updates.
+  - Old copies are removed once Chrome lets go of them.
+- **Tool names use a `browser_` prefix** on the MCP side:
+  - `browser_list`, `browser_select`;
+  - `browser_tabs`, `browser_tab_new`, `browser_tab_adopt`, `browser_tab_close`;
+  - `browser_navigate`, `browser_read_page`, `browser_find`, `browser_page_text`;
+  - `browser_form_input`, `browser_computer`, `browser_javascript`;
+  - `browser_console`, `browser_network`, `browser_dialog`.
+- **Settings → Browser** lists every Chrome, Edge and Brave profile, and a
+  profile turns to Connected live. Chrome refuses `chrome://extensions` as a
+  command-line URL, so "Set up" opens the profile and shows three steps with
+  copy buttons.
+- **Verified end to end** on GravityCare's app page, in a test profile with
+  both extensions loaded through CDP:
+  - list, open a tab;
+  - read the page, click, `find`, `form_input`, type, press keys;
+  - screenshot, JavaScript, console;
+  - the second agent was refused the first agent's tab;
+  - the `chrome://` guard;
+  - "no browser connected" when none was.
+
 ## Spike results (2026-09-24, Chrome 153.0.8010.53, this machine)
 
 **Copying a real profile does not work:**

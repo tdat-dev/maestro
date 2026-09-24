@@ -334,10 +334,12 @@ export function initBridges(): void {
   });
 
   /* pty-exit listener LAST + guarded so it can never block the wiring above. */
-  onExit((id, code) => {
+  onExit((id, code, run) => {
     for (const w of workspaces.values()) {
       const p = w.panes.get(id);
       if (p) {
+        // The exit of a run this pane has already replaced (restart in place).
+        if (p.run !== undefined && run !== p.run) break;
         p.running = false;
         p.spawnedAt = null;
         clearAttention(p); // a dead agent isn't waiting on anyone

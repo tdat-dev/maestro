@@ -115,25 +115,23 @@ function syncResumeAll() {
   const c = document.getElementById("btnResumeAllCount");
   if (c) c.textContent = n ? String(n) : "";
 }
-/** Boot every non-running pane in the active workspace, one at a time. Mirrors a
- *  pane's ⟳ (removeAgent → createAgent), but SEQUENTIALLY on purpose: a parallel
- *  fleet spawn hammers ConPTY + git worktree_add and freezes the UI (see the
- *  sync-spawn freeze fix). Specs are snapshot first because booting swaps each
- *  pane for a fresh id, which would mutate the map mid-iteration. */
+/** Start every non-running pane in the active workspace again, in place (each
+*  keeps its id, stage, chat and Grid spot), one at a time on purpose: a
+*  parallel fleet spawn hammers ConPTY + git worktree_add and freezes the UI
+*  (see the sync-spawn freeze fix). */
 let resumingAll = false;
 async function resumeAllStopped() {
   if (resumingAll || !activeWs) return;
   const ws = activeWs;
-  const targets = [...ws.panes.values()].filter((p) => !p.running).map((p) => ({ id: p.id, spec: p.spec }));
+  const targets = [...ws.panes.values()].filter((p) => !p.running);
   if (!targets.length) return;
   resumingAll = true;
   const btn = document.getElementById("btnResumeAll") as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
   try {
-    for (const t of targets) {
-      if (!ws.panes.has(t.id)) continue; // killed before its turn
-      await removeAgent(ws, t.id);
-      await createAgent(ws, t.spec)();
+    for (const p of targets) {
+      if (!ws.panes.has(p.id)) continue; // killed before its turn
+      await p.restart?.();
     }
   } finally {
     resumingAll = false;

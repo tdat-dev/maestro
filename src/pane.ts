@@ -238,7 +238,7 @@ export function createAgent(
   onUpdateCount();
 
   // A restored pane is parked as "stopped" — no PTY is spawned until the user
-  // hits ⟳ (which recreates the pane with restore=false → boots normally).
+  // hits ⟳ (pane.restart boots it in place).
   if (restore) {
     setStatus(pane, "stopped", "");
     el.classList.add("stopped"); // dims the parked pane (cleared on boot)
@@ -247,10 +247,7 @@ export function createAgent(
 
   el.querySelector("[data-kill]")?.addEventListener("click", () => void removeAgent(ws, id));
   el.querySelector("[data-record]")?.addEventListener("click", () => void toggleRecord(ws, pane));
-  el.querySelector("[data-restart]")?.addEventListener("click", async () => {
-    await removeAgent(ws, id);
-    await createAgent(ws, spec)();
-  });
+  el.querySelector("[data-restart]")?.addEventListener("click", () => void pane.restart?.());
   el.querySelector("[data-max]")?.addEventListener("click", (e) => toggleMax(ws, pane, e as MouseEvent));
   // "⋯ more" reveals the extra controls (search / record / restart) so the
   // header shows the mockup's exact three by default. Toggle on click; close
@@ -277,35 +274,10 @@ export function createAgent(
 
   saveSession();
 
-  // Detach hand-off: the agent is already alive in the backend — just point
-  // its output at this window. The backend replays buffered scrollback first.
-  if (attach) {
-    return async () => {
-      if (!ws.panes.has(id)) return;
-      const { cols, rows } = term.fit();
-      try {
-        await attachPty(id, (bytes) => {
-          pane.lastOutputAt = Date.now();
-          if (pane.attention) clearAttention(pane); // agent is producing output again
-          if (ws.panes.has(id)) term.write(bytes);
-        });
-        pane.running = true;
-        pane.spawnedAt = attach.spawnedAt ?? Date.now();
-        pane.lastOutputAt = Date.now();
-        setStatus(pane, "running", "run");
-        onUpdateCount();
-        void resizePty(id, cols, rows).catch(() => {});
-      } catch {
-        // Died between hand-off and attach — its pty-exit fired before we
-        // were listening, so park it the way a normal exit would.
-        pane.running = false;
-        setStatus(pane, "exited", "");
-        onUpdateCount();
-      }
-    };
-  }
-
-  return async () => {
+  // Start the CLI in this pane. Also how a stopped or restored agent starts
+  // again: in place, so the pane keeps its id, its place on the stage, its chat
+  // and its spot in the Grid (see restart below).
+  const boot = async () => {
     if (!ws.panes.has(id)) return; // killed before its turn to boot
     const { cols, rows } = term.fit();
     try {
@@ -349,7 +321,7 @@ export function createAgent(
         ["MAESTRO_AGENT", spec.name],
         ["MAESTRO_WORKSPACE", cwd ?? ""],
       ];
-      await spawnPty(id, launch.program, launch.args, cwd, cols, rows, envPairs, (bytes) => {
+      pane.run = await spawnPty(id, launch.program, launch.args, cwd, cols, rows, envPairs, (bytes) => {
         pane.lastOutputAt = Date.now();
         if (pane.attention) clearAttention(pane); // agent is producing output again
         // After a tab detach this xterm is disposed but the PTY lives on (the
@@ -373,6 +345,60 @@ export function createAgent(
       term.write(enc.encode(`\r\n\x1b[31m[spawn failed: ${pane.error}]\x1b[0m\r\n`));
     }
   };
+
+  /** Start again in this same pane: end the old process, clear the screen,
+   *  boot. The old process's exit event carries its run number, so it can't
+   *  mark the new run as exited (bridges.ts). */
+  let restarting = false;
+  pane.restart = async () => {
+    if (restarting) return;
+    restarting = true;
+    try {
+      if (pane.recording) await stopRecording(pane);
+      await killPty(id).catch(() => {});
+      pane.running = false;
+      pane.spawnedAt = null;
+      clearAttention(pane);
+      el.classList.remove("stopped");
+      term.reset();
+      setStatus(pane, "starting", "");
+      onUpdateCount();
+      await boot();
+      saveSession();
+    } finally {
+      restarting = false;
+    }
+  };
+
+  // Detach hand-off: the agent is already alive in the backend — just point
+  // its output at this window. The backend replays buffered scrollback first.
+  if (attach) {
+    return async () => {
+      if (!ws.panes.has(id)) return;
+      const { cols, rows } = term.fit();
+      try {
+        await attachPty(id, (bytes) => {
+          pane.lastOutputAt = Date.now();
+          if (pane.attention) clearAttention(pane); // agent is producing output again
+          if (ws.panes.has(id)) term.write(bytes);
+        });
+        pane.running = true;
+        pane.spawnedAt = attach.spawnedAt ?? Date.now();
+        pane.lastOutputAt = Date.now();
+        setStatus(pane, "running", "run");
+        onUpdateCount();
+        void resizePty(id, cols, rows).catch(() => {});
+      } catch {
+        // Died between hand-off and attach — its pty-exit fired before we
+        // were listening, so park it the way a normal exit would.
+        pane.running = false;
+        setStatus(pane, "exited", "");
+        onUpdateCount();
+      }
+    };
+  }
+
+  return boot;
 }
 
 /** A fresh Claude session id for this run (`--session-id`), remembered on the

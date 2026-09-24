@@ -16,7 +16,13 @@ use portable_pty::PtySize;
 struct ExitPayload {
     id: String,
     code: u32,
+    /// Which run of this agent id ended (see `pty_spawn`'s return value).
+    run: u64,
 }
+
+/// Numbers every spawn. An agent restarted in place keeps its id; the run
+/// tells its old process's late exit apart from the new one.
+static NEXT_RUN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 #[tauri::command]
 pub async fn pty_spawn(
@@ -34,7 +40,7 @@ pub async fn pty_spawn(
     // number — pathologically slow under a chatty agent's output and the cause
     // of the whole-app lag when a fleet is producing a lot of terminal output.
     on_bytes: Channel<InvokeResponseBody>,
-) -> Result<(), CommandError> {
+) -> Result<u64, CommandError> {
     let mut spec = CommandSpec::new(program);
     for a in args {
         spec = spec.arg(a);
@@ -58,6 +64,7 @@ pub async fn pty_spawn(
     let app2 = app.clone();
     let exit_id = agent_id.clone();
     let registry = state.registry.clone();
+    let run = NEXT_RUN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
     run_blocking(move || {
         let mut reg = registry
@@ -71,10 +78,11 @@ pub async fn pty_spawn(
                 let _ = on_bytes.send(InvokeResponseBody::Raw(bytes.to_vec()));
             },
             move |code| {
-                let _ = app2.emit("pty-exit", ExitPayload { id: exit_id, code });
+                let _ = app2.emit("pty-exit", ExitPayload { id: exit_id, code, run });
             },
         )
-        .map_err(CommandError::from)
+        .map_err(CommandError::from)?;
+        Ok(run)
     })
     .await
 }

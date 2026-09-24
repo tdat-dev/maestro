@@ -27,13 +27,14 @@ export async function spawnPty(
   rows: number,
   env: Array<[string, string]>,
   onBytes: (bytes: Uint8Array) => void,
-): Promise<void> {
+): Promise<number> {
   // PTY output streams as raw binary (ArrayBuffer), NOT a JSON number[]. The
   // number[] path serialized every byte as a JSON number on both sides and
   // choked the whole app under a chatty fleet; a raw buffer is ~100x cheaper.
   const ch = new Channel<ArrayBuffer>();
   ch.onmessage = (buf) => onBytes(new Uint8Array(buf));
-  await invoke("pty_spawn", { agentId, program, args, cwd, cols, rows, env, onBytes: ch });
+  // The run number of this start; its exit event carries the same number.
+  return invoke<number>("pty_spawn", { agentId, program, args, cwd, cols, rows, env, onBytes: ch });
 }
 
 /** Re-attach a RUNNING agent's output to this window (tab detach hand-off).
@@ -113,8 +114,8 @@ export async function killAll(): Promise<void> {
   await invoke("pty_kill_all");
 }
 
-export async function onExit(cb: (agentId: string, code: number) => void): Promise<UnlistenFn> {
-  return listen<{ id: string; code: number }>("pty-exit", (e) => cb(e.payload.id, e.payload.code));
+export async function onExit(cb: (agentId: string, code: number, run: number) => void): Promise<UnlistenFn> {
+  return listen<{ id: string; code: number; run: number }>("pty-exit", (e) => cb(e.payload.id, e.payload.code, e.payload.run));
 }
 
 /** A file drag-drop event from the OS. `leave` carries no paths/position. */

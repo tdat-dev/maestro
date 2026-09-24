@@ -177,7 +177,7 @@ function renderChat(list: Task[], pane: Pane | undefined): void {
   for (const id of borrowed.keys()) { const p = paneById(id); if (p && p !== on && p.el.classList.contains("chat-on")) hideChat(p); }
   if (!on) { chatFor = null; return; }
   const t = list.find((x) => x.paneId === on.id);
-  showChat(on, { name: on.spec.name, state: t?.status.state ?? "idle" }, chatFor !== on.id);
+  showChat(on, { name: on.spec.name, state: t?.status.state ?? "idle", problem: on.error }, chatFor !== on.id);
   chatFor = on.id;
 }
 
@@ -366,8 +366,10 @@ function ensureStage(): void {
     if (!activeWs.gridEl.classList.contains("has-focus") && activeWs.panes.has(cur.id)) focusPane(activeWs, cur);
     return;
   }
-  const inWs = allTasks().filter((t) => t.wsId === activeWs!.id);
-  const first = inWs[0] ? activeWs.panes.get(inWs[0].paneId) : activeWs.panes.values().next().value;
+  // The task list is re-derived on its own tick, so right after a pane goes it
+  // can still name it; only a pane that exists can take the stage.
+  const inWs = allTasks().filter((t) => t.wsId === activeWs!.id && activeWs!.panes.has(t.paneId));
+  const first = (inWs[0] && activeWs.panes.get(inWs[0].paneId)) ?? activeWs.panes.values().next().value;
   if (first) focusPane(activeWs, first);
 }
 

@@ -83,4 +83,15 @@ describe("stage across a restart", () => {
     expect(focused()).toEqual(["Ana"]);
     expect(a2.el.classList.contains("focused")).toBe(true);
   });
+  it("puts a live agent on the stage even while the task list still names a removed one", () => {
+    addPane("a1", "Ana"); addPane("b", "Bob");
+    state.tasks = [task("a1", "Ana", "stopped"), task("b", "Bob", "stopped")];
+    setInbox(true);
+    expect(focused()).toEqual(["Ana"]);
+    // Ana is removed; the task list has not caught up yet and still lists her first.
+    removePane("a1");
+    tick();
+    expect(ws.gridEl.classList.contains("has-focus")).toBe(true);
+    expect(focused()).toEqual(["Bob"]);
+  });
 });

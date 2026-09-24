@@ -165,13 +165,55 @@ function trimOutput(s: string): string {
   return t.length > MAX_OUTPUT ? t.slice(0, MAX_OUTPUT) + "\n…" : t;
 }
 
+/** One turn: your message and what the agent did and said until your next one. */
+export interface Turn { start: number; end: number; items: ChatItem[]; took: number }
+
+/** Split items into turns, each starting at one of your messages. */
+export function turnsOf(items: ChatItem[]): Turn[] {
+  const turns: Turn[] = [];
+  let cur: Turn | null = null;
+  items.forEach((it, i) => {
+    if (it.kind === "user" || !cur) {
+      cur = { start: i, end: i, items: [], took: 0 };
+      turns.push(cur);
+    }
+    cur.items.push(it);
+    cur.end = i;
+  });
+  for (const t of turns) {
+    const first = t.items[0]?.at ?? 0;
+    const last = t.items[t.items.length - 1]?.at ?? 0;
+    t.took = first && last ? Math.max(0, last - first) : 0;
+  }
+  return turns;
+}
+
 /** What you typed, without the reminders and hook text the CLI adds around it. */
 function cleanUserText(s: string): string {
   return s.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
 }
 
+/** A file the agent changed in this conversation, summed over its edits. */
+export interface FileChange { path: string; name: string; added: number; removed: number }
+
+/** What the conversation says about itself, for the side panel and composer. */
+export interface ChatMeta {
+  /** Model of the latest reply ("claude-opus-5-5"). */
+  model: string | null;
+  /** Tokens the model read for its latest reply: roughly how full the context is. */
+  context: number;
+  /** Tokens it has written in this conversation. */
+  output: number;
+  /** When the conversation began. */
+  started: number | null;
+  files: FileChange[];
+  /** The plan as it stands (the latest TodoWrite), or null if it made none. */
+  todos: Todo[] | null;
+}
+
 export interface Chat {
   items: ChatItem[];
+  meta: ChatMeta;
   /** Feed complete JSONL lines (one chunk from the transcript). */
   feed(text: string): void;
 }
@@ -179,6 +221,9 @@ export interface Chat {
 export function createChat(): Chat {
   const items: ChatItem[] = [];
   const steps = new Map<string, StepItem>();
+  const meta: ChatMeta = { model: null, context: 0, output: 0, started: null, files: [], todos: null };
+  const files = new Map<string, FileChange>();
+  const counted = new Set<string>(); // message ids whose usage is already summed
   let n = 0;
   const id = () => `c${n++}`;
 
@@ -223,7 +268,17 @@ export function createChat(): Chat {
   }
 
   function onAssistant(v: Input, at: number): void {
-    const content = ((v.message ?? {}) as Input).content;
+    const msg = (v.message ?? {}) as Input;
+    const content = msg.content;
+    if (typeof msg.model === "string" && msg.model !== "<synthetic>") meta.model = msg.model;
+    // One reply is written as several lines that share its id and its usage.
+    const usage = msg.usage as Record<string, number> | undefined;
+    const mid = str(msg.id);
+    if (usage && mid && !counted.has(mid)) {
+      counted.add(mid);
+      meta.output += usage.output_tokens ?? 0;
+      meta.context = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
+    }
     if (!Array.isArray(content)) return;
     for (const part of content as Input[]) {
       if (part.type === "text") {
@@ -235,12 +290,21 @@ export function createChat(): Chat {
         const step: StepItem = { kind: "step", id: id(), done: false, at, ...describeTool(str(part.name), (part.input ?? {}) as Input) };
         steps.set(tid, step);
         items.push(step);
+        if (step.todos) meta.todos = step.todos;
+        if (step.full && (step.verb === "Edited" || step.verb === "Wrote")) {
+          const fc = files.get(step.full) ?? { path: step.full, name: step.target, added: 0, removed: 0 };
+          fc.added += step.added ?? 0;
+          fc.removed += step.removed ?? 0;
+          files.set(step.full, fc);
+          meta.files = [...files.values()];
+        }
       }
     }
   }
 
   return {
     items,
+    meta,
     feed(text: string): void {
       for (const line of text.split("\n")) {
         if (!line.trim()) continue;
@@ -248,6 +312,7 @@ export function createChat(): Chat {
         try { v = JSON.parse(line); } catch { continue; }
         if (v.isSidechain === true || v.isMeta === true) continue; // a helper agent's inner steps, injected context
         const at = Date.parse(str(v.timestamp)) || 0;
+        if (at && meta.started === null && (v.type === "user" || v.type === "assistant")) meta.started = at;
         if (v.type === "user") onUser(v, at);
         else if (v.type === "assistant") onAssistant(v, at);
         else if (v.type === "system" && v.subtype === "compact_boundary") items.push({ kind: "note", id: id(), text: "Conversation compacted", at });

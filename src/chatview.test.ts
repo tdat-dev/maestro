@@ -17,7 +17,7 @@ vi.mock("./ipc", () => ({
   sendInput: async (id: string, data: string) => { io.keys.push([id, data]); },
 }));
 
-import { chatSupported, dropChat, hideChat, showChat } from "./chatview";
+import { chatSupported, dropChat, hideChat, modelName, showChat, took, tokens, whereIn } from "./chatview";
 import type { Pane } from "./panetypes";
 
 const T = "2026-09-24T10:00:00.000Z";
@@ -86,8 +86,7 @@ describe("chat view", () => {
   it("offers Start again instead of a composer when the agent is stopped", async () => {
     const p = pane();
     let restarted = 0;
-    p.el.insertAdjacentHTML("beforeend", '<button data-restart hidden></button>');
-    p.el.querySelector("[data-restart]")!.addEventListener("click", () => restarted++);
+    (p as unknown as { restart: () => Promise<void> }).restart = async () => { restarted++; };
     showChat(p, { name: "Ana", state: "stopped" });
     await flush();
     expect(p.el.querySelector(".cv")!.classList.contains("stopped")).toBe(true);
@@ -101,5 +100,57 @@ describe("chat view", () => {
     showChat(p, { name: "Ana", state: "needs" });
     await flush();
     expect(p.el.querySelector(".cv")!.classList.contains("asking")).toBe(true);
+  });
+
+  it("fills the space: a side panel with the plan, the files and the session, and a footer per turn", async () => {
+    const usage = { input_tokens: 5, cache_read_input_tokens: 44_000, cache_creation_input_tokens: 1000, output_tokens: 900 };
+    io.chunks = [
+      j({ type: "user", timestamp: "2026-09-24T10:00:00.000Z", origin: { kind: "human" }, message: { content: "fix it" } }) +
+      j({ type: "assistant", timestamp: "2026-09-24T10:00:05.000Z", message: { id: "m1", model: "claude-opus-5-5", usage, content: [{ type: "tool_use", id: "e", name: "Edit", input: { file_path: "D:/wt/p1/src/auth.ts", old_string: "a", new_string: "b" } }] } }) +
+      j({ type: "assistant", timestamp: "2026-09-24T10:00:06.000Z", message: { id: "m1", model: "claude-opus-5-5", usage, content: [{ type: "tool_use", id: "t", name: "TodoWrite", input: { todos: [{ content: "read", status: "completed" }, { content: "fix", status: "in_progress" }] } }] } }) +
+      j({ type: "assistant", timestamp: "2026-09-24T10:01:12.000Z", message: { id: "m2", model: "claude-opus-5-5", usage, content: [{ type: "text", text: "Fixed it." }] } }),
+    ];
+    let reviewed = 0;
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle", branch: "maestro/ana", onReview: () => { reviewed++; } });
+    await flush();
+    const side = p.el.querySelector(".cv-side")!;
+    expect(side.querySelector('[aria-label="Plan"] h3')!.textContent).toContain("1 of 2");
+    expect(side.querySelector(".cs-fn")!.textContent).toBe("auth.ts");
+    const session = [...side.querySelectorAll(".cs-dl div")].map((d) => [d.querySelector("dt")!.textContent, d.querySelector("dd")!.textContent]);
+    expect(session).toEqual(expect.arrayContaining([["Model", "Opus 5.5"], ["Branch", "maestro/ana"], ["Context", "45k tokens"]]));
+    (side.querySelector(".cs-review") as HTMLButtonElement).click();
+    expect(reviewed).toBe(1);
+    expect(p.el.querySelector(".cv-tf span")!.textContent).toBe("Worked for 1m 12s");
+    expect(p.el.querySelector(".cv-model")!.textContent).toBe("Opus 5.5");
+  });
+
+  it("offers jobs to start from in an empty conversation, and commands from the composer", async () => {
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const first = p.el.querySelector<HTMLButtonElement>(".cv-starters button")!;
+    first.click();
+    expect(p.el.querySelector("textarea")!.value).toBe(first.dataset.starter);
+    (p.el.querySelector("[data-cmds]") as HTMLButtonElement).click();
+    const compact = [...document.querySelectorAll<HTMLButtonElement>(".cm-item")].find((b) => b.textContent!.startsWith("/compact"))!;
+    compact.click();
+    expect(p.el.querySelector("textarea")!.value).toBe("/compact ");
+  });
+});
+
+describe("chat view words", () => {
+  it("names models, sizes and durations the way people say them", () => {
+    expect(modelName("claude-opus-5-5")).toBe("Opus 5.5");
+    expect(modelName("claude-haiku-4-5-20251001")).toBe("Haiku 4.5");
+    expect(modelName("claude-sonnet-5")).toBe("Sonnet 5");
+    expect(modelName("gpt-5")).toBe("gpt-5");
+    expect([tokens(950), tokens(1200), tokens(45_200), tokens(1_300_000)]).toEqual(["950", "1.2k", "45k", "1.3M"]);
+    expect([took(4000), took(72_000), took(120_000), took(3_780_000)]).toEqual(["4s", "1m 12s", "2m", "1h 3m"]);
+  });
+it("places a changed file inside the agent's folder, or says it is outside", () => {
+    expect(whereIn("D:\\wt\\a\\src\\auth\\login.ts", "D:\\wt\\a")).toBe("src/auth");
+    expect(whereIn("D:\\wt\\a\\README.md", "D:/wt/a/")).toBe("project root");
+    expect(whereIn("C:\\Temp\\notes\\x.js", "D:\\wt\\a")).toBe("outside the project · notes");
   });
 });

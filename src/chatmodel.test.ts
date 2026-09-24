@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createChat, describeTool, lineDiff, type StepItem } from "./chatmodel";
+import { createChat, describeTool, lineDiff, turnsOf, type StepItem } from "./chatmodel";
 
 const T = "2026-09-24T10:00:00.000Z";
 const line = (o: object) => JSON.stringify({ timestamp: T, ...o });
@@ -72,5 +72,39 @@ describe("chat model", () => {
     expect(lineDiff("a\nb\nc", "a\nx\nc")).toEqual([
       { sign: " ", text: "a" }, { sign: "-", text: "b" }, { sign: "+", text: "x" }, { sign: " ", text: "c" },
     ]);
+  });
+});
+
+describe("chat meta", () => {
+  const at = (sec: number) => new Date(Date.UTC(2026, 8, 24, 10, 0, sec)).toISOString();
+  const row = (o: object) => JSON.stringify(o);
+  it("knows the model, the context size, what it wrote, the files it changed and the plan", () => {
+    const chat = createChat();
+    const usage = { input_tokens: 10, cache_read_input_tokens: 1000, cache_creation_input_tokens: 200, output_tokens: 50 };
+    chat.feed([
+      row({ type: "user", timestamp: at(0), origin: { kind: "human" }, message: { content: "go" } }),
+      // one reply written as two lines sharing its id and usage: counted once
+      row({ type: "assistant", timestamp: at(2), message: { id: "m1", model: "claude-opus-5-5", usage, content: [{ type: "text", text: "ok" }] } }),
+      row({ type: "assistant", timestamp: at(3), message: { id: "m1", model: "claude-opus-5-5", usage, content: [{ type: "tool_use", id: "e1", name: "Edit", input: { file_path: "D:/a/x.ts", old_string: "a", new_string: "b\nc" } }] } }),
+      row({ type: "assistant", timestamp: at(9), message: { id: "m2", model: "claude-opus-5-5", usage: { ...usage, output_tokens: 30 }, content: [{ type: "tool_use", id: "e2", name: "Edit", input: { file_path: "D:/a/x.ts", old_string: "q", new_string: "r" } }, { type: "tool_use", id: "t", name: "TodoWrite", input: { todos: [{ content: "one", status: "completed" }] } }] } }),
+    ].join("\n"));
+    expect(chat.meta.model).toBe("claude-opus-5-5");
+    expect(chat.meta.context).toBe(1210);
+    expect(chat.meta.output).toBe(80);
+    expect(chat.meta.started).toBe(Date.parse(at(0)));
+    expect(chat.meta.files).toEqual([{ path: "D:/a/x.ts", name: "x.ts", added: 3, removed: 2 }]);
+    expect(chat.meta.todos).toEqual([{ text: "one", state: "completed" }]);
+  });
+
+  it("splits the conversation into turns, each timed from your message to its last step", () => {
+    const chat = createChat();
+    chat.feed([
+      row({ type: "user", timestamp: at(0), origin: { kind: "human" }, message: { content: "a" } }),
+      row({ type: "assistant", timestamp: at(12), message: { content: [{ type: "text", text: "done a" }] } }),
+      row({ type: "user", timestamp: at(20), origin: { kind: "human" }, message: { content: "b" } }),
+      row({ type: "assistant", timestamp: at(21), message: { content: [{ type: "text", text: "done b" }] } }),
+    ].join("\n"));
+    const turns = turnsOf(chat.items);
+    expect(turns.map((t) => [t.start, t.end, t.took])).toEqual([[0, 1, 12000], [2, 3, 1000]]);
   });
 });

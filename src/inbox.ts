@@ -177,7 +177,7 @@ function renderChat(list: Task[], pane: Pane | undefined): void {
   for (const id of borrowed.keys()) { const p = paneById(id); if (p && p !== on && p.el.classList.contains("chat-on")) hideChat(p); }
   if (!on) { chatFor = null; return; }
   const t = list.find((x) => x.paneId === on.id);
-  showChat(on, { name: on.spec.name, state: t?.status.state ?? "idle", problem: on.error }, chatFor !== on.id);
+  showChat(on, { name: on.spec.name, state: t?.status.state ?? "idle", problem: on.error, branch: t?.branch ?? on.spec.branch ?? null, onReview: openReview }, chatFor !== on.id);
   chatFor = on.id;
 }
 

@@ -6,7 +6,9 @@
 
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import { createChat, type Chat, type ChatItem, type StepItem } from "./chatmodel";
+import { createChat, turnsOf, type Chat, type ChatItem, type StepItem } from "./chatmodel";
+import { openMenu } from "./ctxmenu";
+import { STARTERS } from "./starters";
 import { claudeTranscript, sendInput, sendMessage } from "./ipc";
 import type { Pane } from "./panetypes";
 
@@ -18,7 +20,51 @@ export interface ChatState {
   state: string;
   /** Why it could not start, when it could not. */
   problem?: string;
+  /** Its git branch, for the side panel. */
+  branch?: string | null;
+  /** Open the full Changes view for this agent. */
+  onReview?: () => void;
 }
+
+/** "claude-opus-5-5" → "Opus 5.5"; other ids as they are. */
+export function modelName(id: string | null): string {
+  if (!id) return "";
+  const m = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?/.exec(id);
+  if (!m) return id;
+  return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ""}`;
+}
+
+/** 950 → "950", 45_200 → "45k", 1_300_000 → "1.3M". */
+export function tokens(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${n < 10_000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") : Math.round(n / 1000)}k`;
+  return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+}
+
+/** 12_000 → "12s", 72_000 → "1m 12s", 3_780_000 → "1h 3m". */
+export function took(ms: number): string {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${Math.max(1, s)}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return s % 60 ? `${m}m ${s % 60}s` : `${m}m`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+/** Where a changed file sits: its folder inside the agent's folder
+ *  ("src/auth"), "project root", or, outside it, the folder it is in. */
+export function whereIn(path: string, root: string | undefined): string {
+  const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
+  const p = norm(path);
+  const r = root ? norm(root) : "";
+  const dir = p.slice(0, Math.max(0, p.lastIndexOf("/")));
+  if (r && dir.toLowerCase() === r.toLowerCase()) return "project root";
+  if (r && dir.toLowerCase().startsWith(r.toLowerCase() + "/")) return dir.slice(r.length + 1);
+  return `outside the project · ${dir.split("/").pop() ?? dir}`;
+}
+
+const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+/** The last two parts of a path: "src/auth.ts" out of "D:\\app\\src\\auth.ts". */
+const tail = (p: string, n = 2) => p.replace(/[\\/]+$/, "").split(/[\\/]/).slice(-n).join("/");
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 const POLL_MS = 800;
@@ -92,8 +138,23 @@ function itemHtml(it: ChatItem, open: Set<string>): string {
   }
 }
 
+/** The conversation by turns: each of your messages, what followed, and for a
+ *  finished turn a footer (how long it worked, when, Copy). */
+function threadHtml(items: ChatItem[], open: Set<string>, expanded: Set<string>, working: boolean): string {
+  const turns = turnsOf(items);
+  return turns.map((t, k) => {
+    const said = t.items.some((i) => i.kind === "text");
+    const done = !(working && k === turns.length - 1);
+    const lastAt = t.items[t.items.length - 1]?.at ?? 0;
+    const foot = said && done
+      ? `<div class="cv-tf">${t.took ? `<span>Worked for ${took(t.took)}</span>` : ""}${lastAt ? `<time>${clock(lastAt)}</time>` : ""}<button type="button" class="cv-copy" data-copy="${t.items[0].id}">Copy</button></div>`
+      : "";
+    return runsHtml(t.items, open, expanded) + foot;
+  }).join("");
+}
+
 /** Steps between two messages sit together; a long run folds its start. */
-function threadHtml(items: ChatItem[], open: Set<string>, expanded: Set<string>): string {
+function runsHtml(items: ChatItem[], open: Set<string>, expanded: Set<string>): string {
   let html = "";
   let run: StepItem[] = [];
   const flush = () => {
@@ -125,6 +186,8 @@ interface View {
   timer: number | null;
   busy: boolean;
   state: ChatState;
+  pane: Pane;
+  sideSig: string;
 }
 
 const views = new Map<string, View>();
@@ -132,6 +195,39 @@ const views = new Map<string, View>();
 /** The folder this agent's CLI was started in; pane.ts writes it at boot. */
 function dirOf(pane: Pane): string | null {
   return pane.spec.ranIn ?? null;
+}
+
+/** The panel beside the conversation: the plan, the files it changed, and
+ *  the session (model, branch, folder, when, how much context). */
+function sideHtml(v: View): string {
+  const m = v.chat.meta;
+  const s = v.state;
+  let html = "";
+  if (m.todos?.length) {
+    const done = m.todos.filter((t) => t.state === "completed").length;
+    html += `<section class="cs-sec" aria-label="Plan"><h3>Plan <span>${done} of ${m.todos.length}</span></h3>
+      <div class="cs-bar" aria-hidden="true"><i style="width:${Math.round((done / m.todos.length) * 100)}%"></i></div>
+      <ul class="cv-todos cs-todos">${m.todos.map((t) => `<li class="${t.state}"><i aria-hidden="true"></i>${esc(t.text)}</li>`).join("")}</ul></section>`;
+  }
+  if (m.files.length) {
+    const add = m.files.reduce((n, f) => n + f.added, 0);
+    const del = m.files.reduce((n, f) => n + f.removed, 0);
+    html += `<section class="cs-sec" aria-label="Files changed"><h3>Files changed <span>${m.files.length} · <b class="a">+${add}</b> <b class="d">−${del}</b></span></h3>
+      <ul class="cs-files">${m.files.map((f) => `<li><button type="button" ${s.onReview ? "data-review" : "disabled"} title="${esc(f.path)}"><span class="cs-fn">${esc(f.name)}</span><span class="cs-fd">${esc(whereIn(f.path, v.pane.spec.ranIn))}</span><span class="cv-n"><b class="a">+${f.added}</b> <b class="d">−${f.removed}</b></span></button></li>`).join("")}</ul>
+      ${s.onReview ? `<button type="button" class="cs-review" data-review>Review changes</button>` : ""}</section>`;
+  }
+  const rows: Array<[string, string]> = [
+    ["Model", modelName(m.model)],
+    ["Branch", s.branch ?? ""],
+    ["Folder", v.pane.spec.ranIn ? tail(v.pane.spec.ranIn, 1) : ""],
+    ["Started", m.started ? clock(m.started) : ""],
+    ["Context", m.context ? `${tokens(m.context)} tokens` : ""],
+    ["Written", m.output ? `${tokens(m.output)} tokens` : ""],
+  ].filter((r): r is [string, string] => !!r[1]);
+  html += `<section class="cs-sec" aria-label="Session"><h3>Session</h3>${rows.length
+    ? `<dl class="cs-dl">${rows.map(([k, val]) => `<div><dt>${k}</dt><dd>${esc(val)}</dd></div>`).join("")}</dl>`
+    : `<p class="cs-none">Details show up once it starts talking.</p>`}</section>`;
+  return html;
 }
 
 function draw(v: View, force = false): void {
@@ -143,9 +239,11 @@ function draw(v: View, force = false): void {
     v.sig = sig;
     const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
     const start = Math.max(0, items.length - v.window);
+    const quiet = v.state.problem || v.state.state === "stopped";
     thread.innerHTML = (start > 0 ? `<button type="button" class="cv-earlier" data-earlier>Show earlier messages</button>` : "") +
-      (items.length ? threadHtml(items.slice(start), v.open, v.expanded)
-        : `<div class="cv-empty"><b>${esc(v.state.name)}</b><span>${v.state.problem ? esc(v.state.problem) : v.state.state === "stopped" ? "Stopped. Start it again to give it a job." : v.path ? "Nothing said yet." : "Starting… the conversation shows up here as soon as it begins."}</span></div>`);
+      (items.length ? threadHtml(items.slice(start), v.open, v.expanded, v.state.state === "working")
+        : `<div class="cv-empty"><b>${quiet ? esc(v.state.name) : `What should ${esc(v.state.name)} do?`}</b><span>${v.state.problem ? esc(v.state.problem) : v.state.state === "stopped" ? "Stopped. Start it again to give it a job." : "Say it in your own words below, or start from one of these."}</span>
+          ${quiet ? "" : `<div class="cv-starters">${STARTERS.map((s) => `<button type="button" data-starter="${esc(s.job)}">${esc(s.label)}</button>`).join("")}</div>`}</div>`);
     if (nearBottom || force) scroller.scrollTop = scroller.scrollHeight;
   }
   const working = v.state.state === "working";
@@ -154,6 +252,18 @@ function draw(v: View, force = false): void {
   v.el.classList.toggle("stopped", v.state.state === "stopped");
   const wl = v.el.querySelector<HTMLElement>(".cv-working");
   if (wl) wl.hidden = !working;
+  // the composer's model and context, the side panel
+  const m = v.chat.meta;
+  const model = v.el.querySelector<HTMLElement>(".cv-model");
+  if (model) { model.textContent = modelName(m.model); model.hidden = !m.model; }
+  const ctx = v.el.querySelector<HTMLElement>(".cv-ctx");
+  if (ctx) { ctx.textContent = m.context ? `${tokens(m.context)} in context` : ""; ctx.hidden = !m.context; }
+  const sideSig = JSON.stringify([m.todos, m.files, m.model, m.context, m.output, m.started, v.state.branch, !!v.state.onReview, v.pane.spec.ranIn]);
+  if (sideSig !== v.sideSig) {
+    v.sideSig = sideSig;
+    const side = v.el.querySelector<HTMLElement>(".cv-side");
+    if (side) side.innerHTML = sideHtml(v);
+  }
 }
 
 async function poll(pane: Pane, v: View): Promise<void> {
@@ -190,24 +300,30 @@ function mount(pane: Pane): View {
   el.className = "cv";
   el.setAttribute("aria-label", `Conversation with ${pane.spec.name}`);
   el.innerHTML = `
+    <div class="cv-main">
     <div class="cv-scroll"><div class="cv-thread" role="log" aria-live="polite"></div></div>
     <div class="cv-foot">
       <p class="cv-working" hidden><span class="cv-dots" aria-hidden="true"><i></i><i></i><i></i></span>Working</p>
       <p class="cv-stopped">Stopped <button type="button" class="cv-restart" data-restart-agent>Start again</button></p>
       <form class="cv-compose">
         <label class="ia-sr" for="cv-in-${pane.id}">Message ${esc(pane.spec.name)}</label>
-        <textarea id="cv-in-${pane.id}" rows="1" placeholder="Message ${esc(pane.spec.name)}…"></textarea>
+        <textarea id="cv-in-${pane.id}" rows="1" placeholder="Message ${esc(pane.spec.name)}…  Enter to send, Shift+Enter for a new line"></textarea>
         <div class="cv-bar">
-          <span class="cv-hint">Enter to send · Shift+Enter for a new line</span>
+          <span class="cv-chip cv-model" title="The model answering" hidden></span>
+          <button type="button" class="cv-chip cv-cmds" data-cmds title="Claude Code commands">/ Commands</button>
+          <span class="cv-ctx" title="How much the agent is holding in mind right now" hidden></span>
+          <span class="cv-sp"></span>
           <button type="button" class="cv-stop" data-stop title="Stop what it is doing (Esc)">Stop</button>
           <button type="submit" class="cv-send" aria-label="Send">
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" /></svg>
           </button>
         </div>
       </form>
-    </div>`;
+    </div>
+    </div>
+    <aside class="cv-side" aria-label="About this conversation"></aside>`;
   host.appendChild(el);
-  const v: View = { el, chat: createChat(), offset: 0, path: "", sig: "", window: WINDOW, open: new Set(), expanded: new Set(), timer: null, busy: false, state: { name: pane.spec.name, state: "idle" } };
+  const v: View = { el, chat: createChat(), offset: 0, path: "", sig: "", window: WINDOW, open: new Set(), expanded: new Set(), timer: null, busy: false, state: { name: pane.spec.name, state: "idle" }, pane, sideSig: "" };
   const input = el.querySelector<HTMLTextAreaElement>("textarea")!;
   const grow = () => { input.style.height = "auto"; input.style.height = `${Math.min(input.scrollHeight, 200)}px`; };
   const send = () => {
@@ -228,7 +344,31 @@ function mount(pane: Pane): View {
   el.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
     // The pane's own restart button knows how to start this agent again.
-    if (t.closest("[data-restart-agent]")) { pane.el.querySelector<HTMLElement>("[data-restart]")?.click(); return; }
+    if (t.closest("[data-restart-agent]")) { void pane.restart?.(); return; }
+    const starter = t.closest<HTMLElement>("[data-starter]");
+    if (starter) { input.value = starter.dataset.starter ?? ""; grow(); input.focus(); return; }
+    const cmds = t.closest<HTMLElement>("[data-cmds]");
+    if (cmds) {
+      const r = cmds.getBoundingClientRect();
+      const use = (c: string) => () => { input.value = `${c} `; grow(); input.focus(); };
+      openMenu(r.left, r.top - 8, [
+        { label: "/compact", hint: "Shrink the conversation", run: use("/compact") },
+        { label: "/clear", hint: "Start a fresh conversation", run: use("/clear") },
+        { label: "/review", hint: "Review the changes", run: use("/review") },
+        { label: "/context", hint: "What fills the context", run: use("/context") },
+        { label: "/model", hint: "Switch the model", run: use("/model") },
+        { label: "/init", hint: "Write a CLAUDE.md", run: use("/init") },
+      ], "Commands");
+      return;
+    }
+    const copy = t.closest<HTMLElement>("[data-copy]");
+    if (copy) {
+      const turn = turnsOf(v.chat.items).find((x) => x.items[0]?.id === copy.dataset.copy);
+      const text = turn?.items.filter((i) => i.kind === "text").map((i) => ("text" in i ? i.text : "")).join("\n\n") ?? "";
+      void navigator.clipboard?.writeText(text).then(() => { copy.textContent = "Copied"; window.setTimeout(() => { copy.textContent = "Copy"; }, 1400); }).catch(() => {});
+      return;
+    }
+    if (t.closest("[data-review]")) { v.state.onReview?.(); return; }
     if (t.closest("[data-stop]")) { void sendInput(pane.id, "\x1b"); return; }
     if (t.closest("[data-earlier]")) { v.window += WINDOW; draw(v, false); return; }
     const more = t.closest<HTMLElement>("[data-expand]");

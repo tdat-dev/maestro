@@ -28,12 +28,28 @@ const text = (res: unknown): string =>
   (res as { content: { type: string; text: string }[] }).content[0].text;
 
 describe("maestro-mcp server", () => {
-  it("lists all board + fleet tools", async () => {
+  it("lists all board, fleet and browser tools", async () => {
     const tools = (await client.listTools()).tools.map((t) => t.name).sort();
     expect(tools).toEqual([
       "agent_output",
       "agent_spawn",
       "board_get",
+      "browser_computer",
+      "browser_console",
+      "browser_dialog",
+      "browser_find",
+      "browser_form_input",
+      "browser_javascript",
+      "browser_list",
+      "browser_navigate",
+      "browser_network",
+      "browser_page_text",
+      "browser_read_page",
+      "browser_select",
+      "browser_tab_adopt",
+      "browser_tab_close",
+      "browser_tab_new",
+      "browser_tabs",
       "card_add",
       "card_delete",
       "card_done",

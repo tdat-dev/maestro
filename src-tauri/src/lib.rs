@@ -1,3 +1,4 @@
+pub mod browser;
 pub mod commands;
 pub mod core;
 pub mod dashboard;
@@ -70,8 +71,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
+        .manage(browser::BrowserState::default())
         .setup(|app| {
             build_tray(app)?;
+            browser::start(app.handle(), &app.state::<browser::BrowserState>());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -124,6 +127,7 @@ pub fn run() {
             dashboard::dashboard_start,
             dashboard::dashboard_stop,
             dashboard::dashboard_push,
+            browser::browser_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

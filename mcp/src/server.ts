@@ -19,6 +19,7 @@ import {
 } from "./ops.js";
 import { changedFiles } from "./git.js";
 import { readFleet, queueMessage, readAgentScreen, queueSpawn } from "./fleet.js";
+import { HubClient, registerBrowserTools, BROWSER_INSTRUCTIONS } from "./browser.js";
 
 type ToolResult = {
   content: { type: "text"; text: string }[];
@@ -56,7 +57,9 @@ the other agents here and fleet_send to hand work to a specific one.
 
 Write every fleet_send message in English, whatever language the user speaks to
 you in — the fleet shares one working language so no agent has to translate a
-hand-off. Answer the user in the language they used.`;
+hand-off. Answer the user in the language they used.
+
+${BROWSER_INSTRUCTIONS}`;
 
 export function createServer(dir: string): McpServer {
   const server = new McpServer({ name: "maestro", version: "0.1.0" }, { instructions: INSTRUCTIONS });
@@ -285,6 +288,9 @@ export function createServer(dir: string): McpServer {
       }
     },
   );
+
+  // The user's real browsers, through the Maestro hub (see browser.ts).
+  registerBrowserTools(server, new HubClient(agentName ?? "Agent"));
 
   return server;
 }

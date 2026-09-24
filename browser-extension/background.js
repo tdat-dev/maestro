@@ -131,8 +131,16 @@ async function agentGroups() {
 async function groupOf(agent) {
   const all = await agentGroups();
   const gid = all[agent];
-  if (gid == null) return null;
-  try { await chrome.tabGroups.get(gid); return gid; } catch { return null; }
+  if (gid != null) {
+    try { await chrome.tabGroups.get(gid); return gid; } catch {}
+  }
+  // The extension was updated or restarted and forgot its map: the agent's
+  // group is still there, titled with its name. Take it back instead of
+  // making the agent open a new tab.
+  const found = (await chrome.tabGroups.query({ title: agent }))[0];
+  if (!found) return null;
+  await chrome.storage.session.set({ groups: { ...all, [agent]: found.id } });
+  return found.id;
 }
 
 function colorFor(agent) {
@@ -167,7 +175,7 @@ async function tabFor(agent, tabId) {
     if (!t) throw new Error(`Tab ${tabId} is not one of ${agent}'s tabs. Use browser_tabs to see them, or browser_tab_adopt to take over a tab you were given.`);
     return t;
   }
-  if (!mine.length) throw new Error(`${agent} has no tab yet. Call browser_tab_new first.`);
+  if (!mine.length) throw new Error(`${agent} has no tab yet. Open a page with browser_navigate.`);
   return mine.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0))[0];
 }
 
@@ -299,7 +307,8 @@ async function grab(tab, maxW, quality) {
     await dbg(tab.id);
     const shot = await Promise.race([
       cdp(tab.id, "Page.captureScreenshot", { format: "jpeg", quality, optimizeForSpeed: true }),
-      sleep(2500).then(() => null),
+      // A tab behind another one has to be painted first: 1–3 s.
+      sleep(3500).then(() => null),
     ]);
     if (!shot) throw new Error("The tab isn't showing right now.");
     blob = await (await fetch(`data:image/jpeg;base64,${shot.data}`)).blob();
@@ -434,6 +443,15 @@ async function run(agent, tool, a) {
       return text(`Closed tab ${t.id}.`);
     }
     case "navigate": {
+      if (a.tabId == null && !(await agentTabs(agent)).length) {
+        // First page for this agent: open its tab rather than failing.
+        if (/^(back|forward|reload)$/.test(a.url)) throw new Error(`${agent} has no tab yet.`);
+        const tab = await chrome.tabs.create({ url: withScheme(a.url), active: true });
+        await intoGroup(agent, tab.id);
+        await waitLoaded(tab.id);
+        void cursor(tab.id, agent, "show");
+        return withBlocker(tab.id, text(brief(await chrome.tabs.get(tab.id))));
+      }
       const t = await tabFor(agent, a.tabId);
       if (a.url === "back") await chrome.tabs.goBack(t.id);
       else if (a.url === "forward") await chrome.tabs.goForward(t.id);
@@ -548,7 +566,11 @@ async function run(agent, tool, a) {
       // Maestro's live view: a small frame of the agent's current tab. Never
       // brings the tab forward, so watching never gets in the agent's way.
       const t = await tabFor(agent, a.tabId);
-      const img = await grab(t, 720, 55);
+      // As wide as Maestro shows it (the small card, or the large view), so a
+      // large view is sharp and a small one stays light.
+      const maxW = Math.max(320, Math.min(2560, Number(a.maxW) || 720));
+      const quality = Math.max(40, Math.min(90, Number(a.quality) || 60));
+      const img = await grab(t, maxW, quality);
       return { content: [{ type: "image", data: img.data, mimeType: "image/jpeg" }], tab: brief(t), dialog: dialogs.get(t.id) ?? null };
     }
     case "reload": {

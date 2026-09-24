@@ -23,6 +23,8 @@ export interface Activity { agent: string; browser: number; label: string; tool:
 
 const RECENT_MS = 90_000;
 const FRAME_MS = 1200;
+/** A tab behind another one costs Chrome a paint per frame: fewer of them. */
+const BACK_FRAME_MS = 3000;
 
 const VERB: Record<string, string> = {
   tab_new: "Opened a tab", tab_adopt: "Took over a tab", tab_close: "Closed a tab", tabs: "Checked its tabs",
@@ -69,7 +71,10 @@ let card: HTMLElement | null = null;
 let shownFor = "";
 let small = false; // folded down to a chip
 let busy = false;
+/** A frame asked for while one was on its way (the view just grew): fetch it right after. */
+let again = false;
 let lastFrame = 0;
+let behind = false;
 
 function stageAgent(): string {
   return document.querySelector(".pane.focused .pb-name")?.textContent?.trim() ?? "";
@@ -96,7 +101,12 @@ function build(): HTMLElement {
   el.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
     if (t.closest("[data-bv-fold]")) { small = !small; paint(); if (!small) void frame(true); }
-    else if (t.closest("[data-bv-big]")) el.classList.toggle("big");
+    else if (t.closest("[data-bv-big]")) {
+      el.classList.toggle("big");
+      // The card grows for .22 s; measure it once it has, or the frame is
+      // fetched at the small size and looks blurry when stretched.
+      setTimeout(() => void frame(true), 260);
+    }
     else if (t.closest("[data-bv-stop]")) void toggleStop();
   });
   el.addEventListener("keydown", (e) => {
@@ -157,12 +167,21 @@ function paint() {
 }
 
 async function frame(now = false) {
+  if (busy && now) again = true;
   if (!card || card.hidden || small || busy || document.visibilityState !== "visible") return;
-  if (!now && Date.now() - lastFrame < FRAME_MS) return;
+  if (!now && Date.now() - lastFrame < (behind ? BACK_FRAME_MS : FRAME_MS)) return;
   const agent = shownFor;
   busy = true;
   try {
-    const r = await invoke<{ content: { type: string; data?: string }[]; tab?: { url: string; title: string } }>("browser_peek", { agent });
+    // Pixels actually on screen: the frame's width times the display's scale.
+    const big = card.classList.contains("big");
+    const shownW = card.querySelector<HTMLElement>("[data-bv-big]")!.clientWidth || 300;
+    const maxW = Math.ceil(shownW * (window.devicePixelRatio || 1));
+    const r = await invoke<{ content: { type: string; data?: string }[]; tab?: { url: string; title: string; active: boolean } }>("browser_peek", {
+      agent,
+      maxW,
+      quality: big ? 78 : 62,
+    });
     if (agent !== shownFor || !card) return;
     const img = r.content.find((c) => c.type === "image");
     if (img?.data) {
@@ -170,12 +189,15 @@ async function frame(now = false) {
       el.src = `data:image/jpeg;base64,${img.data}`;
       el.alt = `${agent}'s tab${r.tab?.title ? `: ${r.tab.title}` : ""}`;
     }
-    note("");
+    behind = r.tab?.active === false;
+    note(behind ? "Behind another tab in Chrome, so it updates every few seconds" : "");
   } catch (e) {
-    note(/isn't showing/.test(String(e)) ? "The tab is in the background" : "No picture right now");
+    behind = true;
+    note(/isn't showing/.test(String(e)) ? "Behind another tab in Chrome, so it updates every few seconds" : "No picture right now");
   } finally {
     busy = false;
     lastFrame = Date.now();
+    if (again) { again = false; void frame(true); }
   }
 }
 

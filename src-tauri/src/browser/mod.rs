@@ -223,9 +223,10 @@ pub fn browser_pause(state: State<'_, BrowserState>, agent: String, paused: bool
 
 /// A small frame of the tab `agent` works in, for the live view.
 #[tauri::command]
-pub async fn browser_peek(state: State<'_, BrowserState>, agent: String) -> Result<serde_json::Value, String> {
+pub async fn browser_peek(state: State<'_, BrowserState>, agent: String, max_w: Option<u32>, quality: Option<u32>) -> Result<serde_json::Value, String> {
     let hub = hub_of(&state)?;
-    tauri::async_runtime::spawn_blocking(move || hub.app_call(&agent, "peek", serde_json::json!({}), std::time::Duration::from_secs(4)))
+    let args = serde_json::json!({ "maxW": max_w, "quality": quality });
+    tauri::async_runtime::spawn_blocking(move || hub.app_call(&agent, "peek", args, std::time::Duration::from_secs(6)))
         .await
         .map_err(|e| e.to_string())?
 }

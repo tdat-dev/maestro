@@ -125,7 +125,7 @@ const err = (text: string): ToolResult => ({ content: [{ type: "text", text }], 
 
 const tabId = z.number().int().optional().describe("Tab id from browser_tabs; defaults to your most recent tab");
 
-export const BROWSER_INSTRUCTIONS = `Browser: you can use the user's real Chrome (their logins included) through the browser_* tools. You work in your own tab group, named after you. Start with browser_tab_new or browser_tabs. Read a page with browser_read_page (gives refs), act with browser_computer (click a ref or a screenshot coordinate, type, key), and check with a screenshot. When you hit a login page or a CAPTCHA, stop and ask the user to handle it. Never submit payments or send messages the user didn't ask for. Clicks that send, post, pay or delete wait for the user to allow them in Maestro; if they say no, don't retry.`;
+export const BROWSER_INSTRUCTIONS = `Browser: you can use the user's real Chrome (their logins included) through the browser_* tools. You work in your own tab group, named after you. Reuse your tab: browser_navigate goes to a page in it (and opens it the first time); open another with browser_tab_new only when you need two pages side by side, and close tabs you are done with. Read a page with browser_read_page (gives refs), act with browser_computer (click a ref or a screenshot coordinate, type, key), and check with a screenshot. When you hit a login page or a CAPTCHA, stop and ask the user to handle it. Never submit payments or send messages the user didn't ask for. Clicks that send, post, pay or delete wait for the user to allow them in Maestro; if they say no, don't retry.`;
 
 export function registerBrowserTools(server: McpServer, hub: HubClient) {
   const tool = (name: string, description: string, inputSchema: Record<string, z.ZodTypeAny>, hubTool: string) =>
@@ -146,7 +146,7 @@ export function registerBrowserTools(server: McpServer, hub: HubClient) {
   );
   tool(
     "browser_tab_new",
-    "Open a new tab in your tab group, optionally at a URL, and wait for it to load.",
+    "Open another tab in your tab group, optionally at a URL. Only when you need a second page next to the one you have; to go somewhere else, use browser_navigate in your current tab.",
     { url: z.string().optional() },
     "tab_new",
   );
@@ -154,7 +154,7 @@ export function registerBrowserTools(server: McpServer, hub: HubClient) {
   tool("browser_tab_close", "Close one of your tabs.", { tabId }, "tab_close");
   tool(
     "browser_navigate",
-    'Go to a URL in your tab, or "back", "forward", "reload". Waits for the page to load.',
+    'Go to a URL in your current tab (opening your first tab if you have none), or "back", "forward", "reload". Waits for the page to load.',
     { url: z.string(), tabId },
     "navigate",
   );

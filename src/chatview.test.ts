@@ -83,6 +83,19 @@ describe("chat view", () => {
     expect(p.el.classList.contains("chat-on")).toBe(false);
   });
 
+  it("offers Start again instead of a composer when the agent is stopped", async () => {
+    const p = pane();
+    let restarted = 0;
+    p.el.insertAdjacentHTML("beforeend", '<button data-restart hidden></button>');
+    p.el.querySelector("[data-restart]")!.addEventListener("click", () => restarted++);
+    showChat(p, { name: "Ana", state: "stopped" });
+    await flush();
+    expect(p.el.querySelector(".cv")!.classList.contains("stopped")).toBe(true);
+    expect(p.el.querySelector(".cv-empty span")!.textContent).toContain("Stopped");
+    (p.el.querySelector("[data-restart-agent]") as HTMLButtonElement).click();
+    expect(restarted).toBe(1);
+  });
+
   it("hides the composer while an answer card is up", async () => {
     const p = pane();
     showChat(p, { name: "Ana", state: "needs" });

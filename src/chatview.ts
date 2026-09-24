@@ -133,7 +133,7 @@ function dirOf(pane: Pane): string | null {
 
 function draw(v: View, force = false): void {
   const items = v.chat.items;
-  const sig = `${items.length}|${items.filter((i) => i.kind === "step" && i.done).length}|${v.window}|${v.open.size}|${v.expanded.size}|${v.path ? 1 : 0}`;
+  const sig = `${items.length}|${items.filter((i) => i.kind === "step" && i.done).length}|${v.window}|${v.open.size}|${v.expanded.size}|${v.path ? 1 : 0}|${items.length ? "" : v.state.state}`;
   const scroller = v.el.querySelector<HTMLElement>(".cv-scroll")!;
   const thread = v.el.querySelector<HTMLElement>(".cv-thread")!;
   if (sig !== v.sig || force) {
@@ -142,12 +142,13 @@ function draw(v: View, force = false): void {
     const start = Math.max(0, items.length - v.window);
     thread.innerHTML = (start > 0 ? `<button type="button" class="cv-earlier" data-earlier>Show earlier messages</button>` : "") +
       (items.length ? threadHtml(items.slice(start), v.open, v.expanded)
-        : `<div class="cv-empty"><b>${esc(v.state.name)}</b><span>${v.path ? "Nothing said yet." : "Starting… the conversation shows up here as soon as it begins."}</span></div>`);
+        : `<div class="cv-empty"><b>${esc(v.state.name)}</b><span>${v.state.state === "stopped" ? "Stopped. Start it again to give it a job." : v.path ? "Nothing said yet." : "Starting… the conversation shows up here as soon as it begins."}</span></div>`);
     if (nearBottom || force) scroller.scrollTop = scroller.scrollHeight;
   }
   const working = v.state.state === "working";
   v.el.classList.toggle("working", working);
   v.el.classList.toggle("asking", v.state.state === "needs");
+  v.el.classList.toggle("stopped", v.state.state === "stopped");
   const wl = v.el.querySelector<HTMLElement>(".cv-working");
   if (wl) wl.hidden = !working;
 }
@@ -189,6 +190,7 @@ function mount(pane: Pane): View {
     <div class="cv-scroll"><div class="cv-thread" role="log" aria-live="polite"></div></div>
     <div class="cv-foot">
       <p class="cv-working" hidden><span class="cv-dots" aria-hidden="true"><i></i><i></i><i></i></span>Working</p>
+      <p class="cv-stopped">Stopped <button type="button" class="cv-restart" data-restart-agent>Start again</button></p>
       <form class="cv-compose">
         <label class="ia-sr" for="cv-in-${pane.id}">Message ${esc(pane.spec.name)}</label>
         <textarea id="cv-in-${pane.id}" rows="1" placeholder="Message ${esc(pane.spec.name)}…"></textarea>
@@ -222,6 +224,8 @@ function mount(pane: Pane): View {
   el.querySelector("form")!.addEventListener("submit", (e) => { e.preventDefault(); send(); });
   el.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
+    // The pane's own restart button knows how to start this agent again.
+    if (t.closest("[data-restart-agent]")) { pane.el.querySelector<HTMLElement>("[data-restart]")?.click(); return; }
     if (t.closest("[data-stop]")) { void sendInput(pane.id, "\x1b"); return; }
     if (t.closest("[data-earlier]")) { v.window += WINDOW; draw(v, false); return; }
     const more = t.closest<HTMLElement>("[data-expand]");

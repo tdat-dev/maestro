@@ -88,6 +88,7 @@ pub fn run() {
             commands::record_stop,
             commands::record_read,
             commands::claude_usage,
+            commands::claude_transcript,
             worktree::git_repo_root,
             worktree::worktree_add,
             worktree::worktree_remove,

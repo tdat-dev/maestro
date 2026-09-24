@@ -18,6 +18,7 @@ export interface AgentSpec {
   branch?: string; // the agent's git branch (isolated agents)
   title?: string; // what it was asked to do, short ("Fix the flaky upload test")
   race?: { id: string; n: number; of: number }; // one of several agents given the same job
+  sessionId?: string; // Claude Code session of the current run, so the chat view finds its transcript
 }
 
 /** One agent pane: its DOM, its terminal, and live status bookkeeping. */

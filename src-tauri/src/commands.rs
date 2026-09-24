@@ -296,6 +296,100 @@ fn claude_usage_impl(dir: &str) -> Vec<ModelUsage> {
     out
 }
 
+/// New lines of one Claude Code transcript, for the chat view.
+#[derive(Serialize, Default, Clone)]
+pub struct TranscriptChunk {
+    /// The file read, or "" when none was found yet.
+    pub path: String,
+    /// Complete JSONL lines from `offset` on (a half-written last line waits).
+    pub text: String,
+    /// Where to read from next time.
+    pub next: u64,
+}
+
+/// Most bytes one read hands back, so a long session loads in slices.
+const TRANSCRIPT_SLICE: u64 = 2 * 1024 * 1024;
+
+/// Read an agent's transcript under `~/.claude/projects/<slug of dir>/`: the
+/// `<session_id>.jsonl` Maestro started it with, or, when that is unknown, the
+/// newest transcript written since `since_ms` (an agent started by hand).
+/// Returns the complete lines after `offset`.
+#[tauri::command]
+pub async fn claude_transcript(
+    dir: String,
+    session_id: Option<String>,
+    since_ms: Option<u64>,
+    offset: u64,
+) -> Result<TranscriptChunk, CommandError> {
+    run_blocking(move || Ok(claude_transcript_impl(&dir, session_id.as_deref(), since_ms, offset))).await
+}
+
+fn claude_transcript_impl(dir: &str, session_id: Option<&str>, since_ms: Option<u64>, offset: u64) -> TranscriptChunk {
+    use std::io::{Read, Seek, SeekFrom};
+    let home = match std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
+        Ok(h) => h,
+        Err(_) => return TranscriptChunk::default(),
+    };
+    let proj = Path::new(&home).join(".claude").join("projects").join(claude_project_slug(dir));
+    let path = match session_id {
+        // A session id is a UUID; anything else never reaches the filesystem.
+        Some(id) if !id.is_empty() && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') => {
+            proj.join(format!("{id}.jsonl"))
+        }
+        _ => {
+            let since = since_ms.unwrap_or(0);
+            let Ok(entries) = std::fs::read_dir(&proj) else {
+                return TranscriptChunk::default();
+            };
+            let mut best: Option<(u128, std::path::PathBuf)> = None;
+            for ent in entries.flatten() {
+                let p = ent.path();
+                if p.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                    continue;
+                }
+                let Ok(meta) = ent.metadata() else { continue };
+                let Ok(modified) = meta.modified() else { continue };
+                let ms = modified
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis())
+                    .unwrap_or(0);
+                if ms < since as u128 {
+                    continue;
+                }
+                if best.as_ref().map_or(true, |(b, _)| ms > *b) {
+                    best = Some((ms, p));
+                }
+            }
+            match best {
+                Some((_, p)) => p,
+                None => return TranscriptChunk::default(),
+            }
+        }
+    };
+    let Ok(mut file) = std::fs::File::open(&path) else {
+        return TranscriptChunk { path: String::new(), text: String::new(), next: offset };
+    };
+    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+    // The file was replaced or cut: start over.
+    let start = if offset > size { 0 } else { offset };
+    let want = (size - start).min(TRANSCRIPT_SLICE);
+    let mut buf = vec![0u8; want as usize];
+    if file.seek(SeekFrom::Start(start)).is_err() || file.read_exact(&mut buf).is_err() {
+        return TranscriptChunk { path: path.to_string_lossy().into_owned(), text: String::new(), next: start };
+    }
+    // Hand back whole lines only; the rest is read next time.
+    let cut = match buf.iter().rposition(|&b| b == b'\n') {
+        Some(i) => i + 1,
+        None => 0,
+    };
+    buf.truncate(cut);
+    TranscriptChunk {
+        path: path.to_string_lossy().into_owned(),
+        text: String::from_utf8_lossy(&buf).into_owned(),
+        next: start + cut as u64,
+    }
+}
+
 /// Show or hide the system-tray icon. Driven by the frontend "Hide to tray"
 /// setting so the icon only appears for users who opt in.
 #[tauri::command]

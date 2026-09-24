@@ -89,6 +89,18 @@ export function sendMessage(agentId: string, text: string, submit = true): Promi
   });
 }
 
+/** New complete lines of a Claude Code transcript from `offset`: the agent's
+ *  own session when `sessionId` is known, else the newest one written since
+ *  `sinceMs` in that folder. `path` is "" until a transcript exists. */
+export async function claudeTranscript(
+  dir: string,
+  sessionId: string | null,
+  sinceMs: number | null,
+  offset: number,
+): Promise<{ path: string; text: string; next: number }> {
+  return invoke("claude_transcript", { dir, sessionId, sinceMs, offset });
+}
+
 export async function resizePty(agentId: string, cols: number, rows: number): Promise<void> {
   await invoke("pty_resize", { agentId, cols, rows });
 }

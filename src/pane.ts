@@ -324,8 +324,10 @@ export function createAgent(
       // tools + server instructions. New array — never mutate spec.args, or a
       // restart would append the flag again and again.
       const laws = spec.role === "conductor" ? DIRECTOR_LAWS : MAESTRO_LAWS;
+      const own = spec.badge === "claude" ? claudeSessionArgs(spec) : [];
+      if (own.length) saveSession(); // the chat view finds this run's transcript after a restart too
       const args =
-        spec.badge === "claude" ? [...spec.args, "--append-system-prompt", laws] : spec.args;
+        spec.badge === "claude" ? [...spec.args, ...own, "--append-system-prompt", laws] : spec.args;
       // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows
       // can actually launch them — see launchSpec.
       const launch = launchSpec(spec.program, args);
@@ -357,6 +359,15 @@ export function createAgent(
       term.write(enc.encode(`\r\n\x1b[31m[spawn failed: ${onErrMsg(e)}]\x1b[0m\r\n`));
     }
   };
+}
+
+/** A fresh Claude session id for this run (`--session-id`), remembered on the
+ *  spec; none when the preset already picks or resumes a session itself. */
+export function claudeSessionArgs(spec: AgentSpec): string[] {
+  const picks = spec.args.some((a) => /^(--session-id|--resume|--continue|-r|-c)(=|$)/.test(a));
+  if (picks) { delete spec.sessionId; return []; }
+  spec.sessionId = crypto.randomUUID();
+  return ["--session-id", spec.sessionId];
 }
 
 export async function removeAgent(ws: Workspace, id: string) {

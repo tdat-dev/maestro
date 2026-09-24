@@ -127,8 +127,9 @@ interface View {
 
 const views = new Map<string, View>();
 
+/** The folder this agent's CLI was started in; pane.ts writes it at boot. */
 function dirOf(pane: Pane): string | null {
-  return pane.spec.worktree || pane.spec.cwd || null;
+  return pane.spec.ranIn ?? null;
 }
 
 function draw(v: View, force = false): void {

@@ -26,7 +26,15 @@ import { openReplays, REC_DIR_REL } from "./replay";
 import { workspaces, newId } from "./appstate";
 import { taskLine, taskOf } from "./tasks";
 import { getPref } from "./prefs";
-import { basename } from "./workspaces";
+import { basename, runDir } from "./workspaces";
+import { homeDir } from "@tauri-apps/api/path";
+
+let home: Promise<string> | null = null;
+/** The user's home folder, asked once. */
+function homeFolder(): Promise<string> {
+  home ??= homeDir().catch(() => "");
+  return home;
+}
 import { paneLook } from "./background";
 import { MAESTRO_LAWS, DIRECTOR_LAWS } from "./laws";
 import { getZoom, setZoom, paneFont, autoFitRows } from "./zoom";
@@ -317,6 +325,10 @@ export function createAgent(
       } else if (spec.worktree) {
         cwd = spec.worktree;
       }
+      // Start the CLI in a folder Maestro chose and wrote down (never the PTY's
+      // silent default), so the chat view reads the transcript of this run.
+      cwd = runDir({ worktree: spec.worktree, cwd }, await homeFolder());
+      spec.ranIn = cwd;
       // Enforce Maestro's protocol at the system-prompt level so a Claude agent
       // MUST follow it (not a soft MCP hint, not a button). The director gets the
       // dispatch prompt; every other Claude gets the plan-first worker one.

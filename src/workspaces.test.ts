@@ -36,3 +36,14 @@ describe("needsCloseConfirm", () => {
     expect(needsCloseConfirm(3)).toBe(true);
   });
 });
+
+import { runDir } from "./workspaces";
+describe("runDir", () => {
+  it("starts an agent in its worktree, else the project, else home, without a trailing slash", () => {
+    expect(runDir({ worktree: "D:\wt\a", cwd: "D:\app" }, "C:\Users\me")).toBe("D:\wt\a");
+    expect(runDir({ cwd: "D:\app\\" }, "C:\Users\me")).toBe("D:\app");
+    expect(runDir({ cwd: null }, "C:\Users\me\\")).toBe("C:\Users\me");
+    expect(runDir({ cwd: "C:\\" }, "")).toBe("C:\\");
+    expect(runDir({ cwd: "/home/me/" }, "")).toBe("/home/me");
+  });
+});

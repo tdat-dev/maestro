@@ -1,3 +1,12 @@
+/** Where an agent's CLI starts: its worktree, else the project folder, else
+ *  the home folder (a project without a folder). Never left to the PTY's own
+ *  default, so Maestro always knows it; trailing separators dropped so the
+ *  path reads the way the CLI will report its own cwd. */
+export function runDir(spec: { worktree?: string; cwd: string | null }, home: string): string {
+  const dir = spec.worktree || spec.cwd || home;
+  return dir.replace(/(?<=[^:\\/])[\\/]+$/, "");
+}
+
 /** Last path segment, tolerant of trailing and mixed slashes. */
 export function basename(p: string): string {
   const parts = p.replace(/[/\\]+$/, "").split(/[/\\]/);

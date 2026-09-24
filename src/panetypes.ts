@@ -19,6 +19,7 @@ export interface AgentSpec {
   title?: string; // what it was asked to do, short ("Fix the flaky upload test")
   race?: { id: string; n: number; of: number }; // one of several agents given the same job
   sessionId?: string; // Claude Code session of the current run, so the chat view finds its transcript
+  ranIn?: string; // the folder the CLI was started in: its worktree, the project folder, or home for a project without one
 }
 
 /** One agent pane: its DOM, its terminal, and live status bookkeeping. */

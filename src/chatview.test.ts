@@ -30,7 +30,7 @@ function pane(badge = "claude"): Pane {
   document.body.appendChild(el);
   return {
     id: "p1", el, color: "#f2b27a", running: true, spawnedAt: 1000,
-    spec: { name: "Ana", badge, program: "claude", args: [], cwd: "D:/app", worktree: "D:/wt/p1", color: "", mono: "", sessionId: "11111111-2222-3333-4444-555555555555" },
+    spec: { name: "Ana", badge, program: "claude", args: [], cwd: "D:/app", worktree: "D:/wt/p1", ranIn: "D:/wt/p1", color: "", mono: "", sessionId: "11111111-2222-3333-4444-555555555555" },
     term: { focus: () => {} },
   } as unknown as Pane;
 }

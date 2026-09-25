@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-25
+
+The chat view does what the agent CLIs do, for Codex and opencode too.
+
+### Added
+
+- **Chat for Codex and opencode agents.** Their conversations read like a
+  Claude agent's: what you asked, what they said, each command and edit with
+  its result and diff.
+- **Effort and permissions in the composer.** Beside the model: how hard the
+  agent thinks, and what it may do without asking (Ask first, Accept edits,
+  Plan, Bypass…), changed the way the CLI itself does. A mode that never asks
+  is tinted.
+- **In the background.** The side panel lists the commands an agent left
+  running (a dev server, a build, a watch): running, done, failed or stopped,
+  with their output a click away.
+- **Paste pictures into the chat** with Ctrl+V; click one to see it full size
+  before sending.
+
+### Changed
+
+- **Files changed says what is new.** New files and edited ones are listed
+  apart, newest first; a dot marks what the latest reply changed; click a file
+  to see its diff right there.
+- Small pictures in the conversation grow to a readable size.
+
+### Fixed
+
+- Messages you type in the terminal while an agent is working now show in the
+  chat.
+- Resume a conversation from another project: Maestro starts the agent in that
+  conversation's folder instead of Claude saying it is from a different
+  directory.
+- Maestro accepts the Chrome Web Store build of Maestro for Chrome.
+
 ## [0.6.0] - 2026-09-25
 
 A new face for Maestro, agents you can read like a conversation, and agents

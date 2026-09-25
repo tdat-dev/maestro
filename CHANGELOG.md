@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-25
+
+A new face for Maestro, agents you can read like a conversation, and agents
+that can use your real Chrome while you watch.
+
+### Added
+
+- **Agent Inbox.** The list on the left says who needs you, who is working and
+  who has stopped; the stage shows one agent at a time (Focus) or several side
+  by side (Grid, up to nine). Right-click an agent for its actions; Ctrl+K jumps
+  anywhere; Ctrl+, opens Settings.
+
+- **Chat view.** In Focus, a Claude Code agent reads as a conversation: what you
+  asked, what it said, and each step it took, folded to one line until you open
+  it. Pick the model and the command from its own CLI, resume, start a new
+  conversation, and see the screenshots and images it looked at, full size on a
+  click.
+
+- **Maestro for Chrome.** A Chrome extension (Edge and Brave too) that lets your
+  agents use your real browser, signed in as you. Each agent works in its own
+  tab group, named after it:
+  - its cursor glides and clicks on the page, with its name, and a pill says
+    "Ana is using this tab" with a Stop button;
+  - Maestro shows a live view of the agent's tab, sharp when enlarged, with Stop;
+  - clicks that send, post, pay or delete wait for your OK in Maestro;
+  - on a login page or a CAPTCHA the agent stops and lets you handle it;
+  - agents get browser tools through maestro-mcp: open pages, read them, click,
+    type, fill forms, upload files, read the console and network log, answer
+    dialogs, record a GIF, resize the window.
+
+  Settings → Browser lists every Chrome, Edge and Brave profile on the computer
+  and walks you through adding the extension to one.
+
+### Changed
+
+- **One Cinema look** under every surface: dialogs, menus, tips, toasts, the
+  file tree and the tool panels. The app's own menus and drop-downs replace the
+  Windows ones.
+- The Maestro M logo and its launch animation are back.
+
+### Fixed
+
+- Enter on Cancel no longer confirms a dialog, and every dialog keeps the
+  keyboard until it closes.
+- Agents start in a folder Maestro picks and records, so Resume finds their
+  conversation again; a project whose folder is gone no longer runs agents
+  somewhere else.
+- The Grid header no longer jumps when you switch to it.
+
 ## [0.5.9] - 2026-09-05
 
 The command bar turned into a place you can actually read the conversation, and

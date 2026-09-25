@@ -51,6 +51,26 @@ describe("chat model", () => {
     expect(chat.items[3]).toMatchObject({ kind: "user", images: 1 });
   });
 
+  it("shows what you typed while the agent was working (a queued message), once", () => {
+    const queued = (prompt: unknown, source_uuid: string, origin = "human") =>
+      line({ type: "attachment", attachment: { type: "queued_command", prompt, source_uuid, commandMode: "prompt", origin: { kind: origin }, humanTurn: origin === "human" } });
+    const pic = { type: "image", source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" } };
+    const chat = createChat();
+    chat.feed([
+      human("start"),
+      assistant([{ type: "tool_use", id: "t1", name: "Bash", input: { command: "sleep 9" } }]),
+      queued("don't take the mouse", "q1"),
+      queued([{ type: "text", text: "why so small?" }, pic], "q2"),
+      queued("<task-notification>done</task-notification>", "q3", "task-notification"),
+      result("t1", "ok"),
+      // the same message coming back as a plain user line is not shown twice
+      line({ type: "user", uuid: "q1", origin: { kind: "human" }, message: { role: "user", content: "don't take the mouse" } }),
+    ].join("\n"));
+    const users = chat.items.filter((i) => i.kind === "user");
+    expect(users.map((u) => ("text" in u ? u.text : ""))).toEqual(["start", "don't take the mouse", "why so small?"]);
+    expect(users[2]).toMatchObject({ images: 1, pics: [{ media: "image/png" }] });
+  });
+
   it("marks failed steps and fills results that arrive in a later chunk", () => {
     const chat = createChat();
     chat.feed(assistant([{ type: "tool_use", id: "x", name: "Bash", input: { command: "exit 1" } }]));

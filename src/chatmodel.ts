@@ -251,10 +251,12 @@ export function createChat(): Chat {
   const meta: ChatMeta = { model: null, context: 0, output: 0, started: null, files: [], todos: null };
   const files = new Map<string, FileChange>();
   const counted = new Set<string>(); // message ids whose usage is already summed
+  const queuedIds = new Set<string>(); // messages already shown from the queue
   let n = 0;
   const id = () => `c${n++}`;
 
   function onUser(v: Input, at: number): void {
+    if (queuedIds.has(str(v.uuid))) return; // already shown when it was queued
     const msg = (v.message ?? {}) as Input;
     const content = msg.content;
     if (typeof content === "string") {
@@ -306,6 +308,30 @@ export function createChat(): Chat {
     items.push({ kind: "user", id: id(), text, images, ...(pics.length ? { pics } : {}), at });
   }
 
+  /** A message you typed while the agent was working: the CLI queues it and
+   *  hands it over mid-turn as an attachment, not as a user line. */
+  function onQueued(v: Input, at: number): void {
+    const a = (v.attachment ?? {}) as Input;
+    if (a.type !== "queued_command" || (a.commandMode !== undefined && a.commandMode !== "prompt")) return;
+    const origin = (a.origin ?? null) as Input | null;
+    if (origin ? origin.kind !== "human" : a.humanTurn !== true) return;
+    const source = str(a.source_uuid);
+    if (source) {
+      if (queuedIds.has(source)) return;
+      queuedIds.add(source);
+    }
+    const when = Date.parse(str(a.timestamp)) || at;
+    if (typeof a.prompt === "string") { userText(a.prompt, 0, { origin: { kind: "human" } }, when); return; }
+    if (!Array.isArray(a.prompt)) return;
+    let text = "";
+    let images = 0;
+    for (const part of a.prompt as Input[]) {
+      if (part.type === "text") text += (text ? "\n" : "") + str(part.text);
+      else if (part.type === "image") images++;
+    }
+    if (text || images) userText(text, images, { origin: { kind: "human" } }, when, imagesOf(a.prompt));
+  }
+
   function onAssistant(v: Input, at: number): void {
     const msg = (v.message ?? {}) as Input;
     const content = msg.content;
@@ -354,6 +380,7 @@ export function createChat(): Chat {
         if (at && meta.started === null && (v.type === "user" || v.type === "assistant")) meta.started = at;
         if (v.type === "user") onUser(v, at);
         else if (v.type === "assistant") onAssistant(v, at);
+        else if (v.type === "attachment") onQueued(v, at);
         else if (v.type === "system" && v.subtype === "compact_boundary") items.push({ kind: "note", id: id(), text: "Conversation compacted", at });
       }
     },

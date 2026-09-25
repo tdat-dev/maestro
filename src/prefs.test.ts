@@ -41,18 +41,25 @@ describe("prefs", () => {
     expect(seen).toEqual([false, true]);
   });
 
-  it("gives agents their own branch only in git projects, and only when asked", async () => {
+  it("runs agents in the project folder; their own branch only in git projects, and only when asked", async () => {
     const ws = (dir: string) => ({ dir, repoRoot: null, isolated: false }) as unknown as Workspace;
+    const byDefault = ws("D:\\repo\\app");
+    await prepareIsolation(byDefault);
+    expect(byDefault.isolated).toBe(false);
+    setPref("worktree", true);
     const repo = ws("D:\\repo\\app");
     await prepareIsolation(repo);
     expect([repo.repoRoot, repo.isolated]).toEqual(["D:\\repo", true]);
     const plain = ws("D:\\notes");
     await prepareIsolation(plain);
     expect(plain.isolated).toBe(false);
-    setPref("worktree", false);
-    const off = ws("D:\\repo\\app");
-    await prepareIsolation(off);
-    expect(off.isolated).toBe(false);
+  });
+
+  it("turns off a worktree each, the old default, once; asking for it again sticks", () => {
+    localStorage.setItem("maestro.prefs", JSON.stringify({ worktree: true, jobDelay: 7 }));
+    expect(getPrefs()).toMatchObject({ worktree: false, jobDelay: 7 });
+    setPref("worktree", true);
+    expect(getPref("worktree")).toBe(true);
   });
 });
 
@@ -74,7 +81,7 @@ describe("Settings rows", () => {
   it("shows the saved values", () => {
     expect($<HTMLSelectElement>("prefDefaultCli").options[0].value).toBe("last");
     expect($<HTMLSelectElement>("prefDefaultCli").querySelector('option[value="powershell"]')).toBeNull();
-    expect($<HTMLInputElement>("prefWorktree").checked).toBe(true);
+    expect($<HTMLInputElement>("prefWorktree").checked).toBe(false);
     expect($<HTMLInputElement>("prefAsk").checked).toBe(true);
     expect($("prefJobDelay").querySelector("[data-n]")!.textContent).toBe("4 s");
     expect($("prefSplitMax").querySelector(".on")!.getAttribute("data-v")).toBe("6");

@@ -41,7 +41,8 @@ export const DEFAULTS: Prefs = {
   defaultCli: "last",
   defaultCount: 1,
   jobDelay: 4,
-  worktree: true,
+  // Agents work in the project folder; a worktree each is opt-in.
+  worktree: false,
   directorFirst: false,
   notifyNeeds: true,
   jumpToNeeds: false,
@@ -72,13 +73,24 @@ function clamp(p: Partial<Prefs>): Prefs {
 /** Split used to stop at 4, the old default, which a saved copy of the prefs
  *  keeps; lift it to the new default once. */
 const SPLIT_LIFTED = "maestro.prefs.split6";
+/** A worktree per agent used to be on by default, which a saved copy keeps;
+ *  agents work in the project folder now, so turn it off once. */
+const IN_PLACE = "maestro.prefs.inplace";
 function lift(raw: Partial<Prefs>): Partial<Prefs> {
   try {
-    if (localStorage.getItem(SPLIT_LIFTED)) return raw;
-    localStorage.setItem(SPLIT_LIFTED, "1");
-    if ((raw.splitMax as number) === 4) {
-      raw = { ...raw, splitMax: DEFAULTS.splitMax };
-      localStorage.setItem(KEY, JSON.stringify(raw));
+    if (!localStorage.getItem(SPLIT_LIFTED)) {
+      localStorage.setItem(SPLIT_LIFTED, "1");
+      if ((raw.splitMax as number) === 4) {
+        raw = { ...raw, splitMax: DEFAULTS.splitMax };
+        localStorage.setItem(KEY, JSON.stringify(raw));
+      }
+    }
+    if (!localStorage.getItem(IN_PLACE)) {
+      localStorage.setItem(IN_PLACE, "1");
+      if (raw.worktree === true) {
+        raw = { ...raw, worktree: false };
+        localStorage.setItem(KEY, JSON.stringify(raw));
+      }
     }
   } catch { /* storage blocked */ }
   return raw;

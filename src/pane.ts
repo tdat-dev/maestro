@@ -14,6 +14,7 @@ import {
   attachPty,
   openExternal,
   worktreeAdd,
+  worktreeLeave,
   notify,
   recordStart,
   recordStop,
@@ -309,6 +310,19 @@ export function createAgent(
         }
       } else if (spec.worktree) {
         cwd = spec.worktree;
+        // Agents work in the project folder unless a worktree each is on: one
+        // made before leaves it, if it holds no work of its own.
+        if (!getPref("worktree")) {
+          const home = await worktreeLeave(spec.worktree, spec.badge === "claude" ? spec.sessionId ?? null : null).catch(() => null);
+          if (home) {
+            delete spec.worktree;
+            delete spec.branch;
+            cwd = spec.cwd ?? home;
+            const subEl = el.querySelector<HTMLElement>("[data-sub]");
+            if (subEl) subEl.textContent = "";
+            saveSession();
+          }
+        }
       }
       // Start the CLI in a folder Maestro chose and wrote down (never the PTY's
       // silent default), so the chat view reads the transcript of this run.

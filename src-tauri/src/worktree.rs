@@ -122,6 +122,55 @@ fn git(args: &[&str], cwd: &str) -> Result<String, CommandError> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+/// An agent leaves its worktree for the project folder (agents work in place
+/// now). Only when the worktree holds no work of its own: nothing uncommitted,
+/// and no commit its branch has that another branch doesn't. Then the worktree
+/// and its branch go, and its Claude conversation (`session`) is copied to the
+/// project folder so it carries on there. Returns the project folder, or None
+/// when the worktree keeps work and stays.
+#[tauri::command]
+pub async fn worktree_leave(path: String, session: Option<String>) -> Result<Option<String>, CommandError> {
+    run_blocking(move || worktree_leave_impl(&path, session.as_deref())).await
+}
+
+fn worktree_leave_impl(path: &str, session: Option<&str>) -> Result<Option<String>, CommandError> {
+    if !Path::new(path).is_dir() {
+        return Ok(None);
+    }
+    if !git(&["status", "--porcelain"], path)?.is_empty() {
+        return Ok(None);
+    }
+    // The main checkout: the parent of the shared .git folder.
+    let common = git(&["rev-parse", "--path-format=absolute", "--git-common-dir"], path)?;
+    let Some(main) = Path::new(&common).parent().map(|p| p.to_string_lossy().into_owned()) else { return Ok(None) };
+    if Path::new(&main) == Path::new(path) {
+        return Ok(None); // not a linked worktree
+    }
+    let branch = git(&["rev-parse", "--abbrev-ref", "HEAD"], path)?;
+    if branch == "HEAD" {
+        return Ok(None); // detached: nothing to compare against
+    }
+    // With --branches, git matches --exclude against the bare branch name.
+    let own = format!("--exclude={branch}");
+    let ahead = git(&["rev-list", "--count", &branch, "--not", &own, "--branches"], &main)?;
+    if ahead.trim() != "0" {
+        return Ok(None);
+    }
+    if let Some(id) = session.filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_hexdigit() || c == '-')) {
+        if let (Some(from), Some(to)) = (crate::commands::claude_project_dir(path), crate::commands::claude_project_dir(&main)) {
+            let src = from.join(format!("{id}.jsonl"));
+            let dst = to.join(format!("{id}.jsonl"));
+            if src.is_file() && !dst.exists() {
+                let _ = std::fs::create_dir_all(&to);
+                let _ = std::fs::copy(&src, &dst);
+            }
+        }
+    }
+    git(&["worktree", "remove", "--force", path], &main)?;
+    let _ = git(&["branch", "-D", &branch], &main);
+    Ok(Some(main))
+}
+
 // The commands are async wrappers over sync `*_impl` bodies: git spawns block,
 // and sync Tauri commands run on the main thread — three isolated agents
 // booting used to freeze the whole window for the length of 3 full checkouts.
@@ -263,5 +312,38 @@ mod tests {
         worktree_remove_impl(root.clone(), wt.clone(), Some("maestro/test-1".into()))
             .expect("remove");
         assert!(!std::path::Path::new(&wt).exists());
+    }
+
+    #[test]
+    fn an_agent_leaves_a_worktree_only_when_it_holds_no_work() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let root = repo.to_string_lossy().to_string();
+        let add = |name: &str| {
+            let wt = tmp.path().join(name).to_string_lossy().to_string();
+            git(&["worktree", "add", "-q", "-b", &format!("maestro/{name}"), &wt], &root).unwrap();
+            wt
+        };
+        // idle: removed with its branch, and the agent goes to the project folder
+        let idle = add("idle");
+        let home = worktree_leave_impl(&idle, None).unwrap().expect("leaves");
+        assert!(Path::new(&home).join("a.txt").exists());
+        assert!(!Path::new(&idle).exists());
+        assert!(git(&["branch", "--list", "maestro/idle"], &root).unwrap().is_empty());
+        // uncommitted work: stays
+        let dirty = add("dirty");
+        std::fs::write(Path::new(&dirty).join("a.txt"), "changed\n").unwrap();
+        assert_eq!(worktree_leave_impl(&dirty, None).unwrap(), None);
+        assert!(Path::new(&dirty).exists());
+        // a commit no other branch has: stays
+        let ahead = add("ahead");
+        std::fs::write(Path::new(&ahead).join("b.txt"), "new\n").unwrap();
+        git(&["add", "-A"], &ahead).unwrap();
+        git(&["commit", "-qm", "work"], &ahead).unwrap();
+        assert_eq!(worktree_leave_impl(&ahead, None).unwrap(), None);
+        // the project folder itself is not a worktree to leave
+        assert_eq!(worktree_leave_impl(&root, None).unwrap(), None);
     }
 }

@@ -455,7 +455,7 @@ fn claude_transcript_impl(dir: &str, session_id: Option<&str>, since_ms: Option<
 }
 
 /// Where Claude Code keeps the transcripts of sessions run in `dir`.
-fn claude_project_dir(dir: &str) -> Option<std::path::PathBuf> {
+pub(crate) fn claude_project_dir(dir: &str) -> Option<std::path::PathBuf> {
     let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok()?;
     Some(Path::new(&home).join(".claude").join("projects").join(claude_project_slug(dir)))
 }

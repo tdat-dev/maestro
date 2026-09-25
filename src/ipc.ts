@@ -394,6 +394,13 @@ export async function worktreeRemove(
   await invoke("worktree_remove", { repoRoot, path, branch: branch ?? null });
 }
 
+/** An agent leaves its worktree for the project folder, when the worktree holds
+ *  no work of its own (its Claude conversation is carried over). The project
+ *  folder, or null when the worktree keeps work and stays. */
+export async function worktreeLeave(path: string, session: string | null): Promise<string | null> {
+  return invoke<string | null>("worktree_leave", { path, session });
+}
+
 export interface RepoRef { path: string; name: string }
 
 /** Git repos to review under `dir` (the dir itself, or its sub-repos). */

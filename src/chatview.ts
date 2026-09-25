@@ -12,7 +12,7 @@ import { openMenu } from "./ctxmenu";
 import { openPalette, type PaletteItem } from "./inboxpalette";
 import { cliFacts, profileOf, type CliFacts } from "./cliprofile";
 import { STARTERS } from "./starters";
-import { claudeSessions, claudeTranscript, openExternal, sendInput, sendMessage, type ClaudeSession } from "./ipc";
+import { claudeSessions, claudeTranscript, openExternal, savePastedImage, sendInput, sendMessage, type ClaudeSession } from "./ipc";
 import { confirmModal } from "./confirmmodal";
 import type { Pane } from "./panetypes";
 
@@ -190,6 +190,48 @@ function forgetImages(items: ChatItem[]): void {
       urls.delete(p);
     }
   }
+}
+
+/** A picture pasted into the composer: shown at once, saved to a file meanwhile. */
+interface Attachment { url: string; path: Promise<string | null>; failed?: boolean }
+const MAX_ATTACHMENTS = 8;
+const PASTE_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
+
+/** The pictures on a clipboard (a screenshot, a copied image or image file). */
+export function pastedImages(dt: DataTransfer | null): File[] {
+  if (!dt) return [];
+  const out: File[] = [];
+  for (const item of Array.from(dt.items ?? [])) {
+    if (item.kind !== "file" || !PASTE_TYPES[item.type]) continue;
+    const f = item.getAsFile();
+    if (f) out.push(f);
+  }
+  return out;
+}
+
+async function savePasted(f: File): Promise<string> {
+  const bytes = new Uint8Array(await f.arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return savePastedImage(btoa(bin), PASTE_TYPES[f.type] ?? "png");
+}
+
+/** Most a small picture is blown up: past this it is only blur. */
+const MAX_GROW = 3;
+/** The size to show a w×h picture at so a small one fills its box (up to
+ *  MAX_GROW times its size); null when it is big enough already (CSS shrinks
+ *  big ones to fit). */
+export function grownSize(w: number, h: number, boxW: number, boxH: number): { w: number; h: number } | null {
+  if (!(w > 0 && h > 0 && boxW > 0 && boxH > 0)) return null;
+  const s = Math.min(boxW / w, boxH / h, MAX_GROW);
+  return s > 1.05 ? { w: Math.round(w * s), h: Math.round(h * s) } : null;
+}
+/** Thumbnails: one alone gets the big box, several share smaller ones (as the CSS says). */
+function fitShot(img: HTMLImageElement): void {
+  const many = !!img.closest(".cv-shots")?.querySelector(".cv-shot + .cv-shot");
+  const size = grownSize(img.naturalWidth, img.naturalHeight, many ? 220 : 420, many ? 150 : 240);
+  img.style.width = size ? `${size.w}px` : "";
+  img.style.height = size ? `${size.h}px` : "";
 }
 
 /** What a step saw (its screenshots), or what you pasted: thumbnails that open full size. */
@@ -528,6 +570,7 @@ function mount(pane: Pane): View {
       <div class="cv-stopped"><span class="cv-sl">Stopped</span><span class="cv-why" hidden></span><button type="button" class="cv-restart" data-restart-agent>Resume</button><button type="button" class="cv-new" data-new-convo>New conversation</button></div>
       <form class="cv-compose">
         <label class="ia-sr" for="cv-in-${pane.id}">Message ${esc(pane.spec.name)}</label>
+        <div class="cv-atts" hidden></div>
         <textarea id="cv-in-${pane.id}" rows="1" placeholder="Message ${esc(pane.spec.name)}…" title="Enter sends · Shift+Enter starts a new line"></textarea>
         <div class="cv-bar">
           <button type="button" class="cv-chip cv-model" data-model aria-haspopup="menu" title="Change the model" hidden><span class="cv-chip-t">Model</span><svg class="cv-chip-c" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" /></svg></button>
@@ -544,6 +587,11 @@ function mount(pane: Pane): View {
     </div>
     <aside class="cv-side" aria-label="About this conversation"></aside>`;
   host.appendChild(el);
+  // A small picture (a cropped thumbnail) grows to a readable size once its size is known.
+  el.addEventListener("load", (e) => {
+    const t = e.target;
+    if (t instanceof HTMLImageElement && t.parentElement?.classList.contains("cv-shot")) fitShot(t);
+  }, true);
   const v: View = { el, chat: createChat(), offset: 0, path: "", sig: "", window: WINDOW, open: new Set(), expanded: new Set(), timer: null, busy: false, state: { name: pane.spec.name, state: "idle" }, pane, sideSig: "", loaded: false, held: false, said: "" };
   const input = el.querySelector<HTMLTextAreaElement>("textarea")!;
   const grow = () => { input.style.height = "auto"; input.style.height = `${Math.min(input.scrollHeight, 200)}px`; };
@@ -556,9 +604,55 @@ function mount(pane: Pane): View {
   const restartWith = async (opts: { fresh?: boolean; session?: string }, what: string) => {
     if (await okToSwitch(what)) void pane.restart?.(opts);
   };
+  /** Pictures pasted into the composer, waiting to go with the next message. */
+  const atts: Attachment[] = [];
+  const attsEl = el.querySelector<HTMLElement>(".cv-atts")!;
+  const drawAtts = () => {
+    attsEl.hidden = !atts.length;
+    attsEl.innerHTML = atts.map((a, k) => `<span class="cv-att${a.failed ? " failed" : ""}"><img src="${a.url}" alt="Pasted picture ${k + 1}"><button type="button" class="cv-att-x" data-att-x="${k}" aria-label="Remove pasted picture ${k + 1}" title="Remove">${ICON_CLOSE}</button></span>`).join("");
+  };
+  const dropAtt = (k: number) => {
+    const [a] = atts.splice(k, 1);
+    if (a) URL.revokeObjectURL(a.url);
+    drawAtts();
+  };
+  input.addEventListener("paste", (e) => {
+    const files = pastedImages(e.clipboardData);
+    if (!files.length) return;
+    e.preventDefault();
+    const text = e.clipboardData?.getData("text/plain") ?? "";
+    if (text) { input.setRangeText(text, input.selectionStart, input.selectionEnd, "end"); grow(); }
+    for (const f of files.slice(0, MAX_ATTACHMENTS - atts.length)) {
+      const a: Attachment = { url: URL.createObjectURL(f), path: Promise.resolve(null) };
+      a.path = savePasted(f).catch(() => { a.failed = true; drawAtts(); return null; });
+      atts.push(a);
+    }
+    drawAtts();
+  });
   const send = () => {
     const text = input.value.trim();
-    if (!text) return;
+    if (!text && !atts.length) return;
+    if (atts.length) {
+      const sending = atts.splice(0);
+      drawAtts();
+      input.value = "";
+      grow();
+      void (async () => {
+        const paths = (await Promise.all(sending.map((a) => a.path))).filter((p): p is string => !!p);
+        sending.forEach((a) => URL.revokeObjectURL(a.url));
+        // Each picture goes in as its own path, the way a dropped file does, so
+        // the CLI attaches it; the words follow and send it all.
+        paths.forEach((p, k) => {
+          const last = k === paths.length - 1 && !text;
+          void sendMessage(pane.id, p, last);
+          if (!last) void sendMessage(pane.id, " ", false);
+        });
+        if (text) void sendMessage(pane.id, text);
+      })();
+      const scroller = el.querySelector<HTMLElement>(".cv-scroll")!;
+      scroller.scrollTop = scroller.scrollHeight;
+      return;
+    }
     const own = chatCommand(text);
     if (own) {
       input.value = "";
@@ -646,6 +740,8 @@ function mount(pane: Pane): View {
     const resumeOne = t.closest<HTMLElement>("[data-resume]");
     if (resumeOne) { void restartWith({ session: resumeOne.dataset.resume }, "switch conversations"); return; }
     if (t.closest("[data-resume-pick]")) { void pickConversation(""); return; }
+    const attX = t.closest<HTMLElement>("[data-att-x]");
+    if (attX) { dropAtt(Number(attX.dataset.attX)); input.focus(); return; }
     const shot = t.closest<HTMLElement>("[data-shot]");
     if (shot) {
       const owner = v.chat.items.find((i) => i.id === shot.dataset.shot);
@@ -777,6 +873,12 @@ export function openImage(pics: ChatImage[], start: number, what: string): void 
   document.body.appendChild(el);
   const img = el.querySelector<HTMLImageElement>(".cv-lb-img")!;
   const count = el.querySelector<HTMLElement>(".cv-lb-n")!;
+  // Full size means at least filling the screen's box, not a 160-pixel crop in the middle.
+  img.addEventListener("load", () => {
+    const size = grownSize(img.naturalWidth, img.naturalHeight, window.innerWidth - 112, window.innerHeight - 120);
+    img.style.width = size ? `${size.w}px` : "";
+    img.style.height = size ? `${size.h}px` : "";
+  });
   const show = () => {
     img.src = urlOf(pics[k]);
     img.alt = `${what}, picture ${k + 1} of ${pics.length}`;

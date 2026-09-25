@@ -102,6 +102,11 @@ export async function claudeTranscript(
   return invoke("claude_transcript", { dir, sessionId, sinceMs, offset });
 }
 
+/** Save a picture pasted into a chat (base64, no data: prefix) as a file; its path. */
+export async function savePastedImage(data: string, ext: string): Promise<string> {
+  return invoke<string>("save_pasted_image", { data, ext });
+}
+
 /** Whether `claude --resume <sessionId>` can pick this session up in `dir`. */
 export async function claudeSessionExists(dir: string, sessionId: string): Promise<boolean> {
   return invoke<boolean>("claude_session_exists", { dir, sessionId });

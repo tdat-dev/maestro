@@ -322,6 +322,55 @@ pub struct TranscriptChunk {
     pub next: u64,
 }
 
+/// Where pictures pasted into the chat composer are kept, and for how long.
+const PASTE_DIR: &str = "maestro-paste";
+const PASTE_KEEP_SECS: u64 = 7 * 24 * 3600;
+
+/// Save a picture pasted into the chat composer (base64) as a file, so it can
+/// reach the agent the way a dropped file does: as a path. Returns the path.
+#[tauri::command]
+pub async fn save_pasted_image(data: String, ext: String) -> Result<String, CommandError> {
+    run_blocking(move || save_pasted_image_in(&std::env::temp_dir().join(PASTE_DIR), &data, &ext)).await
+}
+
+fn save_pasted_image_in(dir: &Path, data: &str, ext: &str) -> Result<String, CommandError> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let ext = ext.trim_start_matches('.').to_ascii_lowercase();
+    if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp") {
+        return Err(CommandError::Failed(format!("not a picture type: {ext}")));
+    }
+    let bytes = STANDARD
+        .decode(data.trim())
+        .map_err(|e| CommandError::Failed(format!("bad picture data: {e}")))?;
+    std::fs::create_dir_all(dir).map_err(|e| CommandError::Failed(e.to_string()))?;
+    // Pastes from earlier sessions go after a week.
+    if let Ok(list) = std::fs::read_dir(dir) {
+        for entry in list.flatten() {
+            let old = entry
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.elapsed().ok())
+                .is_some_and(|age| age.as_secs() > PASTE_KEEP_SECS);
+            if old {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let mut path = dir.join(format!("pasted-{stamp}.{ext}"));
+    let mut n = 1;
+    while path.exists() {
+        path = dir.join(format!("pasted-{stamp}-{n}.{ext}"));
+        n += 1;
+    }
+    std::fs::write(&path, bytes).map_err(|e| CommandError::Failed(e.to_string()))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
 /// Most bytes one read hands back, so a long session loads in slices.
 const TRANSCRIPT_SLICE: u64 = 2 * 1024 * 1024;
 
@@ -746,5 +795,29 @@ mod tests {
             "C:\\Windows\\System32\\no-such-binary.exe",
             &default_exts()
         ));
+    }
+}
+
+#[cfg(test)]
+mod paste_tests {
+    use super::*;
+
+    #[test]
+    fn a_pasted_picture_is_saved_as_its_own_file() {
+        let dir = std::env::temp_dir().join(format!("maestro-paste-test-{}", std::process::id()));
+        let a = save_pasted_image_in(&dir, "iVBORw0KGgo=", "PNG").unwrap();
+        let b = save_pasted_image_in(&dir, "iVBORw0KGgo=", ".png").unwrap();
+        assert_ne!(a, b);
+        assert!(a.ends_with(".png"));
+        assert_eq!(std::fs::read(&a).unwrap(), b"\x89PNG\r\n\x1a\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_pictures_and_real_base64_are_saved() {
+        let dir = std::env::temp_dir().join(format!("maestro-paste-test2-{}", std::process::id()));
+        assert!(save_pasted_image_in(&dir, "iVBORw0KGgo=", "exe").is_err());
+        assert!(save_pasted_image_in(&dir, "not base64!", "png").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

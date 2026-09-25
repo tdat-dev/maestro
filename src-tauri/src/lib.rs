@@ -92,6 +92,7 @@ pub fn run() {
             commands::record_read,
             commands::claude_usage,
             commands::claude_transcript,
+            commands::save_pasted_image,
             commands::run_capture,
             commands::claude_session_exists,
             commands::claude_sessions,

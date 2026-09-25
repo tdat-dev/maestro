@@ -151,6 +151,22 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
   color: var(--ib-ink); font: 14.5px/1.5 var(--sans);
 }
 .cv-compose textarea::placeholder { color: var(--ib-ink-3); }
+/* pictures pasted into the composer, going with the next message */
+.cv-atts { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px 0; }
+.cv-atts[hidden] { display: none; }
+.cv-att { position: relative; width: 64px; height: 64px; border-radius: 10px; overflow: hidden; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
+.cv-att img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cv-att.failed { box-shadow: inset 0 0 0 1.5px var(--ib-del); }
+.cv-att.failed img { opacity: 0.4; }
+.cv-att-x {
+  position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%;
+  display: grid; place-items: center; color: #fff; background: rgba(0, 0, 0, 0.72);
+  opacity: 0; transition: opacity 0.12s;
+}
+.cv-att-x svg { width: 11px; height: 11px; }
+.cv-att:hover .cv-att-x, .cv-att-x:focus-visible { opacity: 1; }
+.cv-att-x:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+@media (hover: none) { .cv-att-x { opacity: 1; } }
 .cv-bar { display: flex; align-items: center; gap: 8px; padding: 4px 8px 8px 12px; }
 .cv-sp { flex: 1; }
 

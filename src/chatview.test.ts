@@ -9,6 +9,7 @@ const io = vi.hoisted(() => ({
   captured: [] as Array<{ program: string; args: string[]; cwd: string | null }>,
   sessions: [] as Array<{ id: string; modified_ms: number; title: string; messages: number }>,
   opened: [] as string[],
+  saved: [] as Array<{ data: string; ext: string }>,
   confirms: [] as string[],
   confirmOk: true,
 }));
@@ -25,6 +26,7 @@ vi.mock("./ipc", () => ({
   sendInput: async (id: string, data: string) => { io.keys.push([id, data]); },
   claudeSessions: async () => io.sessions,
   openExternal: async (url: string) => { io.opened.push(url); },
+  savePastedImage: async (data: string, ext: string) => { io.saved.push({ data, ext }); return `C:/tmp/pasted-${io.saved.length}.${ext}`; },
   // Claude Code's own list, as its init event gives it.
   runCapture: async (program: string, args: string[], cwd: string | null) => {
     io.captured.push({ program, args, cwd });
@@ -33,7 +35,7 @@ vi.mock("./ipc", () => ({
   },
 }));
 
-import { ago, chatCommand, chatSupported, dropChat, hideChat, modelAlias, modelName, showChat, took, tokens, whereIn } from "./chatview";
+import { ago, chatCommand, chatSupported, dropChat, grownSize, hideChat, modelAlias, modelName, showChat, took, tokens, whereIn } from "./chatview";
 import type { Pane } from "./panetypes";
 
 const T = "2026-09-24T10:00:00.000Z";
@@ -54,7 +56,7 @@ function pane(badge = "claude"): Pane {
 const flush = async () => { for (let k = 0; k < 6; k++) await new Promise((r) => setTimeout(r, 0)); };
 
 describe("chat view", () => {
-  beforeEach(() => { io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; io.opened = []; io.confirms = []; io.confirmOk = true; });
+  beforeEach(() => { io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; io.opened = []; io.saved = []; io.confirms = []; io.confirmOk = true; });
   afterEach(() => { dropChat("p1"); document.body.innerHTML = ""; });
 
   it("is for Claude Code agents", () => {
@@ -363,5 +365,64 @@ it("places a changed file inside the agent's folder, or says it is outside", () 
     expect(whereIn("D:\\wt\\a\\src\\auth\\login.ts", "D:\\wt\\a")).toBe("src/auth");
     expect(whereIn("D:\\wt\\a\\README.md", "D:/wt/a/")).toBe("project root");
     expect(whereIn("C:\\Temp\\notes\\x.js", "D:\\wt\\a")).toBe("outside the project · notes");
+  });
+  it("takes a pasted picture: shows it, lets you drop it, sends it as a file with your words", async () => {
+    dropChat("p1"); document.body.innerHTML = ""; io.sent = []; io.saved = [];
+    if (!URL.createObjectURL) (URL as unknown as { createObjectURL: () => string }).createObjectURL = () => "blob:x";
+    if (!URL.revokeObjectURL) (URL as unknown as { revokeObjectURL: () => void }).revokeObjectURL = () => {};
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const input = p.el.querySelector<HTMLTextAreaElement>(".cv textarea")!;
+    const paste = (n: number) => {
+      const e = new Event("paste", { bubbles: true, cancelable: true });
+      const files = Array.from({ length: n }, (_, k) => new File([new Uint8Array([137, 80, 78, 71, k])], `s${k}.png`, { type: "image/png" }));
+      Object.defineProperty(e, "clipboardData", { value: { items: files.map((f) => ({ kind: "file", type: f.type, getAsFile: () => f })), getData: () => "" } });
+      input.dispatchEvent(e);
+      return e;
+    };
+    expect(paste(2).defaultPrevented).toBe(true);
+    await flush();
+    const atts = p.el.querySelector<HTMLElement>(".cv-atts")!;
+    expect(atts.hidden).toBe(false);
+    expect(atts.querySelectorAll(".cv-att").length).toBe(2);
+    expect(io.saved.map((s) => [s.ext, s.data])).toEqual([["png", "iVBORwA="], ["png", "iVBORwE="]]);
+    atts.querySelector<HTMLElement>("[data-att-x='0']")!.click();
+    expect(atts.querySelectorAll(".cv-att").length).toBe(1);
+    input.value = "why so small?";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+    expect(io.sent.map(([, t]) => t)).toEqual(["C:/tmp/pasted-2.png", " ", "why so small?"]);
+    expect(atts.hidden).toBe(true);
+    expect(input.value).toBe("");
+  });
+
+  it("a picture alone is sent by itself; text on the clipboard still pastes as text", async () => {
+    dropChat("p1"); document.body.innerHTML = ""; io.sent = []; io.saved = [];
+    if (!URL.createObjectURL) (URL as unknown as { createObjectURL: () => string }).createObjectURL = () => "blob:x";
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const input = p.el.querySelector<HTMLTextAreaElement>(".cv textarea")!;
+    const plain = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(plain, "clipboardData", { value: { items: [{ kind: "string", type: "text/plain", getAsFile: () => null }], getData: () => "hi" } });
+    input.dispatchEvent(plain);
+    expect(plain.defaultPrevented).toBe(false);
+    const e = new Event("paste", { bubbles: true, cancelable: true });
+    const f = new File([new Uint8Array([1])], "a.jpg", { type: "image/jpeg" });
+    Object.defineProperty(e, "clipboardData", { value: { items: [{ kind: "file", type: "image/jpeg", getAsFile: () => f }], getData: () => "" } });
+    input.dispatchEvent(e);
+    await flush();
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+    expect(io.sent.map(([, t]) => t)).toEqual(["C:/tmp/pasted-1.jpg"]);
+  });
+
+  it("grows a small picture to fill its box, never past 3×, and leaves big ones alone", () => {
+    expect(grownSize(161, 100, 420, 240)).toEqual({ w: 386, h: 240 });
+    expect(grownSize(40, 40, 420, 240)).toEqual({ w: 120, h: 120 });
+    expect(grownSize(1280, 800, 420, 240)).toBeNull();
+    expect(grownSize(410, 230, 420, 240)).toBeNull();
+    expect(grownSize(0, 0, 420, 240)).toBeNull();
   });
 });

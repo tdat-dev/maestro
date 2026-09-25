@@ -6,13 +6,13 @@
 
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import { createChat, turnsOf, type Chat, type ChatImage, type ChatItem, type StepItem } from "./chatmodel";
+import { createChat, turnsOf, type BgTask, type Chat, type ChatImage, type ChatItem, type FileChange, type StepItem } from "./chatmodel";
 import { ICON_CLOSE } from "./icons";
 import { openMenu } from "./ctxmenu";
 import { openPalette, type PaletteItem } from "./inboxpalette";
-import { cliFacts, profileOf, type CliFacts } from "./cliprofile";
+import { cliFacts, profileOf, type CliChoice, type CliFacts } from "./cliprofile";
 import { STARTERS } from "./starters";
-import { claudeSessions, claudeTranscript, openExternal, savePastedImage, sendInput, sendMessage, type ClaudeSession } from "./ipc";
+import { claudeSessions, claudeTranscript, fsReadFile, openExternal, savePastedImage, sendInput, sendMessage, type ClaudeSession } from "./ipc";
 import { confirmModal } from "./confirmmodal";
 import type { Pane } from "./panetypes";
 
@@ -356,6 +356,10 @@ interface View {
   said: string;
   /** Undo what mount hooked onto the document. */
   off?: () => void;
+  /** A setting you just changed, shown until the CLI confirms it. */
+  pending: Partial<Record<"effort" | "permission", { id: string; at: number }>>;
+  /** Files opened in the side panel to show their diff. */
+  openFiles: Set<string>;
 }
 
 const views = new Map<string, View>();
@@ -363,6 +367,53 @@ const views = new Map<string, View>();
 /** The folder this agent's CLI was started in; pane.ts writes it at boot. */
 function dirOf(pane: Pane): string | null {
   return pane.spec.ranIn ?? null;
+}
+
+const MAX_TASKS = 6;
+const TASK_WORD: Record<BgTask["state"], string> = { running: "Running", done: "Done", failed: "Failed", stopped: "Stopped" };
+/** Most diff lines a file shows in the side panel; the Changes view has the rest. */
+const MAX_FILE_DIFF = 240;
+
+/** A file's changes in this conversation, from the steps that made them. */
+function fileDiff(f: FileChange, byId: Map<string, ChatItem>): string {
+  const lines: string[] = [];
+  f.steps.forEach((sid, k) => {
+    const st = byId.get(sid);
+    if (!st || st.kind !== "step" || !st.diff?.length) return;
+    if (k && lines.length) lines.push(`<span class="gap">⋯</span>`);
+    for (const l of st.diff) lines.push(`<span class="${l.sign === "+" ? "a" : l.sign === "-" ? "d" : ""}">${esc(l.sign)} ${esc(l.text)}</span>`);
+  });
+  if (!lines.length) return `<p class="cs-none cs-diffnone">No diff for this one here; Review all changes shows it.</p>`;
+  const more = lines.length - MAX_FILE_DIFF;
+  return `<pre class="cv-diff cs-diff">${lines.slice(0, MAX_FILE_DIFF).join("")}</pre>${more > 0 ? `<p class="cs-none">${more} more lines in Review all changes</p>` : ""}`;
+}
+
+/** The end of a background command's output, over everything. */
+async function openTaskOutput(label: string, file: string): Promise<void> {
+  const cut = Math.max(file.lastIndexOf("/"), file.lastIndexOf("\\"));
+  let text = "";
+  try {
+    text = (await fsReadFile(file.slice(0, cut), file.slice(cut + 1))).content;
+  } catch {
+    text = "Its output file is gone (background output is kept only while the session lasts).";
+  }
+  const lines = text.split(/\r?\n/);
+  const tailText = lines.slice(-400).join("\n").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
+  document.querySelector(".cv-lb")?.remove();
+  const back = document.activeElement as HTMLElement | null;
+  const el = document.createElement("div");
+  el.className = "inbox-modal-back cv-lb";
+  el.innerHTML = `<div class="cv-lb-box cv-out-box" role="dialog" aria-modal="true" aria-label="${esc(label)} output">
+      <header class="cv-lb-bar"><span class="cv-lb-t">${esc(label)}</span><span class="cv-lb-n">${lines.length > 400 ? "last 400 lines" : ""}</span>
+        <button type="button" class="im-x" data-lb-close aria-label="Close" title="Close (Esc)">${ICON_CLOSE}</button></header>
+      <pre class="cv-out cv-out-full">${esc(tailText) || "No output yet."}</pre></div>`;
+  document.body.appendChild(el);
+  const close = () => { el.remove(); if (back?.isConnected) back.focus(); };
+  el.addEventListener("click", (e) => { const t = e.target as HTMLElement; if (t === el || t.closest("[data-lb-close]")) close(); });
+  el.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } e.stopPropagation(); });
+  const pre = el.querySelector<HTMLElement>(".cv-out-full")!;
+  pre.scrollTop = pre.scrollHeight;
+  el.querySelector<HTMLElement>("[data-lb-close]")!.focus();
 }
 
 /** The panel beside the conversation: the plan, the files it changed, and
@@ -377,12 +428,33 @@ function sideHtml(v: View): string {
       <div class="cs-bar" aria-hidden="true"><i style="width:${Math.round((done / m.todos.length) * 100)}%"></i></div>
       <ul class="cv-todos cs-todos">${m.todos.map((t) => `<li class="${t.state}"><i aria-hidden="true"></i>${esc(t.text)}</li>`).join("")}</ul></section>`;
   }
+  if (m.tasks.length) {
+    // A stopped agent's background commands stopped with it.
+    const stateOf = (t: BgTask) => (t.state === "running" && !v.pane.running ? "stopped" : t.state);
+    const running = m.tasks.filter((t) => stateOf(t) === "running").length;
+    const shown = m.tasks.slice(0, MAX_TASKS);
+    html += `<section class="cs-sec" aria-label="In the background"><h3>In the background <span>${running ? `${running} running` : "none running"}</span></h3>
+      <ul class="cs-tasks">${shown.map((t) => {
+        const st = stateOf(t);
+        return `<li class="${st}"><i aria-hidden="true"></i><span class="cs-tl" title="${esc(t.command ?? t.label)}">${esc(t.label)}</span><span class="cs-ts">${TASK_WORD[st]}</span>${t.output ? `<button type="button" class="cs-to" data-task-output="${esc(t.id)}" title="${esc(t.output)}">Output</button>` : ""}</li>`;
+      }).join("")}</ul>${m.tasks.length > shown.length ? `<p class="cs-none">${m.tasks.length - shown.length} earlier</p>` : ""}</section>`;
+  }
   if (m.files.length) {
     const add = m.files.reduce((n, f) => n + f.added, 0);
     const del = m.files.reduce((n, f) => n + f.removed, 0);
+    const byId = new Map(v.chat.items.map((i) => [i.id, i]));
+    const fresh = m.files.filter((f) => f.isNew && !f.deleted);
+    const edited = m.files.filter((f) => !f.isNew || f.deleted);
+    const row = (f: FileChange) => {
+      const open = v.openFiles.has(f.path);
+      const now = f.turn === m.turn && m.turn > 0;
+      const diff = open ? fileDiff(f, byId) : "";
+      return `<li class="${now ? "now" : ""}${f.deleted ? " gone" : ""}"><button type="button" data-file="${esc(f.path)}" aria-expanded="${open}" title="${esc(f.path)}${now ? " · changed in the latest reply" : ""}"><span class="cs-fn">${now ? `<i class="cs-now" aria-label="Changed in the latest reply"></i>` : ""}${esc(f.name)}</span><span class="cs-fd">${f.deleted ? "deleted · " : ""}${esc(whereIn(f.path, v.pane.spec.ranIn))}</span><span class="cv-n"><b class="a">+${f.added}</b>${f.removed ? ` <b class="d">−${f.removed}</b>` : ""}</span></button>${open ? diff : ""}</li>`;
+    };
+    const group = (title: string, list: FileChange[]) => (list.length ? `<h4 class="cs-sub">${title} <span>${list.length}</span></h4><ul class="cs-files">${list.map(row).join("")}</ul>` : "");
     html += `<section class="cs-sec" aria-label="Files changed"><h3>Files changed <span>${m.files.length} · <b class="a">+${add}</b> <b class="d">−${del}</b></span></h3>
-      <ul class="cs-files">${m.files.map((f) => `<li><button type="button" ${s.onReview ? "data-review" : "disabled"} title="${esc(f.path)}"><span class="cs-fn">${esc(f.name)}</span><span class="cs-fd">${esc(whereIn(f.path, v.pane.spec.ranIn))}</span><span class="cv-n"><b class="a">+${f.added}</b> <b class="d">−${f.removed}</b></span></button></li>`).join("")}</ul>
-      ${s.onReview ? `<button type="button" class="cs-review" data-review>Review changes</button>` : ""}</section>`;
+      ${group("New", fresh)}${group("Edited", edited)}
+      ${s.onReview ? `<button type="button" class="cs-review" data-review>Review all changes</button>` : ""}</section>`;
   }
   const earlier = (v.sessions ?? []).filter((x) => x.id !== v.pane.spec.sessionId);
   const others = earlier.slice(0, 5);
@@ -478,13 +550,79 @@ function draw(v: View, force = false): void {
     model.title = name ? `${name} · change the model` : "Change the model";
     model.hidden = !profileOf(v.pane.spec.badge).modelCommand;
   }
+  for (const key of SETTINGS) {
+    const btn = v.el.querySelector<HTMLElement>(`[data-setting="${key}"]`);
+    const set = profileOf(v.pane.spec.badge)[key];
+    if (!btn) continue;
+    btn.hidden = !set;
+    if (!set) continue;
+    const now = settingNow(v, key);
+    const label = btn.querySelector<HTMLElement>(".cv-chip-t");
+    const text = key === "effort" ? (now ? `${set.name}: ${now.label}` : set.name) : (now?.label ?? set.name);
+    if (label && label.textContent !== text) label.textContent = text;
+    btn.title = `${set.name}${now ? `: ${now.label}` : ""} · change it`;
+    btn.classList.toggle("warn", key === "permission" && /bypass|never|yolo|full/i.test(now?.id ?? ""));
+  }
   const ctx = v.el.querySelector<HTMLElement>(".cv-ctx");
   if (ctx) { ctx.textContent = m.context ? `${tokens(m.context)} in context` : ""; ctx.hidden = !m.context; }
-  const sideSig = JSON.stringify([m.todos, m.files, m.model, m.context, m.output, m.started, v.state.branch, !!v.state.onReview, v.pane.spec.ranIn, v.sessions?.map((x) => x.id + x.modified_ms), v.pane.spec.sessionId]);
+  const sideSig = JSON.stringify([m.todos, m.files, m.tasks, m.turn, [...v.openFiles], v.pane.running, m.model, m.context, m.output, m.started, v.state.branch, !!v.state.onReview, v.pane.spec.ranIn, v.sessions?.map((x) => x.id + x.modified_ms), v.pane.spec.sessionId]);
   if (sideSig !== v.sideSig) {
     v.sideSig = sideSig;
     const side = v.el.querySelector<HTMLElement>(".cv-side");
     if (side) side.innerHTML = sideHtml(v);
+  }
+}
+
+const SETTINGS = ["effort", "permission"] as const;
+type SettingKey = (typeof SETTINGS)[number];
+/** How long a choice you just made shows before the CLI has confirmed it. */
+const PENDING_MS = 6000;
+
+/** The choice in use: what you just picked, else what the screen shows (Shift+Tab
+ *  modes), else what the conversation last said. */
+function settingNow(v: View, key: SettingKey): CliChoice | null {
+  const set = profileOf(v.pane.spec.badge)[key];
+  if (!set) return null;
+  const pend = v.pending[key];
+  let id: string | null = pend && Date.now() - pend.at < PENDING_MS ? pend.id : null;
+  if (!id && set.cycle && v.pane.running) id = set.cycle.shown(v.pane.term.snapshot(20));
+  if (!id) {
+    const said = v.chat.meta[key];
+    id = said ? (set.current ? set.current(said) : said) : null;
+  }
+  if (!id) return null;
+  return set.choices.find((c) => c.id === id) ?? { id, label: id };
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Change a CLI setting the way you would in its terminal: its command, or
+ *  Shift+Tab until the footer shows the mode, or its own picker. */
+async function applySetting(v: View, key: SettingKey, choice: CliChoice): Promise<void> {
+  const set = profileOf(v.pane.spec.badge)[key];
+  const pane = v.pane;
+  if (!set) return;
+  if (set.command) {
+    v.pending[key] = { id: choice.id, at: Date.now() };
+    draw(v, true);
+    await sendMessage(pane.id, `${set.command} ${choice.id}`);
+    return;
+  }
+  if (set.cycle) {
+    v.pending[key] = { id: choice.id, at: Date.now() };
+    draw(v, true);
+    for (let k = 0; k < set.cycle.max; k++) {
+      if (set.cycle.shown(pane.term.snapshot(20)) === choice.id) break;
+      await sendInput(pane.id, set.cycle.key);
+      await sleep(350);
+    }
+    delete v.pending[key];
+    draw(v, true);
+    return;
+  }
+  if (set.picker) {
+    v.state.onTerminal?.();
+    await sendMessage(pane.id, set.picker);
   }
 }
 
@@ -580,6 +718,8 @@ function mount(pane: Pane): View {
         <textarea id="cv-in-${pane.id}" rows="1" placeholder="Message ${esc(pane.spec.name)}…" title="Enter sends · Shift+Enter starts a new line"></textarea>
         <div class="cv-bar">
           <button type="button" class="cv-chip cv-model" data-model aria-haspopup="menu" title="Change the model" hidden><span class="cv-chip-t">Model</span><svg class="cv-chip-c" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" /></svg></button>
+          <button type="button" class="cv-chip cv-set" data-setting="effort" aria-haspopup="menu" hidden><svg class="cv-chip-i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 12.5a5.5 5.5 0 1 1 10 0" /><path d="M8 11.5 10.5 7" /></svg><span class="cv-chip-t">Effort</span><svg class="cv-chip-c" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" /></svg></button>
+          <button type="button" class="cv-chip cv-set" data-setting="permission" aria-haspopup="menu" hidden><svg class="cv-chip-i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2 3 4v4c0 3 2.2 5 5 6 2.8-1 5-3 5-6V4z" /></svg><span class="cv-chip-t">Permissions</span><svg class="cv-chip-c" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" /></svg></button>
           <button type="button" class="cv-chip cv-cmds" data-cmds aria-haspopup="dialog" title="The CLI's own commands (type / to open)"><span class="cv-chip-t">/ Commands</span></button>
           <span class="cv-ctx" title="How much the agent is holding in mind right now" hidden></span>
           <span class="cv-sp"></span>
@@ -598,7 +738,7 @@ function mount(pane: Pane): View {
     const t = e.target;
     if (t instanceof HTMLImageElement && t.parentElement?.classList.contains("cv-shot")) fitShot(t);
   }, true);
-  const v: View = { el, chat: createChat(), offset: 0, path: "", sig: "", window: WINDOW, open: new Set(), expanded: new Set(), timer: null, busy: false, state: { name: pane.spec.name, state: "idle" }, pane, sideSig: "", loaded: false, held: false, said: "" };
+  const v: View = { el, chat: createChat(), offset: 0, path: "", sig: "", window: WINDOW, open: new Set(), expanded: new Set(), timer: null, busy: false, state: { name: pane.spec.name, state: "idle" }, pane, sideSig: "", loaded: false, held: false, said: "", pending: {}, openFiles: new Set() };
   const input = el.querySelector<HTMLTextAreaElement>("textarea")!;
   const grow = () => { input.style.height = "auto"; input.style.height = `${Math.min(input.scrollHeight, 200)}px`; };
   /** Switching conversations stops what it is doing: ask first while it works. */
@@ -763,6 +903,40 @@ function mount(pane: Pane): View {
     if (starter) { input.value = starter.dataset.starter ?? ""; grow(); input.focus(); return; }
     const cmds = t.closest<HTMLButtonElement>("[data-cmds]");
     if (cmds) { void pickCommand(); return; }
+    const setBtn = t.closest<HTMLElement>("[data-setting]");
+    if (setBtn) {
+      const key = setBtn.dataset.setting as SettingKey;
+      const set = profileOf(pane.spec.badge)[key];
+      if (!set) return;
+      const now = settingNow(v, key);
+      const r = setBtn.getBoundingClientRect();
+      setBtn.setAttribute("aria-expanded", "true");
+      openMenu(r.left, r.top - 8, [
+        ...set.choices.map((c) => ({
+          label: c.label,
+          hint: c.id === now?.id ? "In use" : set.picker ? "In the terminal" : c.hint,
+          run: () => { void applySetting(v, key, c); },
+        })),
+      ], set.name);
+      const off = () => { setBtn.setAttribute("aria-expanded", "false"); window.removeEventListener("pointerdown", off, true); window.removeEventListener("keydown", off, true); };
+      window.addEventListener("pointerdown", off, true);
+      window.addEventListener("keydown", off, true);
+      return;
+    }
+    const fileBtn = t.closest<HTMLElement>("[data-file]");
+    if (fileBtn) {
+      const p = fileBtn.dataset.file ?? "";
+      if (v.openFiles.has(p)) v.openFiles.delete(p); else v.openFiles.add(p);
+      v.sideSig = "";
+      draw(v, true);
+      return;
+    }
+    const outBtn = t.closest<HTMLElement>("[data-task-output]");
+    if (outBtn) {
+      const task = v.chat.meta.tasks.find((x) => x.id === outBtn.dataset.taskOutput);
+      if (task?.output) void openTaskOutput(task.label, task.output);
+      return;
+    }
     const modelBtn = t.closest<HTMLElement>("[data-model]");
     if (modelBtn) {
       const p = profileOf(pane.spec.badge);

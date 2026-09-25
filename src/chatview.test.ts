@@ -12,6 +12,7 @@ const io = vi.hoisted(() => ({
   saved: [] as Array<{ data: string; ext: string }>,
   confirms: [] as string[],
   confirmOk: true,
+  screen: "",
 }));
 vi.mock("./confirmmodal", () => ({
   confirmModal: async (o: { title: string }) => { io.confirms.push(o.title); return { ok: io.confirmOk, dontAsk: false, value: "" }; },
@@ -49,14 +50,14 @@ function pane(badge = "claude"): Pane {
   return {
     id: "p1", el, color: "#f2b27a", running: true, spawnedAt: 1000,
     spec: { name: "Ana", badge, program: "claude", args: [], cwd: "D:/app", worktree: "D:/wt/p1", ranIn: "D:/wt/p1", color: "", mono: "", sessionId: "11111111-2222-3333-4444-555555555555" },
-    term: { focus: () => {} },
+    term: { focus: () => {}, snapshot: () => io.screen },
   } as unknown as Pane;
 }
 
 const flush = async () => { for (let k = 0; k < 6; k++) await new Promise((r) => setTimeout(r, 0)); };
 
 describe("chat view", () => {
-  beforeEach(() => { io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; io.opened = []; io.saved = []; io.confirms = []; io.confirmOk = true; });
+  beforeEach(() => { io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; io.opened = []; io.saved = []; io.confirms = []; io.confirmOk = true; io.screen = ""; });
   afterEach(() => { dropChat("p1"); document.body.innerHTML = ""; });
 
   it("is for Claude Code agents", () => {
@@ -431,5 +432,88 @@ it("places a changed file inside the agent's folder, or says it is outside", () 
     expect(grownSize(1280, 800, 420, 240)).toBeNull();
     expect(grownSize(410, 230, 420, 240)).toBeNull();
     expect(grownSize(0, 0, 420, 240)).toBeNull();
+  });
+});
+
+describe("chat view: what the CLI offers", () => {
+  beforeEach(() => { dropChat("p1"); document.body.innerHTML = ""; io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; io.screen = ""; });
+  afterEach(() => { dropChat("p1"); document.body.innerHTML = ""; });
+  const menuPick = (label: string) => {
+    const item = [...document.querySelectorAll<HTMLElement>(".cm-item")].find((b) => b.textContent?.startsWith(label));
+    item!.click();
+  };
+
+  it("shows the effort in use and sets another with the CLI's own /effort", async () => {
+    io.chunks = [j({ type: "assistant", effort: "medium", message: { content: [{ type: "text", text: "hi" }] } })];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const chip = p.el.querySelector<HTMLElement>('[data-setting="effort"]')!;
+    expect(chip.hidden).toBe(false);
+    expect(chip.textContent).toBe("Effort: Medium");
+    chip.click();
+    expect(document.querySelector(".cm-menu")!.textContent).toContain("In use");
+    menuPick("High");
+    await flush();
+    expect(io.sent).toEqual([["p1", "/effort high"]]);
+    expect(chip.textContent).toBe("Effort: High");
+  });
+
+  it("switches the permission mode with Shift+Tab until the footer shows it", async () => {
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const chip = p.el.querySelector<HTMLElement>('[data-setting="permission"]')!;
+    expect(chip.textContent).toBe("Ask first");
+    // each Shift+Tab moves the footer one mode on
+    const modes = ["", "⏵⏵ accept edits on (shift+tab to cycle)", "⏸ plan mode on (shift+tab to cycle)"];
+    let k = 0;
+    const realKeys = io.keys;
+    io.keys = new Proxy(realKeys, { get(t, prop) { if (prop === "push") return (x: [string, string]) => { k++; io.screen = modes[k % modes.length]; return t.push(x); }; return Reflect.get(t, prop); } });
+    chip.click();
+    menuPick("Plan");
+    await new Promise((r) => setTimeout(r, 900));
+    expect(realKeys).toEqual([["p1", "\x1b[Z"], ["p1", "\x1b[Z"]]);
+    expect(chip.textContent).toBe("Plan");
+    io.keys = realKeys;
+  });
+
+  it("lists commands left running in the background, and a stopped agent's as stopped", async () => {
+    io.chunks = [
+      j({ type: "assistant", message: { content: [{ type: "tool_use", id: "b1", name: "Bash", input: { command: "npm run dev", description: "Start the dev server", run_in_background: true } }] } }) +
+      j({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "b1", content: "started" }] }, toolUseResult: { backgroundTaskId: "bt1" } }) +
+      j({ type: "attachment", attachment: { type: "task_status", taskId: "bt2", description: "Build", status: "failed", outputFilePath: "C:/t/bt2.output" } }),
+    ];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const rows = [...p.el.querySelectorAll(".cs-tasks li")].map((li) => [li.className, li.querySelector(".cs-tl")!.textContent, li.querySelector(".cs-ts")!.textContent, !!li.querySelector("[data-task-output]")]);
+    expect(rows).toEqual([["running", "Start the dev server", "Running", false], ["failed", "Build", "Failed", true]]);
+    expect(p.el.querySelector(".cs-sec[aria-label='In the background'] h3 span")!.textContent).toBe("1 running");
+    p.running = false;
+    showChat(p, { name: "Ana", state: "stopped" });
+    await flush();
+    expect(p.el.querySelector(".cs-tasks li")!.className).toBe("stopped");
+  });
+
+  it("splits Files changed into New and Edited, marks the latest reply's, and opens a file's diff", async () => {
+    const tool = (id: string, name: string, input: object) => j({ type: "assistant", message: { content: [{ type: "tool_use", id, name, input }] } });
+    const res = (id: string, extra: object) => j({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] }, toolUseResult: extra });
+    io.chunks = [
+      j({ type: "user", origin: { kind: "human" }, message: { content: "one" } }) +
+      tool("e1", "Edit", { file_path: "D:/wt/p1/src/old.ts", old_string: "a", new_string: "b" }) + res("e1", { type: "update" }) +
+      j({ type: "user", origin: { kind: "human" }, message: { content: "two" } }) +
+      tool("w1", "Write", { file_path: "D:/wt/p1/src/new.ts", content: "hello" }) + res("w1", { type: "create" }),
+    ];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const side = p.el.querySelector(".cv-side")!;
+    expect([...side.querySelectorAll(".cs-sub")].map((h) => h.textContent)).toEqual(["New 1", "Edited 1"]);
+    const names = [...side.querySelectorAll(".cs-files li")].map((li) => [li.querySelector(".cs-fn")!.textContent, li.classList.contains("now")]);
+    expect(names).toEqual([["new.ts", true], ["old.ts", false]]);
+    side.querySelector<HTMLElement>('[data-file="D:/wt/p1/src/old.ts"]')!.click();
+    const diff = p.el.querySelector(".cv-side .cs-diff")!;
+    expect([...diff.querySelectorAll("span")].map((s) => s.textContent)).toEqual(["- a", "+ b"]);
   });
 });

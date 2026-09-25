@@ -21,7 +21,28 @@ export interface CliModel {
   hint?: string;
 }
 
+export interface CliChoice { id: string; label: string; hint?: string }
+
+/** A setting of the CLI the chat can show and change (effort, permission mode). */
+export interface CliSetting {
+  /** What it is called in the chat. */
+  name: string;
+  choices: CliChoice[];
+  /** Change it by typing `${command} ${choice.id}`. */
+  command?: string;
+  /** …or by pressing `key` until the screen shows the choice (Shift+Tab modes). */
+  cycle?: { key: string; max: number; shown: (screen: string) => string };
+  /** …or, when it can't be set from here, the command that opens the CLI's own picker. */
+  picker?: string;
+  /** The choice in use, from the CLI's own word for it (as the transcript has it). */
+  current?: (said: string) => string | null;
+}
+
 export interface CliProfile {
+  /** How hard it thinks. */
+  effort?: CliSetting;
+  /** What it may do without asking. */
+  permission?: CliSetting;
   /** The CLI's own command for its model; alone it opens the CLI's picker. */
   modelCommand?: string;
   /** Models the chat can switch to with `${modelCommand} ${value}`. */
@@ -67,8 +88,39 @@ async function claudeDiscover(program: string, dir: string | null): Promise<CliF
   return facts;
 }
 
+const EFFORTS: CliChoice[] = [
+  { id: "low", label: "Low", hint: "Fastest" },
+  { id: "medium", label: "Medium" },
+  { id: "high", label: "High" },
+  { id: "xhigh", label: "Extra high" },
+  { id: "max", label: "Max", hint: "Slowest, deepest" },
+];
+
+/** Claude Code's permission mode as its footer shows it ("⏵⏵ accept edits on"); nothing means the default. */
+export function claudeModeOnScreen(screen: string): string {
+  const s = screen.toLowerCase();
+  if (s.includes("bypass permissions on")) return "bypassPermissions";
+  if (s.includes("accept edits on")) return "acceptEdits";
+  if (s.includes("plan mode on")) return "plan";
+  if (s.includes("auto mode on")) return "auto";
+  return "default";
+}
+
 export const PROFILES: Record<string, CliProfile> = {
   claude: {
+    effort: { name: "Effort", choices: [...EFFORTS, { id: "auto", label: "Auto", hint: "The model decides" }], command: "/effort" },
+    permission: {
+      name: "Permissions",
+      choices: [
+        { id: "default", label: "Ask first", hint: "Asks before edits and commands" },
+        { id: "acceptEdits", label: "Accept edits", hint: "Edits files without asking" },
+        { id: "plan", label: "Plan", hint: "Reads and plans, changes nothing" },
+        { id: "auto", label: "Auto", hint: "Decides what is safe itself" },
+        { id: "bypassPermissions", label: "Bypass", hint: "Never asks (if it was started that way)" },
+      ],
+      // Shift+Tab steps through the modes; the footer says which one is on.
+      cycle: { key: "\x1b[Z", max: 6, shown: claudeModeOnScreen },
+    },
     modelCommand: "/model",
     // Claude Code's model aliases; each resolves to the newest of its kind.
     models: [
@@ -80,8 +132,30 @@ export const PROFILES: Record<string, CliProfile> = {
     ],
     discover: claudeDiscover,
   },
-  codex: { modelCommand: "/model" },
-  opencode: { modelCommand: "/models" },
+  codex: {
+    modelCommand: "/model",
+    // Codex sets effort with the model, in its own /model picker.
+    effort: { name: "Effort", choices: [{ id: "minimal", label: "Minimal" }, ...EFFORTS.slice(0, 3), { id: "xhigh", label: "Extra high" }], picker: "/model" },
+    permission: {
+      name: "Approvals",
+      choices: [
+        { id: "untrusted", label: "Ask first", hint: "Asks before anything not known safe" },
+        { id: "on-request", label: "On request", hint: "Asks when it wants to leave the sandbox" },
+        { id: "never", label: "Never ask", hint: "Full access" },
+      ],
+      picker: "/approvals",
+      current: (said) => said.split(/\s/)[0] || null,
+    },
+  },
+  opencode: {
+    modelCommand: "/models",
+    // opencode's agent: build changes things, plan only reads; Tab switches.
+    permission: {
+      name: "Agent",
+      choices: [{ id: "build", label: "Build", hint: "Edits and runs" }, { id: "plan", label: "Plan", hint: "Reads and plans" }],
+      picker: "/agents",
+    },
+  },
 };
 
 export function profileOf(badge: string): CliProfile {

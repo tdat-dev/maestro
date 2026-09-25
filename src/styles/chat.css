@@ -183,6 +183,10 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
 .cv-chip-c { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; opacity: 0.7; }
 .cv-chip:hover, .cv-chip[aria-expanded="true"] { background: rgba(255, 255, 255, 0.11); color: var(--ib-ink); }
 .cv-chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.cv-chip-i { flex: none; width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; opacity: 0.8; }
+/* a mode that never asks is worth seeing at a glance */
+.cv-set.warn { color: #f3c77b; background: rgba(243, 199, 123, 0.1); }
+.cv-set.warn:hover { background: rgba(243, 199, 123, 0.16); color: #f7d898; }
 .cv-chip.busy { cursor: progress; color: var(--ib-ink-3); }
 .cv-chip.busy .cv-chip-t::after { content: "…"; }
 .cv-ctx { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--ib-ink-3); white-space: nowrap; }
@@ -267,6 +271,35 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
 .cs-dl dd { margin: 0; min-width: 0; color: var(--ib-ink-2); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cs-none { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--ib-ink-3); }
 .cs-files button:focus-visible, .cs-review:focus-visible, .cs-convos button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+
+/* files: New and Edited, the latest reply's marked, a diff under an opened one */
+.cs-sub { margin: 12px 0 4px; display: flex; gap: 6px; align-items: baseline; font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--ib-ink-3); }
+.cs-sub:first-of-type { margin-top: 2px; }
+.cs-sub span { font: 400 11.5px var(--mono); }
+.cs-files .cs-fn { display: flex; align-items: center; gap: 7px; }
+.cs-now { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--info); box-shadow: 0 0 0 3px rgba(120, 170, 255, 0.14); }
+.cs-files li.gone .cs-fn { text-decoration: line-through; text-decoration-color: rgba(255, 255, 255, 0.35); color: var(--ib-ink-3); }
+.cs-files button[aria-expanded="true"] { background: rgba(255, 255, 255, 0.05); }
+.cs-diff { margin: 4px 0 8px; max-height: 280px; font-size: 11.5px; }
+.cs-diff .gap { color: var(--ib-ink-3); }
+.cs-diffnone { margin: 2px 0 8px; }
+
+/* commands left running in the background */
+.cs-tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.cs-tasks li { display: flex; align-items: center; gap: 8px; min-height: 30px; font-size: 12.5px; }
+.cs-tasks i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ib-ink-3); }
+.cs-tasks li.running i { background: var(--ib-work); box-shadow: 0 0 0 3px rgba(111, 214, 160, 0.16); }
+.cs-tasks li.failed i { background: var(--ib-del); }
+.cs-tasks li.stopped i { background: transparent; box-shadow: inset 0 0 0 1.5px var(--ib-ink-3); }
+.cs-tl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ib-ink); }
+.cs-tasks li:not(.running) .cs-tl { color: var(--ib-ink-2); }
+.cs-ts { flex: none; font-size: 12px; color: var(--ib-ink-3); }
+.cs-tasks li.failed .cs-ts { color: var(--ib-del); }
+.cs-to { flex: none; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; color: var(--ib-ink-2); background: rgba(255, 255, 255, 0.06); }
+.cs-to:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.12); }
+.cs-to:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.cv-out-box { max-width: 1100px; }
+.cv-out-full { flex: 1; min-height: 0; max-height: none; font-size: 12.5px; }
 
 @media (prefers-reduced-motion: reduce) {
   .cv-spin, .cv-dots i { animation: none; }

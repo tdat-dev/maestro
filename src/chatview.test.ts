@@ -60,9 +60,12 @@ describe("chat view", () => {
   beforeEach(() => { io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; io.opened = []; io.saved = []; io.confirms = []; io.confirmOk = true; io.screen = ""; });
   afterEach(() => { dropChat("p1"); document.body.innerHTML = ""; });
 
-  it("is for Claude Code agents", () => {
+  it("is for the CLIs whose conversation it can read", () => {
     expect(chatSupported(pane())).toBe(true);
-    expect(chatSupported(pane("codex"))).toBe(false);
+    expect(chatSupported(pane("codex"))).toBe(true);
+    expect(chatSupported(pane("opencode"))).toBe(true);
+    expect(chatSupported(pane("aider"))).toBe(false);
+    expect(chatSupported(pane("shell"))).toBe(false);
   });
 
   it("reads the agent's own transcript in its worktree and draws the conversation", async () => {

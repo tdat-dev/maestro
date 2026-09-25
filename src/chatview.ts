@@ -12,7 +12,8 @@ import { openMenu } from "./ctxmenu";
 import { openPalette, type PaletteItem } from "./inboxpalette";
 import { cliFacts, profileOf, type CliChoice, type CliFacts } from "./cliprofile";
 import { STARTERS } from "./starters";
-import { claudeSessions, claudeTranscript, fsReadFile, openExternal, savePastedImage, sendInput, sendMessage, type ClaudeSession } from "./ipc";
+import { sourceOf } from "./chatsource";
+import { claudeSessions, fsReadFile, openExternal, savePastedImage, sendInput, sendMessage, type ClaudeSession } from "./ipc";
 import { confirmModal } from "./confirmmodal";
 import type { Pane } from "./panetypes";
 
@@ -120,7 +121,12 @@ const SLICES_PER_TICK = 12; // a long session loads in a few ticks, not one free
 
 /** Agents whose transcript we can read. */
 export function chatSupported(pane: Pane): boolean {
-  return pane.spec.badge === "claude";
+  return !!sourceOf(pane);
+}
+
+/** An empty conversation read the way this agent's CLI writes it. */
+function newChat(pane: Pane): Chat {
+  return sourceOf(pane)?.createChat() ?? createChat();
 }
 
 const ICON: Record<string, string> = {
@@ -585,7 +591,7 @@ function settingNow(v: View, key: SettingKey): CliChoice | null {
   if (!set) return null;
   const pend = v.pending[key];
   let id: string | null = pend && Date.now() - pend.at < PENDING_MS ? pend.id : null;
-  if (!id && set.cycle && v.pane.running) id = set.cycle.shown(v.pane.term.snapshot(20));
+  if (!id && set.cycle && v.pane.running) id = set.cycle.shown(screenOf(v.pane));
   if (!id) {
     const said = v.chat.meta[key];
     id = said ? (set.current ? set.current(said) : said) : null;
@@ -595,6 +601,10 @@ function settingNow(v: View, key: SettingKey): CliChoice | null {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** The bottom of the agent's terminal; "" while it has none to read. */
+function screenOf(pane: Pane): string {
+  try { return pane.term.snapshot(20); } catch { return ""; }
+}
 
 /** Change a CLI setting the way you would in its terminal: its command, or
  *  Shift+Tab until the footer shows the mode, or its own picker. */
@@ -612,7 +622,7 @@ async function applySetting(v: View, key: SettingKey, choice: CliChoice): Promis
     v.pending[key] = { id: choice.id, at: Date.now() };
     draw(v, true);
     for (let k = 0; k < set.cycle.max; k++) {
-      if (set.cycle.shown(pane.term.snapshot(20)) === choice.id) break;
+      if (set.cycle.shown(screenOf(pane)) === choice.id) break;
       await sendInput(pane.id, set.cycle.key);
       await sleep(350);
     }
@@ -647,7 +657,7 @@ function follow(pane: Pane, v: View): boolean {
   if (id === v.session) return false;
   v.session = id;
   forgetImages(v.chat.items);
-  v.chat = createChat();
+  v.chat = newChat(pane);
   v.offset = 0;
   v.path = "";
   v.sig = "";
@@ -666,7 +676,7 @@ async function poll(pane: Pane, v: View): Promise<void> {
   const dir0 = dirOf(pane);
   if (dir0 && (!v.sessionsAt || Date.now() - v.sessionsAt > 30_000)) {
     v.sessionsAt = Date.now();
-    void claudeSessions(dir0).then((s) => { v.sessions = s; draw(v); }).catch(() => {});
+    if (pane.spec.badge === "claude") void claudeSessions(dir0).then((s) => { v.sessions = s; draw(v); }).catch(() => {});
   }
   if (v.busy) return;
   v.busy = true;
@@ -678,12 +688,14 @@ async function poll(pane: Pane, v: View): Promise<void> {
     // can be its own; a stopped agent from an old session shows nothing.
     if (!pane.spec.sessionId && since === null) { v.loaded = true; return; }
     const session = pane.spec.sessionId;
+    const src = sourceOf(pane);
+    if (!src) { v.loaded = true; return; }
     for (let k = 0; k < SLICES_PER_TICK; k++) {
-      const r = await claudeTranscript(dir, session ?? null, since, v.offset);
+      const r = await src.read(pane, dir, v.offset);
       // Without a session id of its own (a preset that picks one), a new file
       // is the only sign of a new conversation.
       if (r.path && r.path !== v.path) {
-        if (v.path) { v.chat = createChat(); v.offset = 0; v.path = r.path; v.sig = ""; continue; }
+        if (v.path) { v.chat = newChat(pane); v.offset = 0; v.path = r.path; v.sig = ""; continue; }
         v.path = r.path;
       }
       if (session !== pane.spec.sessionId) return; // switched while reading: next tick
@@ -738,7 +750,7 @@ function mount(pane: Pane): View {
     const t = e.target;
     if (t instanceof HTMLImageElement && t.parentElement?.classList.contains("cv-shot")) fitShot(t);
   }, true);
-  const v: View = { el, chat: createChat(), offset: 0, path: "", sig: "", window: WINDOW, open: new Set(), expanded: new Set(), timer: null, busy: false, state: { name: pane.spec.name, state: "idle" }, pane, sideSig: "", loaded: false, held: false, said: "", pending: {}, openFiles: new Set() };
+  const v: View = { el, chat: newChat(pane), offset: 0, path: "", sig: "", window: WINDOW, open: new Set(), expanded: new Set(), timer: null, busy: false, state: { name: pane.spec.name, state: "idle" }, pane, sideSig: "", loaded: false, held: false, said: "", pending: {}, openFiles: new Set() };
   const input = el.querySelector<HTMLTextAreaElement>("textarea")!;
   const grow = () => { input.style.height = "auto"; input.style.height = `${Math.min(input.scrollHeight, 200)}px`; };
   /** Switching conversations stops what it is doing: ask first while it works. */
@@ -800,7 +812,8 @@ function mount(pane: Pane): View {
       scroller.scrollTop = scroller.scrollHeight;
       return;
     }
-    const own = chatCommand(text);
+    // /resume and /clear are Claude Code's; other CLIs answer their own commands.
+    const own = pane.spec.badge === "claude" ? chatCommand(text) : null;
     if (own) {
       input.value = "";
       grow();

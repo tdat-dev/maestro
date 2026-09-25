@@ -5,6 +5,7 @@ pub mod dashboard;
 pub mod error;
 pub mod state;
 pub mod review;
+pub mod transcripts;
 pub mod worktree;
 
 use crate::state::AppState;
@@ -92,6 +93,8 @@ pub fn run() {
             commands::record_read,
             commands::claude_usage,
             commands::claude_transcript,
+            transcripts::codex::codex_transcript,
+            transcripts::opencode::opencode_transcript,
             commands::save_pasted_image,
             commands::run_capture,
             commands::claude_session_exists,

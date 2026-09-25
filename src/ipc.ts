@@ -102,6 +102,29 @@ export async function claudeTranscript(
   return invoke("claude_transcript", { dir, sessionId, sinceMs, offset });
 }
 
+/** New complete lines of a Codex agent's rollout from `offset`: `path` once
+ *  known, else the newest rollout begun in `dir` since `sinceMs`. */
+export async function codexTranscript(
+  dir: string,
+  sinceMs: number | null,
+  path: string | null,
+  offset: number,
+): Promise<{ path: string; text: string; next: number }> {
+  return invoke("codex_transcript", { dir, sinceMs, path, offset });
+}
+
+/** Rows of an opencode agent's session changed after `cursor` (ms), as JSONL:
+ *  `session` once known, else the newest session in `dir` since `sinceMs`.
+ *  `path` is the session id ("" until one exists); `next` the new cursor. */
+export async function opencodeTranscript(
+  dir: string,
+  sinceMs: number | null,
+  session: string | null,
+  cursor: number,
+): Promise<{ path: string; text: string; next: number }> {
+  return invoke("opencode_transcript", { dir, sinceMs, session, cursor });
+}
+
 /** Save a picture pasted into a chat (base64, no data: prefix) as a file; its path. */
 export async function savePastedImage(data: string, ext: string): Promise<string> {
   return invoke<string>("save_pasted_image", { data, ext });

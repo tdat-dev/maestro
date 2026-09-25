@@ -81,6 +81,7 @@ describe("chat model", () => {
 
   it("names tools the way a person would", () => {
     expect(describeTool("Grep", { pattern: "TODO" })).toMatchObject({ verb: "Searched for", target: "TODO" });
+    expect(describeTool("Monitor", { command: "tail -f log", description: "errors in deploy.log" })).toMatchObject({ verb: "Watched", target: "errors in deploy.log" });
     expect(describeTool("WebFetch", { url: "https://docs.rs/x" })).toMatchObject({ verb: "Read", target: "docs.rs" });
     expect(describeTool("mcp__maestro__card_done", {})).toMatchObject({ verb: "Used", target: "maestro · card done" });
     expect(describeTool("TodoWrite", { todos: [{ content: "a", status: "completed" }, { content: "b", status: "in_progress" }] }))

@@ -115,6 +115,10 @@ export function describeTool(name: string, input: Input): Omit<StepItem, "kind" 
       const said = str(input.description);
       return { tool: name, verb: "Ran", target: said || firstLine(cmd), full: cmd, code: !said };
     }
+    case "Monitor": {
+      const cmd = str(input.command);
+      return { tool: name, verb: "Watched", target: str(input.description) || firstLine(cmd), full: cmd || undefined };
+    }
     case "Read":
       return { tool: name, verb: /\.(png|jpe?g|gif|webp|bmp)$/i.test(file) ? "Looked at" : "Read", target: baseName(file), full: file, code: true };
     case "Edit": {

@@ -221,7 +221,34 @@ function cleanUserText(s: string): string {
 }
 
 /** A file the agent changed in this conversation, summed over its edits. */
-export interface FileChange { path: string; name: string; added: number; removed: number }
+export interface FileChange {
+  path: string;
+  name: string;
+  added: number;
+  removed: number;
+  /** It did not exist until this conversation made it. */
+  isNew: boolean;
+  /** It was deleted. */
+  deleted?: boolean;
+  /** The reply that last changed it (ChatMeta.turn counts your messages). */
+  turn: number;
+  /** When it last changed. */
+  at: number;
+  /** The steps that changed it, oldest first: their diffs make up its diff. */
+  steps: string[];
+}
+
+/** A command the agent left running on its own (a dev server, a build, a watch). */
+export interface BgTask {
+  id: string;
+  /** What it is: its description, else its command. */
+  label: string;
+  command?: string;
+  state: "running" | "done" | "failed" | "stopped";
+  /** The file its output goes to, when the CLI says. */
+  output?: string;
+  at: number;
+}
 
 /** What the conversation says about itself, for the side panel and composer. */
 export interface ChatMeta {
@@ -233,9 +260,81 @@ export interface ChatMeta {
   output: number;
   /** When the conversation began. */
   started: number | null;
+  /** Newest change first. */
   files: FileChange[];
   /** The plan as it stands (the latest TodoWrite), or null if it made none. */
   todos: Todo[] | null;
+  /** How hard it thinks ("low" … "max", "auto"), as the CLI last said. */
+  effort: string | null;
+  /** Its permission mode, in the CLI's own words ("default", "acceptEdits", "plan", "bypassPermissions", "never"…). */
+  permission: string | null;
+  /** Commands it left running on their own; running ones first. */
+  tasks: BgTask[];
+  /** How many messages you have sent: the reply to the latest one is turn `turn`. */
+  turn: number;
+}
+
+export function newMeta(): ChatMeta {
+  return { model: null, context: 0, output: 0, started: null, files: [], todos: null, effort: null, permission: null, tasks: [], turn: 0 };
+}
+
+/** Keeps ChatMeta.files: one entry per file, summed, newest change first. */
+export function fileLedger(meta: ChatMeta): (c: { path: string; name?: string; added?: number; removed?: number; isNew?: boolean; deleted?: boolean; step?: string; at: number }) => void {
+  const files = new Map<string, FileChange>();
+  return (c) => {
+    const key = c.path.replace(/\\/g, "/").toLowerCase();
+    const fc = files.get(key) ?? { path: c.path, name: c.name ?? baseName(c.path), added: 0, removed: 0, isNew: false, turn: meta.turn, at: c.at, steps: [] };
+    fc.added += c.added ?? 0;
+    fc.removed += c.removed ?? 0;
+    if (c.isNew) fc.isNew = true;
+    if (c.deleted !== undefined) fc.deleted = c.deleted;
+    if (c.step && !fc.steps.includes(c.step)) { fc.steps.push(c.step); fc.turn = meta.turn; fc.at = Math.max(fc.at, c.at); }
+    files.set(key, fc);
+    meta.files = [...files.values()].sort((a, b) => b.at - a.at);
+  };
+}
+
+/** Keeps ChatMeta.tasks: what each background command is doing, running ones first. */
+export function taskLedger(meta: ChatMeta): (t: Partial<BgTask> & { id: string }) => void {
+  const tasks = new Map<string, BgTask>();
+  return (t) => {
+    const cur = tasks.get(t.id) ?? { id: t.id, label: t.label ?? t.command ?? t.id, state: "running" as const, at: t.at ?? 0 };
+    const next: BgTask = { ...cur, ...Object.fromEntries(Object.entries(t).filter(([, x]) => x !== undefined && x !== "")) } as BgTask;
+    if (!next.label) next.label = next.command ?? next.id;
+    tasks.set(t.id, next);
+    meta.tasks = [...tasks.values()].sort((a, b) => (a.state === "running" ? 0 : 1) - (b.state === "running" ? 0 : 1) || b.at - a.at);
+  };
+}
+
+/** A CLI's word for how a background task ended, as ours. */
+export function taskState(status: string): BgTask["state"] {
+  const s = status.toLowerCase();
+  if (/run|start|pending/.test(s)) return "running";
+  if (/fail|error/.test(s)) return "failed";
+  if (/stop|kill|cancel|abort|interrupt/.test(s)) return "stopped";
+  return "done";
+}
+
+/** Claude Code's <task-notification> text: which tasks, how they ended, where the output is. */
+export function parseTaskNotice(raw: string): Array<{ id: string; state: BgTask["state"]; output?: string; summary?: string }> {
+  if (!raw.includes("<task-notification>")) return [];
+  const out: Array<{ id: string; state: BgTask["state"]; output?: string; summary?: string }> = [];
+  for (const block of raw.split("<task-notification>").slice(1)) {
+    const tag = (n: string) => {
+      const a = block.indexOf(`<${n}>`);
+      const b = a < 0 ? -1 : block.indexOf(`</${n}>`, a);
+      return a < 0 || b < 0 ? "" : block.slice(a + n.length + 2, b).trim();
+    };
+    const status = tag("status");
+    if (!status) continue;
+    const output = tag("output-file") || undefined;
+    const summary = tag("summary") || undefined;
+    for (const m of block.matchAll(/<task-id>([^<]+)<\/task-id>/g)) {
+      const id = m[1].trim();
+      if (!id.startsWith("__")) out.push({ id, state: taskState(status), output, summary });
+    }
+  }
+  return out;
 }
 
 export interface Chat {
@@ -248,10 +347,12 @@ export interface Chat {
 export function createChat(): Chat {
   const items: ChatItem[] = [];
   const steps = new Map<string, StepItem>();
-  const meta: ChatMeta = { model: null, context: 0, output: 0, started: null, files: [], todos: null };
-  const files = new Map<string, FileChange>();
+  const meta = newMeta();
+  const noteFile = fileLedger(meta);
+  const noteTask = taskLedger(meta);
   const counted = new Set<string>(); // message ids whose usage is already summed
   const queuedIds = new Set<string>(); // messages already shown from the queue
+  let lastRun = ""; // which run of the CLI wrote the last line
   let n = 0;
   const id = () => `c${n++}`;
 
@@ -260,6 +361,7 @@ export function createChat(): Chat {
     const msg = (v.message ?? {}) as Input;
     const content = msg.content;
     if (typeof content === "string") {
+      taskNotices(content);
       userText(content, 0, v, at);
       return;
     }
@@ -280,6 +382,12 @@ export function createChat(): Chat {
         if (pics.length) step.images = pics;
         step.error = part.is_error === true;
         step.done = true;
+        if (extra && step.full && (step.verb === "Edited" || step.verb === "Wrote") && extra.type === "create") {
+          noteFile({ path: step.full, isNew: true, at });
+        }
+        // A command left running on its own: Bash/Monitor with run_in_background.
+        const bg = extra ? str(extra.backgroundTaskId) || str(extra.taskId) : "";
+        if (bg) noteTask({ id: bg, label: step.target, command: step.full, state: "running", at });
       } else if (part.type === "text") text += (text ? "\n" : "") + str(part.text);
       else if (part.type === "image") images++;
     }
@@ -288,6 +396,7 @@ export function createChat(): Chat {
 
   function userText(raw: string, images: number, v: Input, at: number, pics: ChatImage[] = []): void {
     const origin = (v.origin ?? null) as Input | null;
+    taskNotices(raw);
     if (origin && origin.kind !== "human") return; // hook output, task notices…
     // /model answers with the model it switched to; that is the model from now
     // on, before any reply comes back with its id.
@@ -305,14 +414,22 @@ export function createChat(): Chat {
     if (/^\[Request interrupted by user/.test(raw.trim())) { items.push({ kind: "note", id: id(), text: "You stopped the agent", at }); return; }
     const text = cleanUserText(raw);
     if (!text && !images) return;
+    meta.turn++;
     items.push({ kind: "user", id: id(), text, images, ...(pics.length ? { pics } : {}), at });
+  }
+
+  /** Background commands finishing, as the CLI tells the agent. */
+  function taskNotices(raw: string): void {
+    for (const t of parseTaskNotice(raw)) noteTask({ id: t.id, state: t.state, output: t.output });
   }
 
   /** A message you typed while the agent was working: the CLI queues it and
    *  hands it over mid-turn as an attachment, not as a user line. */
   function onQueued(v: Input, at: number): void {
     const a = (v.attachment ?? {}) as Input;
-    if (a.type !== "queued_command" || (a.commandMode !== undefined && a.commandMode !== "prompt")) return;
+    if (a.type !== "queued_command") return;
+    if (typeof a.prompt === "string") taskNotices(a.prompt);
+    if (a.commandMode !== undefined && a.commandMode !== "prompt") return;
     const origin = (a.origin ?? null) as Input | null;
     if (origin ? origin.kind !== "human" : a.humanTurn !== true) return;
     const source = str(a.source_uuid);
@@ -355,13 +472,15 @@ export function createChat(): Chat {
         const step: StepItem = { kind: "step", id: id(), done: false, at, ...describeTool(str(part.name), (part.input ?? {}) as Input) };
         steps.set(tid, step);
         items.push(step);
+        // Stopping a background command by hand.
+        if (/^(TaskStop|KillShell|KillBash)$/.test(str(part.name))) {
+          const inp = (part.input ?? {}) as Input;
+          const bg = str(inp.task_id) || str(inp.shell_id) || str(inp.id);
+          if (bg) noteTask({ id: bg, state: "stopped" });
+        }
         if (step.todos) meta.todos = step.todos;
         if (step.full && (step.verb === "Edited" || step.verb === "Wrote")) {
-          const fc = files.get(step.full) ?? { path: step.full, name: step.target, added: 0, removed: 0 };
-          fc.added += step.added ?? 0;
-          fc.removed += step.removed ?? 0;
-          files.set(step.full, fc);
-          meta.files = [...files.values()];
+          noteFile({ path: step.full, name: step.target, added: step.added, removed: step.removed, step: step.id, at });
         }
       }
     }
@@ -378,9 +497,24 @@ export function createChat(): Chat {
         if (v.isSidechain === true || v.isMeta === true) continue; // a helper agent's inner steps, injected context
         const at = Date.parse(str(v.timestamp)) || 0;
         if (at && meta.started === null && (v.type === "user" || v.type === "assistant")) meta.started = at;
+        // A new run of the CLI (resumed later): what the last run left in the background died with it.
+        const run = str(v.session_id);
+        if (run && run !== lastRun) {
+          if (lastRun) for (const t of meta.tasks) if (t.state === "running") noteTask({ id: t.id, state: "stopped" });
+          lastRun = run;
+        }
+        // Each reply says the effort it ran at; each of your messages, the permission mode.
+        if (typeof v.effort === "string" && v.effort) meta.effort = v.effort;
+        if (typeof v.permissionMode === "string" && v.permissionMode) meta.permission = v.permissionMode;
         if (v.type === "user") onUser(v, at);
         else if (v.type === "assistant") onAssistant(v, at);
-        else if (v.type === "attachment") onQueued(v, at);
+        else if (v.type === "attachment") {
+          const a = (v.attachment ?? {}) as Input;
+          if (a.type === "task_status" && str(a.taskId)) {
+            const shell = (a.shell ?? {}) as Input;
+            noteTask({ id: str(a.taskId), label: str(a.description), command: str(shell.command) || undefined, state: taskState(str(a.status)), output: str(a.outputFilePath) || undefined });
+          } else onQueued(v, at);
+        }
         else if (v.type === "system" && v.subtype === "compact_boundary") items.push({ kind: "note", id: id(), text: "Conversation compacted", at });
       }
     },

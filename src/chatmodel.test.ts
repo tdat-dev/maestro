@@ -112,8 +112,47 @@ describe("chat meta", () => {
     expect(chat.meta.context).toBe(1210);
     expect(chat.meta.output).toBe(80);
     expect(chat.meta.started).toBe(Date.parse(at(0)));
-    expect(chat.meta.files).toEqual([{ path: "D:/a/x.ts", name: "x.ts", added: 3, removed: 2 }]);
+    expect(chat.meta.files).toMatchObject([{ path: "D:/a/x.ts", name: "x.ts", added: 3, removed: 2, isNew: false, turn: 1 }]);
     expect(chat.meta.todos).toEqual([{ text: "one", state: "completed" }]);
+  });
+
+  it("tells new files from edited ones, newest change first, with the reply that last touched each", () => {
+    const chat = createChat();
+    const tool = (id: string, name: string, input: object, sec: number) => row({ type: "assistant", timestamp: at(sec), message: { content: [{ type: "tool_use", id, name, input }] } });
+    const res = (id: string, extra: object, sec: number) => row({ type: "user", timestamp: at(sec), message: { content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] }, toolUseResult: extra });
+    chat.feed([
+      row({ type: "user", timestamp: at(0), origin: { kind: "human" }, message: { content: "one" } }),
+      tool("w1", "Write", { file_path: "D:/a/new.ts", content: "x\ny" }, 1),
+      res("w1", { type: "create", filePath: "D:/a/new.ts" }, 2),
+      tool("e1", "Edit", { file_path: "D:/a/old.ts", old_string: "a", new_string: "b" }, 3),
+      res("e1", { type: "update", filePath: "D:/a/old.ts" }, 4),
+      row({ type: "user", timestamp: at(10), origin: { kind: "human" }, message: { content: "two" } }),
+      tool("e2", "Edit", { file_path: "D:\\a\\new.ts", old_string: "x", new_string: "z" }, 11),
+    ].join("\n"));
+    expect(chat.meta.turn).toBe(2);
+    expect(chat.meta.files.map((f) => [f.name, f.isNew, f.turn, f.steps.length])).toEqual([["new.ts", true, 2, 2], ["old.ts", false, 1, 1]]);
+  });
+
+  it("keeps the effort, the permission mode and the commands left running in the background", () => {
+    const chat = createChat();
+    chat.feed([
+      row({ type: "user", timestamp: at(0), origin: { kind: "human" }, permissionMode: "acceptEdits", message: { content: "go" } }),
+      row({ type: "assistant", timestamp: at(1), effort: "high", message: { content: [{ type: "tool_use", id: "b1", name: "Bash", input: { command: "npm run dev", description: "Start the dev server", run_in_background: true } }] } }),
+      row({ type: "user", timestamp: at(2), message: { content: [{ type: "tool_result", tool_use_id: "b1", content: "started" }] }, toolUseResult: { stdout: "", backgroundTaskId: "bt1" } }),
+      row({ type: "assistant", timestamp: at(3), effort: "high", message: { content: [{ type: "tool_use", id: "b2", name: "Bash", input: { command: "npm run build", run_in_background: true } }] } }),
+      row({ type: "user", timestamp: at(4), message: { content: [{ type: "tool_result", tool_use_id: "b2", content: "started" }] }, toolUseResult: { stdout: "", backgroundTaskId: "bt2" } }),
+      row({ type: "attachment", timestamp: at(5), attachment: { type: "task_status", taskId: "bt2", description: "Build", status: "running", outputFilePath: "C:/t/bt2.output" } }),
+      row({ type: "user", timestamp: at(6), origin: { kind: "task-notification" }, message: { content: "<task-notification>\n<task-id>bt2</task-id>\n<status>failed</status>\n<output-file>C:/t/bt2.output</output-file>\n</task-notification>" } }),
+      row({ type: "user", timestamp: at(7), origin: { kind: "human" }, permissionMode: "plan", message: { content: "next" } }),
+    ].join("\n"));
+    expect(chat.meta.effort).toBe("high");
+    expect(chat.meta.permission).toBe("plan");
+    expect(chat.meta.tasks.map((t) => [t.id, t.label, t.state, t.output ?? ""])).toEqual([
+      ["bt1", "Start the dev server", "running", ""],
+      ["bt2", "Build", "failed", "C:/t/bt2.output"],
+    ]);
+    // the notice is not something you said
+    expect(chat.items.filter((i) => i.kind === "user").map((u) => ("text" in u ? u.text : ""))).toEqual(["go", "next"]);
   });
 
   it("splits the conversation into turns, each timed from your message to its last step", () => {

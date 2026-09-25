@@ -9,7 +9,8 @@
  * screenshots and page JavaScript go through chrome.debugger (the Chrome
  * DevTools Protocol), so clicks and keys are real browser input. */
 
-import { snapshotPage, locateRef, fillRef, findInPage, pageText, labelAt, blockerOf } from "./page.js";
+import { snapshotPage, locateRef, fillRef, findInPage, pageText, labelAt, blockerOf, markForUpload, unmarkUpload } from "./page.js";
+import { GIFEncoder, quantize, applyPalette } from "./vendor/gifenc.esm.js";
 import { cursorAct } from "./cursor.js";
 
 const HOST = "com.maestro.browser";
@@ -384,6 +385,69 @@ async function point(tabId, args) {
   throw new Error("Give a ref (from browser_read_page) or a coordinate [x, y] (from a screenshot).");
 }
 
+// ---------------------------------------------------------------- GIF recording
+
+/** An agent's recording: frames copied from its tab twice a second, only
+ *  while it records, only while the tab is showing (the copy is free then). */
+const recordings = new Map(); // agent -> { tabId, frames: [{ data, at }], timer, busy }
+const GIF_FPS_MS = 500;
+const GIF_MAX_FRAMES = 240; // two minutes
+const GIF_WIDTH = 640;
+
+function startRecording(agent, tabId) {
+  stopRecording(agent);
+  const rec = { tabId, frames: [], busy: false, started: Date.now() };
+  rec.timer = setInterval(async () => {
+    if (rec.busy) return;
+    if (rec.frames.length >= GIF_MAX_FRAMES) return stopRecording(agent, true);
+    rec.busy = true;
+    try {
+      const tab = await chrome.tabs.get(rec.tabId);
+      if (tab.active) {
+        const img = await grab(tab, GIF_WIDTH, 70);
+        const last = rec.frames[rec.frames.length - 1];
+        // A still page adds time to the last frame instead of another frame.
+        if (last && last.data === img.data) last.until = Date.now();
+        else rec.frames.push({ data: img.data, at: Date.now(), until: Date.now() });
+      }
+    } catch {} finally { rec.busy = false; }
+  }, GIF_FPS_MS);
+  recordings.set(agent, rec);
+  return rec;
+}
+
+function stopRecording(agent, keep = false) {
+  const rec = recordings.get(agent);
+  if (!rec) return null;
+  clearInterval(rec.timer);
+  if (!keep) recordings.delete(agent);
+  return rec;
+}
+
+/** Encode the frames as an animated GIF (base64), one frame at a time so
+ *  memory stays small. */
+async function encodeGif(frames) {
+  const gif = GIFEncoder();
+  for (let i = 0; i < frames.length; i++) {
+    const f = frames[i];
+    const bmp = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${f.data}`)).blob());
+    const c = new OffscreenCanvas(bmp.width, bmp.height);
+    const g = c.getContext("2d", { willReadFrequently: true });
+    g.drawImage(bmp, 0, 0);
+    bmp.close();
+    const { data, width, height } = g.getImageData(0, 0, c.width, c.height);
+    const palette = quantize(data, 256);
+    const index = applyPalette(data, palette);
+    const next = frames[i + 1]?.at ?? f.until + GIF_FPS_MS;
+    gif.writeFrame(index, width, height, { palette, delay: Math.max(GIF_FPS_MS, next - f.at) });
+  }
+  gif.finish();
+  const bytes = gif.bytes();
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
 /** Where each tab's cursor last was, so a new page starts it there. */
 const lastPos = new Map();
 
@@ -578,6 +642,67 @@ async function run(agent, tool, a) {
       // disk: load the new one. The port drops and reconnects by itself.
       setTimeout(() => chrome.runtime.reload(), 100);
       return text("Reloading.");
+    }
+    case "upload": {
+      // Attach files from this computer: Chrome reads them from disk itself.
+      const t = await shown(await tabFor(agent, a.tabId));
+      await dbg(t.id);
+      guardDialog(t.id);
+      const files = (a.paths ?? []).map(String);
+      if (!files.length) throw new Error("Give the files to attach (full paths).");
+      const mark = "m" + Math.random().toString(36).slice(2);
+      const at = await inPage(t.id, markForUpload, [a.ref, mark]);
+      if (at.input) {
+        // The cursor goes to the field, so a watcher sees where the files went.
+        await cursor(t.id, agent, "move", at);
+        const doc = await cdp(t.id, "DOM.getDocument", { depth: 0 });
+        const q = await cdp(t.id, "DOM.querySelector", { nodeId: doc.root.nodeId, selector: `[data-maestro-upload="${mark}"]` });
+        await cdp(t.id, "DOM.setFileInputFiles", { files, nodeId: q.nodeId });
+        await inPage(t.id, unmarkUpload, [mark]);
+      } else {
+        // A button that opens the file chooser: catch the chooser and fill it.
+        await cdp(t.id, "Page.setInterceptFileChooserDialog", { enabled: true });
+        const opened = new Promise((done) => {
+          const on = (src, m, p) => {
+            if (src.tabId === t.id && m === "Page.fileChooserOpened") { chrome.debugger.onEvent.removeListener(on); clearTimeout(tm); done(p); }
+          };
+          const tm = setTimeout(() => { chrome.debugger.onEvent.removeListener(on); done(null); }, 4000);
+          chrome.debugger.onEvent.addListener(on);
+        });
+        await cursor(t.id, agent, "move", at);
+        await cursor(t.id, agent, "click", { ...at, button: "left" });
+        await mouse(t.id, at.x, at.y);
+        const p = await opened;
+        await cdp(t.id, "Page.setInterceptFileChooserDialog", { enabled: false });
+        if (!p) throw new Error("That didn't open a file chooser. Give the ref of the file field, or of the button that opens it.");
+        await cdp(t.id, "DOM.setFileInputFiles", { files, backendNodeId: p.backendNodeId });
+      }
+      void cursor(t.id, agent, "key", { text: `Attached ${files.length} file${files.length === 1 ? "" : "s"}` });
+      return text(`Attached ${files.map((f) => f.split(/[\\/]/).pop()).join(", ")}.`);
+    }
+    case "resize": {
+      // The window the agent's tab is in (it's the user's window: say so).
+      const t = await tabFor(agent, a.tabId);
+      const w = Math.max(400, Math.min(3840, Math.round(Number(a.width) || 1280)));
+      const h = Math.max(300, Math.min(2160, Math.round(Number(a.height) || 800)));
+      await chrome.windows.update(t.windowId, { state: "normal", width: w, height: h });
+      const win = await chrome.windows.get(t.windowId);
+      return text(`The window is now ${win.width}x${win.height}.`);
+    }
+    case "gif": {
+      if (a.action === "start") {
+        const t = await tabFor(agent, a.tabId);
+        startRecording(agent, t.id);
+        return text("Recording. Do the steps, then call browser_gif with action stop. Frames are taken while the tab is showing.");
+      }
+      const rec = stopRecording(agent);
+      if (!rec) throw new Error("Nothing is being recorded. Start with action start.");
+      if (!rec.frames.length) throw new Error("No frames were recorded: the tab was not showing.");
+      const gif = await encodeGif(rec.frames);
+      const secs = Math.round((Date.now() - rec.started) / 1000);
+      const r = text(`Recorded ${rec.frames.length} frames over ${secs}s.`);
+      r.gif = gif;
+      return r;
     }
     case "dialog": {
       const t = await tabFor(agent, a.tabId);

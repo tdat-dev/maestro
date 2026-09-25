@@ -178,3 +178,23 @@ export function blockerOf() {
   if ([...document.querySelectorAll("input[type=password]")].some(shown)) return "login";
   return "";
 }
+
+/** For an upload: mark the file input behind a ref so CDP can find it, or,
+ *  when the ref is a button that opens a file chooser, say where to click. */
+export function markForUpload(ref, mark) {
+  const el = globalThis.__maestro?.refs.get(ref)?.deref();
+  if (!el || !el.isConnected) return { error: `${ref} is gone from the page. Call browser_read_page again.` };
+  const input = el.matches("input[type=file]")
+    ? el
+    : el.querySelector("input[type=file]") ?? (el.tagName === "LABEL" && el.control?.type === "file" ? el.control : null);
+  el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+  const r = el.getBoundingClientRect();
+  const at = { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+  if (input) input.setAttribute("data-maestro-upload", mark);
+  return { input: !!input, ...at };
+}
+
+export function unmarkUpload(mark) {
+  document.querySelector(`[data-maestro-upload="${mark}"]`)?.removeAttribute("data-maestro-upload");
+  return true;
+}

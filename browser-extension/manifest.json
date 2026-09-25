@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Maestro for Chrome",
-  "version": "0.1.8",
+  "version": "0.1.10",
   "description": "Lets your Maestro agents use this browser: open tabs, read pages, click and type, each agent in its own tab group.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvRIbv8/kWNkHBhoHd7dKjouhkgbPza8kGDLEIY/IbDcCZ++lTml7ayfTTwupuaZdnuUO5FuuEjoSV6AmEMgBZz3c6BeDzVMmXAKSvdUWwhJwNnEdMPFmVIx/nhvXfanRADe9jZpScwYx7/1AMZtc8f7xJuTmqklFl68GznNH0bm5W6mX3x59HE1dBsIvwuIS1bwZ2NhCFF8f7VBZnBMiTdS6d7jI71/Tj2eJZpB2OlAX2T4KtfsiI1SfNiWPXnfA4T1kEi5gSA71ujxv22M89CbskRjUn6oZoBDDX0Mf0WcmcJf03Fn0qPHvN+TM+nzd6H0wbZu5I2Ni46IVJ+G6fQIDAQAB",
   "minimum_chrome_version": "116",

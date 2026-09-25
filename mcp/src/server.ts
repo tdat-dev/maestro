@@ -290,7 +290,7 @@ export function createServer(dir: string): McpServer {
   );
 
   // The user's real browsers, through the Maestro hub (see browser.ts).
-  registerBrowserTools(server, new HubClient(agentName ?? "Agent"));
+  registerBrowserTools(server, new HubClient(agentName ?? "Agent"), dir, agentName ?? "Agent");
 
   return server;
 }

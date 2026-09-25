@@ -12,7 +12,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 type Content = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
-type ToolResult = { content: Content[]; isError?: boolean };
+type ToolResult = { content: Content[]; isError?: boolean; gif?: string };
 
 export function hubFile(): string {
   return path.join(os.homedir(), ".maestro", "browser-hub.json");
@@ -99,7 +99,8 @@ export class HubClient {
     this.waiting.delete(m.id);
     clearTimeout(w.timer);
     // Only the MCP fields: the browser adds its own notes for Maestro.
-    if (m.type === "result" && m.result?.content) w.resolve({ content: m.result.content, ...(m.result.isError ? { isError: true } : {}) });
+    if (m.type === "result" && m.result?.content)
+      w.resolve({ content: m.result.content, ...(m.result.isError ? { isError: true } : {}), ...(m.result.gif ? { gif: m.result.gif } : {}) });
     else w.resolve(err(m.error ?? "The browser did not answer."));
   }
 
@@ -127,7 +128,23 @@ const tabId = z.number().int().optional().describe("Tab id from browser_tabs; de
 
 export const BROWSER_INSTRUCTIONS = `Browser: you can use the user's real Chrome (their logins included) through the browser_* tools. You work in your own tab group, named after you. Reuse your tab: browser_navigate goes to a page in it (and opens it the first time); open another with browser_tab_new only when you need two pages side by side, and close tabs you are done with. Read a page with browser_read_page (gives refs), act with browser_computer (click a ref or a screenshot coordinate, type, key), and check with a screenshot. When you hit a login page or a CAPTCHA, stop and ask the user to handle it. Never submit payments or send messages the user didn't ask for. Clicks that send, post, pay or delete wait for the user to allow them in Maestro; if they say no, don't retry.`;
 
-export function registerBrowserTools(server: McpServer, hub: HubClient) {
+/** Absolute paths for files to upload: relative ones are taken from the
+ *  workspace; every file must exist, so the page never gets a bad path. */
+export function uploadPaths(paths: string[], base: string): string[] {
+  return paths.map((p) => {
+    const abs = path.isAbsolute(p) ? p : path.resolve(base, p);
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) throw new Error(`No such file: ${abs}`);
+    return abs;
+  });
+}
+
+/** Where a recording is saved when the agent names no path. */
+export function gifPath(base: string, agent: string, now = new Date()): string {
+  const stamp = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  return path.join(base, ".maestro", "recordings", `${agent.replace(/[^\w-]+/g, "_")}-${stamp}.gif`);
+}
+
+export function registerBrowserTools(server: McpServer, hub: HubClient, base = process.cwd(), agent = "Agent") {
   const tool = (name: string, description: string, inputSchema: Record<string, z.ZodTypeAny>, hubTool: string) =>
     server.registerTool(name, { description, inputSchema }, async (args: Record<string, unknown>) => hub.call(hubTool, args) as never);
 
@@ -214,6 +231,42 @@ export function registerBrowserTools(server: McpServer, hub: HubClient) {
     "Network requests from your tab since Maestro started controlling it. Filter URLs with a regex pattern.",
     { pattern: z.string().optional(), limit: z.number().int().optional(), clear: z.boolean().optional(), tabId },
     "network",
+  );
+  server.registerTool(
+    "browser_file_upload",
+    {
+      description: "Attach files from this computer to a file field on the page. ref is the file field, or the button that opens the file chooser. Paths may be relative to the workspace.",
+      inputSchema: { ref: z.string(), paths: z.array(z.string()).min(1), tabId },
+    },
+    async (args) => {
+      try {
+        return (await hub.call("upload", { ...args, paths: uploadPaths(args.paths, base) })) as never;
+      } catch (e) {
+        return err(e instanceof Error ? e.message : String(e)) as never;
+      }
+    },
+  );
+  tool(
+    "browser_resize",
+    "Resize the Chrome window your tab is in (it is the user's window too; only when a page must be seen at a size, and say so).",
+    { width: z.number().int(), height: z.number().int(), tabId },
+    "resize",
+  );
+  server.registerTool(
+    "browser_gif",
+    {
+      description: "Record what you do in your tab as an animated GIF: action start, do the steps, then action stop. The GIF is saved to a file (path, or .maestro/recordings/ in the workspace). It shows logged-in pages, so tell the user before sharing it.",
+      inputSchema: { action: z.enum(["start", "stop"]), path: z.string().optional(), tabId },
+    },
+    async ({ action, path: out, tabId: tab }) => {
+      const r = await hub.call("gif", { action, tabId: tab });
+      if (action !== "stop" || r.isError || !r.gif) return { content: r.content, ...(r.isError ? { isError: true } : {}) } as never;
+      const file = out ? (path.isAbsolute(out) ? out : path.resolve(base, out)) : gifPath(base, agent);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, Buffer.from(r.gif, "base64"));
+      const kb = Math.round(fs.statSync(file).size / 1024);
+      return { content: [...r.content, { type: "text", text: `Saved ${file} (${kb} KB).` }] } as never;
+    },
   );
   tool(
     "browser_dialog",

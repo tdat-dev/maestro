@@ -21,6 +21,8 @@ use tauri::{AppHandle, Emitter, State};
 
 /// The extension's fixed id (from the public `key` in its manifest).
 pub const EXTENSION_ID: &str = "lhnncnhgomngapalcfncgehffmmibmbf";
+/// The id the Chrome Web Store gave the published extension (the store strips `key`).
+pub const STORE_EXTENSION_ID: &str = "gcclbkbkaijioodjbpjjmhnkfpmnoikk";
 pub const HOST_NAME: &str = "com.maestro.browser";
 
 #[derive(Default)]
@@ -130,7 +132,10 @@ fn register_host() -> Result<(), String> {
         "description": "Maestro browser bridge",
         "path": exe.to_string_lossy(),
         "type": "stdio",
-        "allowed_origins": [format!("chrome-extension://{EXTENSION_ID}/")],
+        "allowed_origins": [
+            format!("chrome-extension://{EXTENSION_ID}/"),
+            format!("chrome-extension://{STORE_EXTENSION_ID}/"),
+        ],
     });
     std::fs::write(&manifest, serde_json::to_string_pretty(&body).unwrap()).map_err(|e| e.to_string())?;
     for vendor in [r"Google\Chrome", r"Microsoft\Edge", r"BraveSoftware\Brave-Browser", r"Chromium", r"Vivaldi"] {

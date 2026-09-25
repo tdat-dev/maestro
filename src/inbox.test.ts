@@ -48,7 +48,7 @@ vi.mock("./settingsmodal", () => ({ openSettings: () => { state.settings++; } })
 vi.mock("./dock", () => ({ dockToggle: () => {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
-import { groupTasks, headline, rowLine, lineCounts, ago, togglePin, splitTiles, fillPins, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
+import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, splitTiles, fillPins, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
 import type { Workspace, Pane } from "./panetypes";
 import { setPref } from "./prefs";
 
@@ -67,6 +67,18 @@ const task = (paneId: string, name: string, state: Task["status"]["state"], over
 });
 
 describe("inbox helpers", () => {
+  it("groups by project: the most urgent project first, then by name; who needs you first inside", () => {
+    const g = projectGroups([
+      task("z1", "Zed", "stopped", { wsId: "z", project: "zoldify" }),
+      task("m1", "Mo", "working", { wsId: "m", project: "maestro" }),
+      task("a1", "Ann", "working", { wsId: "a", project: "app" }),
+      task("z2", "Zia", "needs", { wsId: "z", project: "zoldify" }),
+    ]);
+    expect(g.map((x) => [x.name, x.tasks.map((t) => t.paneId)])).toEqual([
+      ["zoldify", ["z2", "z1"]], ["app", ["a1"]], ["maestro", ["m1"]],
+    ]);
+  });
+
   it("groups in queue order and keeps an empty Needs you group", () => {
     const g = groupTasks([task("w", "Eli", "working"), task("r", "Cy", "review")]);
     expect(g.map((x) => [x.state, x.tasks.length])).toEqual([["needs", 0], ["review", 1], ["working", 1]]);
@@ -353,15 +365,20 @@ describe("inbox DOM", () => {
     expect(document.querySelector(".inbox-review")).toBeNull();
   });
 
-  it("filters the queue by project", () => {
+  it("lists agents under their project, the project that needs you first", () => {
     const other = { id: "ws-2", name: "quy", gridEl: document.createElement("div"), panes: new Map() } as unknown as Workspace;
     workspaces.set("ws-2", other);
     document.querySelector(".topbar")!.insertAdjacentHTML("beforeend", '<div class="tb-right"></div>');
-    state.tasks = [task("a", "Ana", "needs"), task("q", "Quinn", "working", { wsId: "ws-2", project: "quy" })];
+    state.tasks = [task("e", "Eli", "stopped"), task("q", "Quinn", "working", { wsId: "ws-2", project: "quy" }), task("a", "Ana", "needs")];
     setInbox(true);
-    expect([...document.querySelectorAll(".iq-chip")].map((c) => c.textContent)).toEqual(["All projects · 2", "maestro · 1", "quy · 1"]);
-    (document.querySelector('.iq-chip[data-ws="ws-2"]') as HTMLButtonElement).click();
-    expect([...document.querySelectorAll(".iq-row")].map((r) => (r as HTMLElement).dataset.id)).toEqual(["q"]);
+    const groups = [...document.querySelectorAll(".iq-group")].map((g) => [
+      g.querySelector(".iq-pn")!.textContent,
+      [...g.querySelectorAll(".iq-row")].map((r) => (r as HTMLElement).dataset.id),
+    ]);
+    expect(groups).toEqual([["maestro", ["a", "e"]], ["quy", ["q"]]]);
+    expect(document.querySelector(".iq-chip")).toBeNull();
+    // the second line says the state, not the project
+    expect(document.querySelector('.iq-row[data-id="e"] .iq-l')!.textContent).toBe("Stopped");
   });
 
   it("opens its own palette on Ctrl K with every agent and the actions", () => {

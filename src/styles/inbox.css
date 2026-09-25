@@ -113,6 +113,24 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .iq-row.st-stopped .iq-mk { opacity: 0.55; }
 .iq-empty { margin: 0 10px 6px; font-size: 12.5px; color: var(--ib-ink-3); }
 
+/* one group per project: its name over its agents */
+.iq-group + .iq-group { margin-top: 10px; }
+.iq-proj { align-items: baseline; gap: 8px; padding-top: 12px; font: 600 12.5px var(--sans); color: var(--ib-ink-2); letter-spacing: -0.005em; }
+.iq-pn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iq-proj .iq-n { flex: none; font-weight: 400; color: var(--ib-ink-3); }
+/* the agent's state as a dot on its mark: needs you, ready, working; hollow when stopped */
+.iq-mk { position: relative; }
+.iq-mk::after {
+  content: ""; position: absolute; right: -3px; bottom: -3px;
+  width: 9px; height: 9px; border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--ib-panel); background: var(--ib-ink-3);
+}
+.iq-row[aria-current="true"] .iq-mk::after { box-shadow: 0 0 0 2px var(--ib-raise); }
+.iq-row.st-needs .iq-mk::after { background: var(--ib-needs); }
+.iq-row.st-review .iq-mk::after { background: var(--ib-review); }
+.iq-row.st-working .iq-mk::after { background: var(--ib-work); }
+.iq-row.st-stopped .iq-mk::after { background: var(--ib-panel); box-shadow: 0 0 0 2px var(--ib-panel), inset 0 0 0 1.5px var(--ib-ink-3); }
+
 /* ---------- stage: the focused pane, full width, no scrim, no avatar rail ---------- */
 body.inbox-ui .grid.canvas.has-focus::after { display: none; }
 /* Cinema is a black stage: the canvas wallpaper stays with the canvas UI */

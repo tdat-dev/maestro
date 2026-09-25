@@ -47,6 +47,22 @@ export function groupTasks(list: Task[]): Array<{ state: TaskState; tasks: Task[
     .filter((g) => g.tasks.length || g.state === "needs");
 }
 
+/** The queue by project: each project's agents in queue order (who needs you
+ *  first); the project with the most urgent agent comes first, then by name. */
+export function projectGroups(list: Task[]): Array<{ wsId: string; name: string; tasks: Task[] }> {
+  const rank = (t: Task) => ORDER.indexOf(t.status.state);
+  const byWs = new Map<string, { wsId: string; name: string; tasks: Task[] }>();
+  for (const t of list) {
+    const g = byWs.get(t.wsId) ?? { wsId: t.wsId, name: t.project, tasks: [] };
+    g.tasks.push(t);
+    byWs.set(t.wsId, g);
+  }
+  const groups = [...byWs.values()];
+  for (const g of groups) g.tasks.sort((a, b) => rank(a) - rank(b));
+  const top = (g: { tasks: Task[] }) => rank(g.tasks[0]);
+  return groups.sort((a, b) => top(a) - top(b) || a.name.localeCompare(b.name));
+}
+
 /** The top-bar sentence: "2 agents need you. 1 is ready to review, 3 are working." */
 export function headline(list: Task[]): { lead: string; rest: string } {
   const n = (s: TaskState) => list.filter((t) => t.status.state === s).length;
@@ -199,8 +215,6 @@ function renderChat(list: Task[], pane: Pane | undefined): void {
   chatFor = on.id;
 }
 
-/** Queue filter: one project's id, or null for all of them. */
-let projectFilter: string | null = null;
 
 function paneOf(t: Task): Pane | undefined {
   return workspaces.get(t.wsId)?.panes.get(t.paneId);
@@ -433,38 +447,28 @@ export function agentMenu(t: Task): MenuItem[] {
 
 function renderQueue(list: Task[], current: string | undefined, now: number): void {
   if (!queueEl) return;
-  // Project chips: "All projects · 5", then one per project that has agents.
-  const projects = new Map<string, { name: string; n: number }>();
-  for (const t of list) {
-    const p = projects.get(t.wsId) ?? { name: t.project, n: 0 };
-    p.n++;
-    projects.set(t.wsId, p);
-  }
-  if (projectFilter && !projects.has(projectFilter)) projectFilter = null;
-  const shown = projectFilter ? list.filter((t) => t.wsId === projectFilter) : list;
-  const chip = (id: string, label: string, n: number) =>
-    `<button class="iq-chip" data-ws="${esc(id)}" aria-pressed="${(projectFilter ?? "") === id}">${esc(label)} · ${n}</button>`;
-  const chips = projects.size > 1
-    ? `<div class="iq-chips" role="group" aria-label="Filter by project">${chip("", "All projects", list.length)}${[...projects].map(([id, p]) => chip(id, p.name, p.n)).join("")}</div>`
-    : "";
-  const groups = groupTasks(shown);
-  const html = chips +
-    `<div class="iq-list">` +
-    groups.map((g) => `<section class="iq-group" aria-labelledby="iq-g-${g.state}">
-      <h2 class="iq-gt" id="iq-g-${g.state}"><span>${GROUP_LABEL[g.state]}</span><span class="iq-n">${g.tasks.length}</span></h2>
-      ${g.tasks.length ? `<ul class="iq-rows">${g.tasks.map((t) => {
+  // One group per project, the project with the most urgent agent first;
+  // inside it, who needs you first. The state is the dot and the second line.
+  const groups = projectGroups(list);
+  const html = `<div class="iq-list">` +
+    (groups.length ? groups.map((g, gi) => `<section class="iq-group" aria-labelledby="iq-p-${gi}">
+      <h2 class="iq-gt iq-proj" id="iq-p-${gi}" title="${esc(g.name)}"><span class="iq-pn">${esc(g.name)}</span><span class="iq-n">${g.tasks.length}</span></h2>
+      <ul class="iq-rows">${g.tasks.map((t) => {
         const p = paneOf(t);
         const main = t.title ?? t.name;
-        const sub = t.title ? t.name : t.project;
-        return `<li><button class="iq-row st-${t.status.state}" data-id="${esc(t.paneId)}" aria-current="${t.paneId === current}" aria-haspopup="menu" title="${esc(main)}${t.title ? ` · ${esc(t.name)}` : ""} · right-click for more">
+        const said = rowLine(t);
+        // The state in words, unless the line already is the state ("Needs you", "Stopped").
+        const state = GROUP_LABEL[t.status.state];
+        const line = said === state ? state : `${state} · ${said}`;
+        return `<li><button class="iq-row st-${t.status.state}" data-id="${esc(t.paneId)}" aria-current="${t.paneId === current}" aria-haspopup="menu" title="${esc(main)}${t.title ? ` · ${esc(t.name)}` : ""} · ${esc(g.name)} · right-click for more">
           <span class="iq-mk" style="background:${esc(p?.color ?? "var(--muted)")}" aria-hidden="true">${esc((t.name.trim()[0] ?? "?").toUpperCase())}</span>
           <span class="iq-t">${esc(main)}</span>
           <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In the Grid">◫</span> ` : ""}<span class="iq-ago" data-since="${t.since}">${ago(now - t.since)}</span></span>
           <span class="iq-more" data-more aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="12.5" cy="8" r="1.3" fill="currentColor"/></svg></span>
-          <span class="iq-s"><span class="iq-p">${esc(sub)}</span>${t.race ? ` <span class="iq-race">race ${t.race.n}/${t.race.of}</span>` : ""}<span class="iq-dot" aria-hidden="true">·</span><span class="iq-l">${esc(rowLine(t))}</span>${lineCounts(t)}</span>
+          <span class="iq-s">${t.title ? `<span class="iq-p">${esc(t.name)}</span><span class="iq-dot" aria-hidden="true">·</span>` : ""}${t.race ? `<span class="iq-race">race ${t.race.n}/${t.race.of}</span> ` : ""}<span class="iq-l">${esc(line)}</span>${lineCounts(t)}</span>
         </button></li>`;
-      }).join("")}</ul>` : `<p class="iq-empty">All clear. Nothing is waiting on you.</p>`}
-    </section>`).join("") +
+      }).join("")}</ul>
+    </section>`).join("") : `<p class="iq-empty">No agents yet.</p>`) +
     `</div>`;
   // Rebuilding every second would take the keyboard focus (and a click in
   // progress) away from the list; only a real change rebuilds it.
@@ -474,8 +478,8 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
     return;
   }
   queueSig = sig;
-  const had = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>(".inbox-queue [data-id], .inbox-queue .iq-chip");
-  const back = had ? (had.dataset.id ? `.iq-row[data-id="${CSS.escape(had.dataset.id)}"]` : `.iq-chip[data-ws="${CSS.escape(had.dataset.ws ?? "")}"]`) : null;
+  const had = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>(".inbox-queue [data-id]");
+  const back = had?.dataset.id ? `.iq-row[data-id="${CSS.escape(had.dataset.id)}"]` : null;
   queueEl.innerHTML = html;
   if (back) queueEl.querySelector<HTMLElement>(back)?.focus({ preventScroll: true });
 }
@@ -705,7 +709,8 @@ function currentAsk() {
 }
 
 function move(delta: number): void {
-  const list = allTasks().filter((t) => !projectFilter || t.wsId === projectFilter);
+  // In the order the list shows them: project by project.
+  const list = projectGroups(allTasks()).flatMap((g) => g.tasks);
   if (!list.length) return;
   const cur = stagePane()?.id;
   const i = list.findIndex((t) => t.paneId === cur);
@@ -1019,8 +1024,6 @@ function mount(): void {
     openMenu(r.left + 24, r.bottom - 4, agentMenu(t), `${t.name} actions`);
   });
   queueEl.addEventListener("click", (e) => {
-    const chipEl = (e.target as HTMLElement).closest<HTMLElement>(".iq-chip");
-    if (chipEl) { projectFilter = chipEl.dataset.ws || null; render(); return; }
     const row = (e.target as HTMLElement).closest<HTMLElement>(".iq-row");
     const t = row && allTasks().find((x) => x.paneId === row.dataset.id);
     if (!t || !row) return;
@@ -1073,7 +1076,6 @@ function unmount(): void {
   for (const ws of workspaces.values()) for (const p of ws.panes.values()) { p.el.querySelector(".ib-pill")?.remove(); p.el.querySelector(".ib-acts")?.remove(); p.el.querySelector(".ib-mini")?.remove(); p.el.querySelector(".ib-ttl")?.remove(); p.el.classList.remove("ib-needs", "ib-has-title"); }
   queueEl?.remove(); askEl?.remove(); headEl?.remove(); dockEl?.remove(); emptyEl?.remove(); emptyEl = null;
   queueEl = askEl = headEl = dockEl = null; splitBtn = null; reviewer = null; historian = null;
-  projectFilter = null;
   if (timer !== null) { clearInterval(timer); timer = null; }
   offTasks?.(); offTasks = null;
   document.removeEventListener("keydown", onKey, true);

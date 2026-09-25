@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-09-25
+
+Agents work in your project folder, and the list says which project each one is in.
+
+### Changed
+
+- **Agents work in the project folder.** A git worktree and branch per agent
+  (the maestro/... branches) is now off by default; turn it on in Settings >
+  Agents if you want it. An agent made before leaves its worktree on its next
+  start when the worktree holds no work of its own, and carries its
+  conversation over.
+- **Agents listed by project.** Each project is a group with its name over its
+  agents, the project with an agent that needs you first. The "All projects"
+  chips are gone; an agent's state is a dot on its mark and its second line.
+
 ## [0.6.1] - 2026-09-25
 
 The chat view does what the agent CLIs do, for Codex and opencode too.

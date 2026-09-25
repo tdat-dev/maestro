@@ -7,7 +7,8 @@ const io = vi.hoisted(() => ({
   sent: [] as Array<[string, string]>,
   keys: [] as Array<[string, string]>,
   captured: [] as Array<{ program: string; args: string[]; cwd: string | null }>,
-  sessions: [] as Array<{ id: string; modified_ms: number; title: string; messages: number }>,
+  sessions: [] as Array<{ id: string; modified_ms: number; title: string; messages: number; cwd?: string }>,
+  everywhere: [] as Array<{ id: string; modified_ms: number; title: string; messages: number; cwd: string }>,
   opened: [] as string[],
   saved: [] as Array<{ data: string; ext: string }>,
   confirms: [] as string[],
@@ -26,6 +27,7 @@ vi.mock("./ipc", () => ({
   sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); },
   sendInput: async (id: string, data: string) => { io.keys.push([id, data]); },
   claudeSessions: async () => io.sessions,
+  claudeSessionsEverywhere: async () => io.everywhere,
   openExternal: async (url: string) => { io.opened.push(url); },
   savePastedImage: async (data: string, ext: string) => { io.saved.push({ data, ext }); return `C:/tmp/pasted-${io.saved.length}.${ext}`; },
   // Claude Code's own list, as its init event gives it.
@@ -292,6 +294,35 @@ it("answers /resume itself: its conversations to pick from, the pick resumed her
     await flush();
     expect(restarts[1]).toEqual({ fresh: true });
     expect(io.confirms).toEqual([]); // not working: nothing to ask
+    io.everywhere = [];
+  });
+
+  it("offers conversations from other folders too, and carries one on in its own folder", async () => {
+    io.sessions = [{ id: "11111111-2222-3333-4444-555555555555", modified_ms: Date.now(), title: "This one", messages: 3, cwd: "D:/wt/p1" }];
+    io.everywhere = [
+      { id: "11111111-2222-3333-4444-555555555555", modified_ms: Date.now(), title: "This one", messages: 3, cwd: "D:/wt/p1" },
+      { id: "bbbbbbbb-2222-3333-4444-555555555555", modified_ms: Date.now() - 60_000, title: "Ship the APK", messages: 8, cwd: "D:\\Zoldify" },
+      { id: "cccccccc-2222-3333-4444-555555555555", modified_ms: Date.now() - 90_000, title: "Back home", messages: 2, cwd: "d:\\wt\\p1\\" },
+    ];
+    const p = pane();
+    const restarts: unknown[] = [];
+    (p as unknown as { restart: (o?: unknown) => Promise<void> }).restart = async (o) => { restarts.push(o); };
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const input = p.el.querySelector("textarea")!;
+    input.value = "/resume";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+    const rows = [...document.querySelectorAll<HTMLElement>("[role=option]")];
+    // its own folder's conversation isn't listed twice, however the path is written
+    expect(rows.filter((r) => r.textContent!.includes("This one")).length).toBe(1);
+    expect(rows.some((r) => r.textContent!.includes("Back home"))).toBe(false);
+    const other = rows.find((r) => r.textContent!.includes("Ship the APK"))!;
+    expect(other.textContent).toContain("Zoldify");
+    other.click();
+    await flush();
+    expect(restarts).toEqual([{ session: "bbbbbbbb-2222-3333-4444-555555555555", dir: "D:\\Zoldify" }]);
+    io.everywhere = [];
   });
 
   it("offers Resume and New conversation when stopped", async () => {

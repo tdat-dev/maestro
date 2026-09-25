@@ -13,7 +13,7 @@ import { openPalette, type PaletteItem } from "./inboxpalette";
 import { cliFacts, profileOf, type CliChoice, type CliFacts } from "./cliprofile";
 import { STARTERS } from "./starters";
 import { sourceOf } from "./chatsource";
-import { claudeSessions, fsReadFile, openExternal, savePastedImage, sendInput, sendMessage, type ClaudeSession } from "./ipc";
+import { claudeSessions, claudeSessionsEverywhere, fsReadFile, openExternal, savePastedImage, sendInput, sendMessage, type ClaudeSession } from "./ipc";
 import { confirmModal } from "./confirmmodal";
 import type { Pane } from "./panetypes";
 
@@ -108,6 +108,11 @@ export function when(at: number, now = Date.now()): string {
   const d = new Date(at);
   if (d.toDateString() === new Date(now).toDateString()) return clock(at);
   return `${d.toLocaleDateString([], { month: "short", day: "numeric" })}, ${clock(at)}`;
+}
+/** The same folder, however its slashes and letter case are written. */
+export function samePath(a: string, b: string): boolean {
+  const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  return norm(a) === norm(b);
 }
 /** A tooltip's worth of a long value: its first line, cut short. */
 const brief = (s: string) => { const line = s.split(/\r?\n/)[0]; return line.length > 200 ? `${line.slice(0, 199)}…` : line; };
@@ -759,8 +764,17 @@ function mount(pane: Pane): View {
     const r = await confirmModal({ title: `Stop ${pane.spec.name} and ${what}?`, message: `${pane.spec.name} is working. It stops now, and the conversation it is in stays in its list of earlier ones.`, okLabel: "Stop and switch", danger: true });
     return r.ok;
   };
-  const restartWith = async (opts: { fresh?: boolean; session?: string }, what: string) => {
+  const restartWith = async (opts: { fresh?: boolean; session?: string; dir?: string }, what: string) => {
     if (await okToSwitch(what)) void pane.restart?.(opts);
+  };
+  /** Carry on an earlier conversation. Claude resumes one only in the folder
+   *  it ran in, so for one from elsewhere the agent starts again there. */
+  const resumeTo = (x: ClaudeSession) => {
+    if (x.id === pane.spec.sessionId && pane.running) return;
+    // Where it runs when it isn't carrying on a conversation from elsewhere.
+    const home = pane.spec.worktree ?? pane.spec.cwd ?? pane.spec.ranIn ?? "";
+    const there = x.cwd && home && !samePath(x.cwd, home) ? x.cwd : undefined;
+    void restartWith(there ? { session: x.id, dir: there } : { session: x.id }, "switch conversations");
   };
   /** Pictures pasted into the composer, waiting to go with the next message. */
   const atts: Attachment[] = [];
@@ -833,14 +847,21 @@ function mount(pane: Pane): View {
   const pickConversation = async (query: string) => {
     const dir = pane.spec.ranIn ?? pane.spec.cwd;
     if (!dir) return;
-    try { v.sessions = await claudeSessions(dir); v.sessionsAt = Date.now(); } catch { v.sessions = v.sessions ?? []; }
-    const items: PaletteItem[] = (v.sessions ?? []).map((x) => ({
-      group: x.id === pane.spec.sessionId ? "This conversation" : "Conversations",
-      label: x.title || "Untitled",
-      sub: `${x.messages} message${x.messages === 1 ? "" : "s"} · ${ago(x.modified_ms)}`,
-      run: () => { if (x.id !== pane.spec.sessionId || !pane.running) void restartWith({ session: x.id }, "switch conversations"); },
-    }));
-    if (!items.length) items.push({ group: "Conversations", label: "No earlier conversations in this folder", run: () => {} });
+    const [here, everywhere] = await Promise.all([
+      claudeSessions(dir).catch(() => v.sessions ?? []),
+      claudeSessionsEverywhere().catch(() => [] as ClaudeSession[]),
+    ]);
+    v.sessions = here;
+    v.sessionsAt = Date.now();
+    const seen = new Set(here.map((x) => x.id));
+    const elsewhere = everywhere.filter((x) => !seen.has(x.id) && x.cwd && !samePath(x.cwd, dir));
+    const pick = resumeTo;
+    const words = (x: ClaudeSession) => `${x.messages} message${x.messages === 1 ? "" : "s"} · ${ago(x.modified_ms)}`;
+    const items: PaletteItem[] = [
+      ...here.map((x) => ({ group: x.id === pane.spec.sessionId ? "This conversation" : "In this folder", label: x.title || "Untitled", sub: words(x), run: () => pick(x) })),
+      ...elsewhere.map((x) => ({ group: "In other folders", label: x.title || "Untitled", sub: `${tail(x.cwd, 2)} · ${words(x)}`, run: () => pick(x) })),
+    ];
+    if (!items.length) items.push({ group: "Conversations", label: "No earlier conversations", run: () => {} });
     openPalette(items, { placeholder: query ? `Resume a conversation: ${query}` : "Resume a conversation" });
     const q = document.getElementById("palQ") as HTMLInputElement | null;
     if (q && query) { q.value = query; q.dispatchEvent(new Event("input", { bubbles: true })); }
@@ -898,7 +919,11 @@ function mount(pane: Pane): View {
     if (t.closest("[data-restart-agent]")) { void pane.restart?.(); return; }
     if (t.closest("[data-new-convo]")) { void restartWith({ fresh: true }, "start a new conversation"); return; }
     const resumeOne = t.closest<HTMLElement>("[data-resume]");
-    if (resumeOne) { void restartWith({ session: resumeOne.dataset.resume }, "switch conversations"); return; }
+    if (resumeOne) {
+      const x = v.sessions?.find((s) => s.id === resumeOne.dataset.resume);
+      if (x) resumeTo(x);
+      return;
+    }
     if (t.closest("[data-resume-pick]")) { void pickConversation(""); return; }
     const attX = t.closest<HTMLElement>("[data-att-x]");
     if (attX) { dropAtt(Number(attX.dataset.attX)); input.focus(); return; }

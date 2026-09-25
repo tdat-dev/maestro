@@ -293,7 +293,10 @@ export function createAgent(
     try {
       // Isolated agents get their own worktree+branch; point the PTY cwd there.
       let cwd = spec.cwd;
-      if (ws.isolated && ws.repoRoot && !spec.worktree) {
+      if (spec.resumeIn) {
+        // Carrying on a conversation from another folder: Claude only resumes it there.
+        cwd = spec.resumeIn;
+      } else if (ws.isolated && ws.repoRoot && !spec.worktree) {
         try {
           spec.branch = branchName(spec.name, id.slice(-6));
           spec.worktree = await worktreeAdd(ws.repoRoot, spec.branch);
@@ -365,8 +368,12 @@ export function createAgent(
     restarting = true;
     try {
       // A new conversation, or a given earlier one; otherwise its own again.
-      if (opts.fresh) delete spec.sessionId;
-      else if (opts.session) spec.sessionId = opts.session;
+      if (opts.fresh) { delete spec.sessionId; delete spec.resumeIn; }
+      else if (opts.session) {
+        spec.sessionId = opts.session;
+        // One from another folder runs there; one from its own folder brings it home.
+        if (opts.dir) spec.resumeIn = opts.dir; else delete spec.resumeIn;
+      }
       if (pane.recording) await stopRecording(pane);
       await killPty(id).catch(() => {});
       pane.running = false;

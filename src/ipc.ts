@@ -136,11 +136,16 @@ export async function claudeSessionExists(dir: string, sessionId: string): Promi
 }
 
 /** One earlier Claude Code conversation in a folder. */
-export interface ClaudeSession { id: string; modified_ms: number; title: string; messages: number }
+export interface ClaudeSession { id: string; modified_ms: number; title: string; messages: number; /** The folder it ran in. */ cwd: string }
 
 /** The conversations Claude Code has in `dir`, newest first. */
 export async function claudeSessions(dir: string): Promise<ClaudeSession[]> {
   return invoke<ClaudeSession[]>("claude_sessions", { dir });
+}
+
+/** The newest conversations in every folder, newest first. */
+export async function claudeSessionsEverywhere(limit = 60): Promise<ClaudeSession[]> {
+  return invoke<ClaudeSession[]>("claude_sessions_everywhere", { limit });
 }
 
 /** Run a program to completion in `cwd` (no window) and get its stdout. For

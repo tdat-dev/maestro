@@ -476,7 +476,7 @@ pub async fn claude_session_exists(dir: String, session_id: String) -> Result<bo
     .await
 }
 
-/// One earlier conversation in a folder, for "resume a conversation".
+/// One earlier conversation, for "resume a conversation".
 #[derive(Serialize, Clone)]
 pub struct SessionInfo {
     pub id: String,
@@ -484,6 +484,8 @@ pub struct SessionInfo {
     /// Claude's own title for it, else your first message.
     pub title: String,
     pub messages: u32,
+    /// The folder it ran in: `claude --resume` only picks it up from there.
+    pub cwd: String,
 }
 
 /// The conversations Claude Code has in `dir`, newest first. Sessions with
@@ -494,76 +496,116 @@ pub async fn claude_sessions(dir: String) -> Result<Vec<SessionInfo>, CommandErr
     run_blocking(move || Ok(claude_sessions_impl(&dir))).await
 }
 
+/// The newest conversations in every folder, so one begun elsewhere can be
+/// carried on (in its own folder).
+#[tauri::command]
+pub async fn claude_sessions_everywhere(limit: usize) -> Result<Vec<SessionInfo>, CommandError> {
+    run_blocking(move || Ok(claude_sessions_everywhere_impl(limit.clamp(1, 200)))).await
+}
+
 fn claude_sessions_impl(dir: &str) -> Vec<SessionInfo> {
-    use std::io::Read;
     let Some(proj) = claude_project_dir(dir) else { return Vec::new() };
-    let Ok(entries) = std::fs::read_dir(&proj) else { return Vec::new() };
-    let mut out = Vec::new();
-    for ent in entries.flatten() {
-        let path = ent.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
-            continue;
-        }
-        let Some(id) = path.file_stem().and_then(|s| s.to_str()).map(str::to_string) else { continue };
-        if !is_session_id(&id) {
-            continue;
-        }
-        let modified_ms = ent
-            .metadata()
-            .and_then(|m| m.modified())
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-        let Ok(file) = std::fs::File::open(&path) else { continue };
-        let mut head = Vec::new();
-        let _ = file.take(768 * 1024).read_to_end(&mut head);
-        let text = String::from_utf8_lossy(&head);
-        let mut title: Option<String> = None;
-        let mut first: Option<String> = None;
-        let mut messages = 0u32;
-        for line in text.lines() {
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
-            match v.get("type").and_then(|t| t.as_str()) {
-                Some("ai-title") => {
-                    if let Some(t) = v.get("aiTitle").and_then(|t| t.as_str()) {
-                        title = Some(t.to_string());
-                    }
-                }
-                Some("user") => {
-                    if v.get("isMeta").and_then(|x| x.as_bool()) == Some(true) {
-                        continue;
-                    }
-                    let human = v.get("origin").and_then(|o| o.get("kind")).and_then(|k| k.as_str()).map_or(true, |k| k == "human");
-                    let content = v.get("message").and_then(|m| m.get("content"));
-                    let said = match content {
-                        Some(serde_json::Value::String(s)) => Some(s.clone()),
-                        Some(serde_json::Value::Array(parts)) => parts
-                            .iter()
-                            .find(|p| p.get("type").and_then(|t| t.as_str()) == Some("text"))
-                            .and_then(|p| p.get("text").and_then(|t| t.as_str()).map(str::to_string)),
-                        _ => None,
-                    };
-                    let Some(said) = said else { continue };
-                    if !human || said.starts_with('<') || said.starts_with("[Request interrupted") {
-                        continue; // commands, their output, caveats, tool results
-                    }
-                    messages += 1;
-                    if first.is_none() {
-                        first = Some(said.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(90).collect());
-                    }
-                }
-                _ => {}
-            }
-        }
-        if messages == 0 {
-            continue;
-        }
-        out.push(SessionInfo { id, modified_ms, title: title.or(first).unwrap_or_default(), messages });
-    }
+    let mut out: Vec<SessionInfo> = session_files(&proj).into_iter().filter_map(|(path, ms)| session_info(&path, ms)).collect();
     out.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms));
     out.truncate(40);
     out
+}
+
+fn claude_sessions_everywhere_impl(limit: usize) -> Vec<SessionInfo> {
+    let Some(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok() else { return Vec::new() };
+    let root = Path::new(&home).join(".claude").join("projects");
+    let Ok(projects) = std::fs::read_dir(&root) else { return Vec::new() };
+    let mut files: Vec<(std::path::PathBuf, u64)> = projects.flatten().filter(|p| p.path().is_dir()).flat_map(|p| session_files(&p.path())).collect();
+    // Only the newest files are opened: a few extra for the ones with nothing typed.
+    files.sort_by(|a, b| b.1.cmp(&a.1));
+    files.truncate(limit * 2);
+    let mut out: Vec<SessionInfo> = files.into_iter().filter_map(|(path, ms)| session_info(&path, ms)).collect();
+    out.truncate(limit);
+    out
+}
+
+/// The session transcripts in one project folder, with when each last changed.
+fn session_files(proj: &Path) -> Vec<(std::path::PathBuf, u64)> {
+    let Ok(entries) = std::fs::read_dir(proj) else { return Vec::new() };
+    entries
+        .flatten()
+        .filter_map(|ent| {
+            let path = ent.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                return None;
+            }
+            let id = path.file_stem().and_then(|s| s.to_str())?;
+            if !is_session_id(id) {
+                return None;
+            }
+            let ms = ent
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            Some((path, ms))
+        })
+        .collect()
+}
+
+/// What the start of a transcript says: its title, how many messages you
+/// typed, the folder it ran in. None when you typed nothing.
+fn session_info(path: &Path, modified_ms: u64) -> Option<SessionInfo> {
+    use std::io::Read;
+    let id = path.file_stem().and_then(|s| s.to_str())?.to_string();
+    let file = std::fs::File::open(path).ok()?;
+    let mut head = Vec::new();
+    let _ = file.take(768 * 1024).read_to_end(&mut head);
+    let text = String::from_utf8_lossy(&head);
+    let mut title: Option<String> = None;
+    let mut first: Option<String> = None;
+    let mut cwd = String::new();
+    let mut messages = 0u32;
+    for line in text.lines() {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        if cwd.is_empty() {
+            if let Some(c) = v.get("cwd").and_then(|c| c.as_str()) {
+                cwd = c.to_string();
+            }
+        }
+        match v.get("type").and_then(|t| t.as_str()) {
+            Some("ai-title") => {
+                if let Some(t) = v.get("aiTitle").and_then(|t| t.as_str()) {
+                    title = Some(t.to_string());
+                }
+            }
+            Some("user") => {
+                if v.get("isMeta").and_then(|x| x.as_bool()) == Some(true) {
+                    continue;
+                }
+                let human = v.get("origin").and_then(|o| o.get("kind")).and_then(|k| k.as_str()).map_or(true, |k| k == "human");
+                let content = v.get("message").and_then(|m| m.get("content"));
+                let said = match content {
+                    Some(serde_json::Value::String(s)) => Some(s.clone()),
+                    Some(serde_json::Value::Array(parts)) => parts
+                        .iter()
+                        .find(|p| p.get("type").and_then(|t| t.as_str()) == Some("text"))
+                        .and_then(|p| p.get("text").and_then(|t| t.as_str()).map(str::to_string)),
+                    _ => None,
+                };
+                let Some(said) = said else { continue };
+                if !human || said.starts_with('<') || said.starts_with("[Request interrupted") {
+                    continue; // commands, their output, caveats, tool results
+                }
+                messages += 1;
+                if first.is_none() {
+                    first = Some(said.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(90).collect());
+                }
+            }
+            _ => {}
+        }
+    }
+    if messages == 0 {
+        return None;
+    }
+    Some(SessionInfo { id, modified_ms, title: title.or(first).unwrap_or_default(), messages, cwd })
 }
 
 /// Most output `run_capture` keeps: a CLI that prints more is cut here.
@@ -818,6 +860,33 @@ mod paste_tests {
         let dir = std::env::temp_dir().join(format!("maestro-paste-test2-{}", std::process::id()));
         assert!(save_pasted_image_in(&dir, "iVBORw0KGgo=", "exe").is_err());
         assert!(save_pasted_image_in(&dir, "not base64!", "png").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod session_tests {
+    use super::*;
+
+    #[test]
+    fn a_session_says_its_folder_title_and_what_you_typed() {
+        let dir = std::env::temp_dir().join(format!("maestro-sessions-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let id = "11111111-2222-3333-4444-555555555555";
+        let lines = [
+            r#"{"type":"user","cwd":"D:\\zoldify","origin":{"kind":"human"},"message":{"content":"fix   the build"}}"#,
+            r#"{"type":"user","cwd":"D:\\zoldify","origin":{"kind":"task-notification"},"message":{"content":"done"}}"#,
+            r#"{"type":"ai-title","aiTitle":"Fix the build"}"#,
+        ];
+        let path = dir.join(format!("{id}.jsonl"));
+        std::fs::write(&path, lines.join("\n")).unwrap();
+        let s = session_info(&path, 7).unwrap();
+        assert_eq!((s.id.as_str(), s.title.as_str(), s.messages, s.cwd.as_str(), s.modified_ms), (id, "Fix the build", 1, "D:\\zoldify", 7));
+        // nothing typed: not a conversation to resume
+        let empty = dir.join("22222222-2222-3333-4444-555555555555.jsonl");
+        std::fs::write(&empty, r#"{"type":"user","origin":{"kind":"task-notification"},"message":{"content":"x"}}"#).unwrap();
+        assert!(session_info(&empty, 1).is_none());
+        assert_eq!(session_files(&dir).len(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

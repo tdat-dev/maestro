@@ -387,6 +387,13 @@ it("places a changed file inside the agent's folder, or says it is outside", () 
     expect(atts.hidden).toBe(false);
     expect(atts.querySelectorAll(".cv-att").length).toBe(2);
     expect(io.saved.map((s) => [s.ext, s.data])).toEqual([["png", "iVBORwA="], ["png", "iVBORwE="]]);
+    // a pasted picture opens full size, on the one you clicked
+    atts.querySelector<HTMLElement>("[data-att-open='1']")!.click();
+    const lb = document.querySelector(".cv-lb")!;
+    expect(lb).not.toBeNull();
+    expect(lb.querySelector(".cv-lb-img")!.getAttribute("alt")).toBe("You're sending, picture 2 of 2");
+    lb.querySelector<HTMLElement>("[data-lb-close]")!.click();
+    expect(document.querySelector(".cv-lb")).toBeNull();
     atts.querySelector<HTMLElement>("[data-att-x='0']")!.click();
     expect(atts.querySelectorAll(".cv-att").length).toBe(1);
     input.value = "why so small?";

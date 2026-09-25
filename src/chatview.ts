@@ -165,6 +165,12 @@ function markdown(id: string, text: string): string {
 }
 
 const urls = new WeakMap<ChatImage, string>();
+/** A picture already held as an object URL (one you pasted), for the full-size view. */
+function pictureAt(url: string, media: string): ChatImage {
+  const pic: ChatImage = { media, data: "" };
+  urls.set(pic, url);
+  return pic;
+}
 /** A URL an <img> can show this picture from. */
 function urlOf(img: ChatImage): string {
   let u = urls.get(img);
@@ -193,7 +199,7 @@ function forgetImages(items: ChatItem[]): void {
 }
 
 /** A picture pasted into the composer: shown at once, saved to a file meanwhile. */
-interface Attachment { url: string; path: Promise<string | null>; failed?: boolean }
+interface Attachment { url: string; pic: ChatImage; path: Promise<string | null>; failed?: boolean }
 const MAX_ATTACHMENTS = 8;
 const PASTE_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
 
@@ -609,7 +615,7 @@ function mount(pane: Pane): View {
   const attsEl = el.querySelector<HTMLElement>(".cv-atts")!;
   const drawAtts = () => {
     attsEl.hidden = !atts.length;
-    attsEl.innerHTML = atts.map((a, k) => `<span class="cv-att${a.failed ? " failed" : ""}"><img src="${a.url}" alt="Pasted picture ${k + 1}"><button type="button" class="cv-att-x" data-att-x="${k}" aria-label="Remove pasted picture ${k + 1}" title="Remove">${ICON_CLOSE}</button></span>`).join("");
+    attsEl.innerHTML = atts.map((a, k) => `<span class="cv-att${a.failed ? " failed" : ""}"><button type="button" class="cv-att-open" data-att-open="${k}" aria-label="Pasted picture ${k + 1}, open full size" title="${a.failed ? "Couldn't save this picture" : "Open full size"}"><img src="${a.url}" alt=""></button><button type="button" class="cv-att-x" data-att-x="${k}" aria-label="Remove pasted picture ${k + 1}" title="Remove">${ICON_CLOSE}</button></span>`).join("");
   };
   const dropAtt = (k: number) => {
     const [a] = atts.splice(k, 1);
@@ -623,7 +629,8 @@ function mount(pane: Pane): View {
     const text = e.clipboardData?.getData("text/plain") ?? "";
     if (text) { input.setRangeText(text, input.selectionStart, input.selectionEnd, "end"); grow(); }
     for (const f of files.slice(0, MAX_ATTACHMENTS - atts.length)) {
-      const a: Attachment = { url: URL.createObjectURL(f), path: Promise.resolve(null) };
+      const url = URL.createObjectURL(f);
+      const a: Attachment = { url, pic: pictureAt(url, f.type), path: Promise.resolve(null) };
       a.path = savePasted(f).catch(() => { a.failed = true; drawAtts(); return null; });
       atts.push(a);
     }
@@ -742,6 +749,8 @@ function mount(pane: Pane): View {
     if (t.closest("[data-resume-pick]")) { void pickConversation(""); return; }
     const attX = t.closest<HTMLElement>("[data-att-x]");
     if (attX) { dropAtt(Number(attX.dataset.attX)); input.focus(); return; }
+    const attOpen = t.closest<HTMLElement>("[data-att-open]");
+    if (attOpen) { openImage(atts.map((a) => a.pic), Number(attOpen.dataset.attOpen) || 0, "You're sending"); return; }
     const shot = t.closest<HTMLElement>("[data-shot]");
     if (shot) {
       const owner = v.chat.items.find((i) => i.id === shot.dataset.shot);

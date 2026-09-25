@@ -155,7 +155,11 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
 .cv-atts { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px 0; }
 .cv-atts[hidden] { display: none; }
 .cv-att { position: relative; width: 64px; height: 64px; border-radius: 10px; overflow: hidden; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
-.cv-att img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cv-att-open { display: block; width: 100%; height: 100%; padding: 0; cursor: zoom-in; }
+.cv-att-open:focus-visible { outline: 2px solid #fff; outline-offset: -2px; border-radius: 10px; }
+.cv-att img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.15s; }
+.cv-att-open:hover img { transform: scale(1.04); }
+@media (prefers-reduced-motion: reduce) { .cv-att img { transition: none; } .cv-att-open:hover img { transform: none; } }
 .cv-att.failed { box-shadow: inset 0 0 0 1.5px var(--ib-del); }
 .cv-att.failed img { opacity: 0.4; }
 .cv-att-x {

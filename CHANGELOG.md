@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-09-26
+
+Bigger terminal text.
+
+### Changed
+
+- **Terminals read bigger.** The default text size is 15 instead of 13, and a
+  short tile no longer shrinks the text to squeeze in more lines. Settings and
+  Ctrl+wheel still make it bigger or smaller.
+
 ## [0.6.4] - 2026-09-26
 
 The agent list stays put.

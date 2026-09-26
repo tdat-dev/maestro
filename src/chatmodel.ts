@@ -318,6 +318,9 @@ export function newMeta(): ChatMeta {
 /** Keeps ChatMeta.files: one entry per file, summed, newest change first. */
 export function fileLedger(meta: ChatMeta): (c: { path: string; name?: string; added?: number; removed?: number; isNew?: boolean; deleted?: boolean; step?: string; at: number }) => void {
   const files = new Map<string, FileChange>();
+  // Newest first by the order changes happened in, not their clock (lines can share a timestamp).
+  const last = new Map<string, number>();
+  let n = 0;
   return (c) => {
     const key = c.path.replace(/\\/g, "/").toLowerCase();
     const fc = files.get(key) ?? { path: c.path, name: c.name ?? baseName(c.path), added: 0, removed: 0, isNew: false, turn: meta.turn, at: c.at, steps: [] };
@@ -325,9 +328,11 @@ export function fileLedger(meta: ChatMeta): (c: { path: string; name?: string; a
     fc.removed += c.removed ?? 0;
     if (c.isNew) fc.isNew = true;
     if (c.deleted !== undefined) fc.deleted = c.deleted;
-    if (c.step && !fc.steps.includes(c.step)) { fc.steps.push(c.step); fc.turn = meta.turn; fc.at = Math.max(fc.at, c.at); }
+    if (c.step && !fc.steps.includes(c.step)) { fc.steps.push(c.step); fc.turn = meta.turn; fc.at = Math.max(fc.at, c.at); last.set(key, ++n); }
+    if (!last.has(key)) last.set(key, ++n);
     files.set(key, fc);
-    meta.files = [...files.values()].sort((a, b) => b.at - a.at);
+    const order = (f: FileChange) => last.get(f.path.replace(/\\/g, "/").toLowerCase()) ?? 0;
+    meta.files = [...files.values()].sort((a, b) => order(b) - order(a));
   };
 }
 

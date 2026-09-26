@@ -393,8 +393,13 @@ interface View {
   off?: () => void;
   /** A setting you just changed, shown until the CLI confirms it. */
   pending: Partial<Record<"effort" | "permission", { id: string; at: number }>>;
-  /** Files opened in the side panel to show their diff. */
-  openFiles: Set<string>;
+  /** The work panel's tab you picked (else it follows the work), and what is picked in it. */
+  panelTab?: PanelTab;
+  selFile?: string;
+  selTask?: string;
+  /** Background commands' output as last read, and those being read. */
+  taskOut: Map<string, string>;
+  reading: Set<string>;
 }
 
 const views = new Map<string, View>();
@@ -404,10 +409,9 @@ function dirOf(pane: Pane): string | null {
   return pane.spec.ranIn ?? null;
 }
 
-const MAX_TASKS = 6;
 const TASK_WORD: Record<BgTask["state"], string> = { running: "Running", done: "Done", failed: "Failed", stopped: "Stopped" };
 /** Most diff lines a file shows in the side panel; the Changes view has the rest. */
-const MAX_FILE_DIFF = 240;
+const MAX_FILE_DIFF = 1500;
 
 /** A file's changes in this conversation, from the steps that made them. */
 function fileDiff(f: FileChange, byId: Map<string, ChatItem>): string {
@@ -423,37 +427,89 @@ function fileDiff(f: FileChange, byId: Map<string, ChatItem>): string {
   return `<pre class="cv-diff cs-diff">${lines.slice(0, MAX_FILE_DIFF).join("")}</pre>${more > 0 ? `<p class="cs-none">${more} more lines in Review all changes</p>` : ""}`;
 }
 
-/** The end of a background command's output, over everything. */
-async function openTaskOutput(label: string, file: string): Promise<void> {
-  const cut = Math.max(file.lastIndexOf("/"), file.lastIndexOf("\\"));
-  let text = "";
-  try {
-    text = (await fsReadFile(file.slice(0, cut), file.slice(cut + 1))).content;
-  } catch {
-    text = "Its output file is gone (background output is kept only while the session lasts).";
-  }
-  const lines = text.split(/\r?\n/);
-  const tailText = lines.slice(-400).join("\n").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
-  document.querySelector(".cv-lb")?.remove();
-  const back = document.activeElement as HTMLElement | null;
-  const el = document.createElement("div");
-  el.className = "inbox-modal-back cv-lb";
-  el.innerHTML = `<div class="cv-lb-box cv-out-box" role="dialog" aria-modal="true" aria-label="${esc(label)} output">
-      <header class="cv-lb-bar"><span class="cv-lb-t">${esc(label)}</span><span class="cv-lb-n">${lines.length > 400 ? "last 400 lines" : ""}</span>
-        <button type="button" class="im-x" data-lb-close aria-label="Close" title="Close (Esc)">${ICON_CLOSE}</button></header>
-      <pre class="cv-out cv-out-full">${esc(tailText) || "No output yet."}</pre></div>`;
-  document.body.appendChild(el);
-  const close = () => { el.remove(); if (back?.isConnected) back.focus(); };
-  el.addEventListener("click", (e) => { const t = e.target as HTMLElement; if (t === el || t.closest("[data-lb-close]")) close(); });
-  el.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } e.stopPropagation(); });
-  const pre = el.querySelector<HTMLElement>(".cv-out-full")!;
-  pre.scrollTop = pre.scrollHeight;
-  el.querySelector<HTMLElement>("[data-lb-close]")!.focus();
+/** A background command's output, as the panel shows it: the last lines, no colour codes. */
+const OUT_LINES = 400;
+function outputTail(text: string): string {
+  return text.split(/\r?\n/).slice(-OUT_LINES).join("\n").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
 }
 
-/** The panel beside the conversation: the plan, the files it changed, and
- *  the session (model, branch, folder, when, how much context). */
-function sideHtml(v: View): string {
+type PanelTab = "changes" | "background" | "session";
+
+/** The tab to show: the one you picked, else where the work is. */
+function panelTab(v: View): PanelTab {
+  const m = v.chat.meta;
+  return v.panelTab ?? (m.files.length ? "changes" : m.tasks.length ? "background" : "session");
+}
+
+/** A stopped agent's background commands stopped with it. */
+function taskStateOf(v: View, t: BgTask): BgTask["state"] {
+  return t.state === "running" && !v.pane.running ? "stopped" : t.state;
+}
+
+/** The work panel beside the conversation: what it changed (a file's diff
+ *  large), what it left running (with its output), and the session. */
+function panelHtml(v: View): string {
+  const m = v.chat.meta;
+  const tab = panelTab(v);
+  const running = m.tasks.filter((t) => taskStateOf(v, t) === "running").length;
+  const tabBtn = (id: PanelTab, label: string, count: string) =>
+    `<button type="button" role="tab" id="cp-t-${id}-${v.pane.id}" aria-controls="cp-b-${v.pane.id}" aria-selected="${tab === id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${label}${count ? `<span>${count}</span>` : ""}</button>`;
+  const body = tab === "changes" ? changesHtml(v) : tab === "background" ? backgroundHtml(v) : sessionHtml(v);
+  return `<div class="cp-tabs" role="tablist" aria-label="About this conversation">
+      ${tabBtn("changes", "Changes", m.files.length ? String(m.files.length) : "")}
+      ${tabBtn("background", "Background", running ? `${running} running` : m.tasks.length ? String(m.tasks.length) : "")}
+      ${tabBtn("session", "Session", "")}
+      <button type="button" class="cp-x" data-panel-toggle aria-label="Hide this panel" title="Hide the panel">${ICON_CLOSE}</button>
+    </div>
+    <div class="cp-body cp-${tab}" id="cp-b-${v.pane.id}" role="tabpanel" aria-labelledby="cp-t-${tab}-${v.pane.id}">${body}</div>`;
+}
+
+function changesHtml(v: View): string {
+  const m = v.chat.meta;
+  if (!m.files.length) return `<p class="cp-empty">Nothing changed yet in this conversation. Files it writes or edits show up here, newest first.</p>`;
+  const add = m.files.reduce((n, f) => n + f.added, 0);
+  const del = m.files.reduce((n, f) => n + f.removed, 0);
+  const sel = m.files.find((f) => f.path === v.selFile) ?? m.files[0];
+  const fresh = m.files.filter((f) => f.isNew && !f.deleted);
+  const edited = m.files.filter((f) => !f.isNew || f.deleted);
+  const row = (f: FileChange) => {
+    const now = f.turn === m.turn && m.turn > 0;
+    return `<li class="${now ? "now" : ""}${f.deleted ? " gone" : ""}"><button type="button" data-file="${esc(f.path)}" aria-current="${f === sel}" title="${esc(f.path)}${now ? " · changed in the latest reply" : ""}"><span class="cs-fn">${now ? `<i class="cs-now" aria-label="Changed in the latest reply"></i>` : ""}${esc(f.name)}</span><span class="cs-fd">${f.deleted ? "deleted · " : ""}${esc(whereIn(f.path, v.pane.spec.ranIn))}</span><span class="cv-n"><b class="a">+${f.added}</b>${f.removed ? ` <b class="d">−${f.removed}</b>` : ""}</span></button></li>`;
+  };
+  const group = (title: string, list: FileChange[]) => (list.length ? `<h4 class="cs-sub">${title} <span>${list.length}</span></h4><ul class="cs-files">${list.map(row).join("")}</ul>` : "");
+  const byId = new Map(v.chat.items.map((i) => [i.id, i]));
+  return `<div class="cp-list">
+      <div class="cp-sum"><span>${m.files.length} file${m.files.length === 1 ? "" : "s"}</span><span class="cv-n"><b class="a">+${add}</b> <b class="d">−${del}</b></span></div>
+      ${group("New", fresh)}${group("Edited", edited)}
+      ${v.state.onReview ? `<button type="button" class="cs-review" data-review>Review all changes</button>` : ""}
+    </div>
+    <div class="cp-view">
+      <div class="cp-vh"><b title="${esc(sel.path)}">${esc(sel.name)}</b><span>${sel.deleted ? "deleted · " : sel.isNew ? "new · " : ""}${esc(whereIn(sel.path, v.pane.spec.ranIn))}</span></div>
+      ${fileDiff(sel, byId)}
+    </div>`;
+}
+
+function backgroundHtml(v: View): string {
+  const m = v.chat.meta;
+  if (!m.tasks.length) return `<p class="cp-empty">Nothing running in the background. A dev server, a build or a watch the agent leaves running shows up here, with its output.</p>`;
+  const sel = m.tasks.find((t) => t.id === v.selTask) ?? m.tasks[0];
+  const out = v.taskOut.get(sel.id);
+  return `<div class="cp-list">
+      <ul class="cs-tasks">${m.tasks.map((t) => {
+        const st = taskStateOf(v, t);
+        return `<li class="${st}"><button type="button" data-task="${esc(t.id)}" aria-current="${t === sel}" title="${esc(t.command ?? t.label)}"><i aria-hidden="true"></i><span class="cs-tl">${esc(t.label)}</span><span class="cs-ts">${TASK_WORD[st]}</span></button></li>`;
+      }).join("")}</ul>
+    </div>
+    <div class="cp-view">
+      <div class="cp-vh"><b>${esc(sel.label)}</b>${sel.output ? `<button type="button" class="cs-to" data-task-refresh title="Read its output again">Refresh</button>` : ""}</div>
+      ${sel.command ? `<code class="cv-full">${esc(sel.command)}</code>` : ""}
+      ${!sel.output ? `<p class="cs-none">The CLI didn't say where its output goes.</p>`
+        : out === undefined ? `<p class="cs-none">Reading its output…</p>`
+        : `<pre class="cv-out cp-out">${esc(out) || "No output yet."}</pre>`}
+    </div>`;
+}
+
+function sessionHtml(v: View): string {
   const m = v.chat.meta;
   const s = v.state;
   let html = "";
@@ -462,41 +518,6 @@ function sideHtml(v: View): string {
     html += `<section class="cs-sec" aria-label="Plan"><h3>Plan <span>${done} of ${m.todos.length}</span></h3>
       <div class="cs-bar" aria-hidden="true"><i style="width:${Math.round((done / m.todos.length) * 100)}%"></i></div>
       <ul class="cv-todos cs-todos">${m.todos.map((t) => `<li class="${t.state}"><i aria-hidden="true"></i>${esc(t.text)}</li>`).join("")}</ul></section>`;
-  }
-  if (m.tasks.length) {
-    // A stopped agent's background commands stopped with it.
-    const stateOf = (t: BgTask) => (t.state === "running" && !v.pane.running ? "stopped" : t.state);
-    const running = m.tasks.filter((t) => stateOf(t) === "running").length;
-    const shown = m.tasks.slice(0, MAX_TASKS);
-    html += `<section class="cs-sec" aria-label="In the background"><h3>In the background <span>${running ? `${running} running` : "none running"}</span></h3>
-      <ul class="cs-tasks">${shown.map((t) => {
-        const st = stateOf(t);
-        return `<li class="${st}"><i aria-hidden="true"></i><span class="cs-tl" title="${esc(t.command ?? t.label)}">${esc(t.label)}</span><span class="cs-ts">${TASK_WORD[st]}</span>${t.output ? `<button type="button" class="cs-to" data-task-output="${esc(t.id)}" title="${esc(t.output)}">Output</button>` : ""}</li>`;
-      }).join("")}</ul>${m.tasks.length > shown.length ? `<p class="cs-none">${m.tasks.length - shown.length} earlier</p>` : ""}</section>`;
-  }
-  if (m.files.length) {
-    const add = m.files.reduce((n, f) => n + f.added, 0);
-    const del = m.files.reduce((n, f) => n + f.removed, 0);
-    const byId = new Map(v.chat.items.map((i) => [i.id, i]));
-    const fresh = m.files.filter((f) => f.isNew && !f.deleted);
-    const edited = m.files.filter((f) => !f.isNew || f.deleted);
-    const row = (f: FileChange) => {
-      const open = v.openFiles.has(f.path);
-      const now = f.turn === m.turn && m.turn > 0;
-      const diff = open ? fileDiff(f, byId) : "";
-      return `<li class="${now ? "now" : ""}${f.deleted ? " gone" : ""}"><button type="button" data-file="${esc(f.path)}" aria-expanded="${open}" title="${esc(f.path)}${now ? " · changed in the latest reply" : ""}"><span class="cs-fn">${now ? `<i class="cs-now" aria-label="Changed in the latest reply"></i>` : ""}${esc(f.name)}</span><span class="cs-fd">${f.deleted ? "deleted · " : ""}${esc(whereIn(f.path, v.pane.spec.ranIn))}</span><span class="cv-n"><b class="a">+${f.added}</b>${f.removed ? ` <b class="d">−${f.removed}</b>` : ""}</span></button>${open ? diff : ""}</li>`;
-    };
-    const group = (title: string, list: FileChange[]) => (list.length ? `<h4 class="cs-sub">${title} <span>${list.length}</span></h4><ul class="cs-files">${list.map(row).join("")}</ul>` : "");
-    html += `<section class="cs-sec" aria-label="Files changed"><h3>Files changed <span>${m.files.length} · <b class="a">+${add}</b> <b class="d">−${del}</b></span></h3>
-      ${group("New", fresh)}${group("Edited", edited)}
-      ${s.onReview ? `<button type="button" class="cs-review" data-review>Review all changes</button>` : ""}</section>`;
-  }
-  const earlier = (v.sessions ?? []).filter((x) => x.id !== v.pane.spec.sessionId);
-  const others = earlier.slice(0, 5);
-  if (others.length) {
-    html += `<section class="cs-sec" aria-label="Earlier conversations"><h3>Earlier conversations <span>${earlier.length}</span></h3>
-      <ul class="cs-convos">${others.map((x) => `<li><button type="button" data-resume="${esc(x.id)}" title="Carry on with this conversation here"><span class="cs-ct">${esc(x.title || "Untitled")}</span><span class="cs-cm">${x.messages} message${x.messages === 1 ? "" : "s"} · ${ago(x.modified_ms)}</span></button></li>`).join("")}</ul>
-      ${earlier.length > others.length ? `<button type="button" class="cs-review" data-resume-pick>All ${earlier.length} conversations</button>` : ""}</section>`;
   }
   const rows: Array<[string, string, string?]> = [
     ["Model", modelName(m.model)],
@@ -509,7 +530,29 @@ function sideHtml(v: View): string {
   html += `<section class="cs-sec" aria-label="Session"><h3>Session</h3>${rows.length
     ? `<dl class="cs-dl">${rows.map(([k, val, full]) => `<div><dt>${k}</dt><dd title="${esc(full ?? val)}">${esc(val)}</dd></div>`).join("")}</dl>`
     : `<p class="cs-none">Details show up once it starts talking.</p>`}</section>`;
-  return html;
+  const earlier = (v.sessions ?? []).filter((x) => x.id !== v.pane.spec.sessionId);
+  const others = earlier.slice(0, 8);
+  if (others.length) {
+    html += `<section class="cs-sec" aria-label="Earlier conversations"><h3>Earlier conversations <span>${earlier.length}</span></h3>
+      <ul class="cs-convos">${others.map((x) => `<li><button type="button" data-resume="${esc(x.id)}" title="Carry on with this conversation here"><span class="cs-ct">${esc(x.title || "Untitled")}</span><span class="cs-cm">${x.messages} message${x.messages === 1 ? "" : "s"} · ${ago(x.modified_ms)}</span></button></li>`).join("")}</ul>
+      ${earlier.length > others.length ? `<button type="button" class="cs-review" data-resume-pick>All ${earlier.length} conversations</button>` : ""}</section>`;
+  }
+  return `<div class="cp-scroll">${html}</div>`;
+}
+
+/** Read the selected background command's output into the panel. */
+async function readTaskOutput(v: View, t: BgTask): Promise<void> {
+  if (!t.output) return;
+  const cut = Math.max(t.output.lastIndexOf("/"), t.output.lastIndexOf("\\"));
+  let text: string;
+  try {
+    text = outputTail((await fsReadFile(t.output.slice(0, cut), t.output.slice(cut + 1))).content);
+  } catch {
+    text = "Its output file is gone (background output is kept only while the session lasts).";
+  }
+  v.taskOut.set(t.id, text);
+  v.sideSig = "";
+  draw(v);
 }
 
 /** What a conversation with nothing in it says, by what the agent is doing. */
@@ -601,11 +644,31 @@ function draw(v: View, force = false): void {
   }
   const ctx = v.el.querySelector<HTMLElement>(".cv-ctx");
   if (ctx) { ctx.textContent = m.context ? `${tokens(m.context)} in context` : ""; ctx.hidden = !m.context; }
-  const sideSig = JSON.stringify([m.todos, m.files, m.tasks, m.turn, [...v.openFiles], v.pane.running, m.model, m.context, m.output, m.started, v.state.branch, !!v.state.onReview, v.pane.spec.ranIn, v.sessions?.map((x) => x.id + x.modified_ms), v.pane.spec.sessionId]);
+  const sideSig = JSON.stringify([m.todos, m.files, m.tasks, m.turn, v.panelTab, v.selFile, v.selTask, v.pane.running, m.model, m.context, m.output, m.started, v.state.branch, !!v.state.onReview, v.pane.spec.ranIn, v.sessions?.map((x) => x.id + x.modified_ms), v.pane.spec.sessionId]);
+  applyPanel(v);
   if (sideSig !== v.sideSig) {
     v.sideSig = sideSig;
     const side = v.el.querySelector<HTMLElement>(".cv-side");
-    if (side) side.innerHTML = sideHtml(v);
+    if (side) {
+      // A rebuild keeps the keyboard where it was: the same tab, file or command.
+      const a = document.activeElement as HTMLElement | null;
+      const back = a && side.contains(a)
+        ? (["tab", "file", "task"] as const).map((k) => (a.dataset[k] ? `[data-${k}="${CSS.escape(a.dataset[k]!)}"]` : "")).find(Boolean) ?? null
+        : null;
+      const keep = side.querySelector<HTMLElement>(".cp-list")?.scrollTop ?? 0;
+      side.innerHTML = panelHtml(v);
+      const list = side.querySelector<HTMLElement>(".cp-list");
+      if (list) list.scrollTop = keep;
+      if (back) side.querySelector<HTMLElement>(back)?.focus({ preventScroll: true });
+    }
+  }
+  // The background command on show needs its output read once.
+  if (panelTab(v) === "background") {
+    const t = m.tasks.find((x) => x.id === v.selTask) ?? m.tasks[0];
+    if (t?.output && !v.taskOut.has(t.id) && !v.reading.has(t.id)) {
+      v.reading.add(t.id);
+      void readTaskOutput(v, t).finally(() => v.reading.delete(t.id));
+    }
   }
 }
 
@@ -746,6 +809,35 @@ async function poll(pane: Pane, v: View): Promise<void> {
   if (views.get(pane.id) === v) draw(v);
 }
 
+/** The work panel's width and whether it shows: one choice for every agent, remembered. */
+const PANEL_KEY = "maestro.chat.panel";
+const panelPrefs: { w?: number; hidden?: boolean } = (() => {
+  try { return JSON.parse(localStorage.getItem(PANEL_KEY) || "{}") as { w?: number; hidden?: boolean }; } catch { return {}; }
+})();
+function savePanel(): void {
+  try { localStorage.setItem(PANEL_KEY, JSON.stringify(panelPrefs)); } catch { /* storage blocked */ }
+}
+/** Below this width the panel slides over the conversation instead of sharing the row. */
+const PANEL_NARROW = 900;
+const PANEL_MIN = 320;
+const CHAT_MIN = 400;
+function setPanelWidth(el: HTMLElement, w: number): void {
+  const total = el.clientWidth;
+  const clamped = Math.round(total ? Math.max(PANEL_MIN, Math.min(w, total - CHAT_MIN)) : Math.max(PANEL_MIN, w));
+  panelPrefs.w = clamped;
+  el.style.setProperty("--cv-side-w", `${clamped}px`);
+}
+function applyPanel(v: View): void {
+  if (panelPrefs.w) v.el.style.setProperty("--cv-side-w", `${panelPrefs.w}px`);
+  v.el.classList.toggle("panel-off", !!panelPrefs.hidden);
+  const shown = v.el.clientWidth && v.el.clientWidth < PANEL_NARROW ? v.el.classList.contains("peek") : !panelPrefs.hidden;
+  const btn = v.el.querySelector<HTMLElement>(".cv-ptoggle");
+  if (btn) {
+    btn.setAttribute("aria-pressed", String(shown));
+    btn.setAttribute("aria-label", shown ? "Hide the work panel" : "Show the work panel");
+  }
+}
+
 function mount(pane: Pane): View {
   const host = pane.el.querySelector<HTMLElement>(".term-host") ?? pane.el;
   const el = document.createElement("section");
@@ -755,6 +847,7 @@ function mount(pane: Pane): View {
   el.title = "";
   el.innerHTML = `
     <div class="cv-main">
+    <button type="button" class="cv-ptoggle" data-panel-toggle aria-label="Show the work panel" title="Changes, background and session"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="2" /><path d="M9.5 3v10" /></svg></button>
     <div class="cv-scroll"><div class="cv-thread" role="log" aria-live="off"></div></div>
     <p class="ia-sr cv-live" aria-live="polite"></p>
     <div class="cv-foot" role="status">
@@ -779,6 +872,7 @@ function mount(pane: Pane): View {
       </form>
     </div>
     </div>
+    <div class="cv-grip" role="separator" aria-orientation="vertical" aria-label="Resize the work panel" tabindex="0"></div>
     <aside class="cv-side" aria-label="About this conversation"></aside>`;
   host.appendChild(el);
   // A small picture (a cropped thumbnail) grows to a readable size once its size is known.
@@ -786,7 +880,45 @@ function mount(pane: Pane): View {
     const t = e.target;
     if (t instanceof HTMLImageElement && t.parentElement?.classList.contains("cv-shot")) fitShot(t);
   }, true);
-  const v: View = { el, chat: newChat(pane), offset: 0, path: "", sig: "", window: WINDOW, open: new Set(), expanded: new Set(), timer: null, busy: false, state: { name: pane.spec.name, state: "idle" }, pane, sideSig: "", loaded: false, held: false, said: "", pending: {}, openFiles: new Set() };
+  const v: View = { el, chat: newChat(pane), offset: 0, path: "", sig: "", window: WINDOW, open: new Set(), expanded: new Set(), timer: null, busy: false, state: { name: pane.spec.name, state: "idle" }, pane, sideSig: "", loaded: false, held: false, said: "", pending: {}, taskOut: new Map(), reading: new Set() };
+  applyPanel(v);
+  // Drag the grip (or use the arrow keys on it) to share the row between the conversation and the panel.
+  const grip = el.querySelector<HTMLElement>(".cv-grip")!;
+  grip.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId);
+    el.classList.add("resizing");
+    const move = (ev: PointerEvent) => setPanelWidth(el, el.getBoundingClientRect().right - ev.clientX);
+    const up = () => {
+      grip.removeEventListener("pointermove", move);
+      grip.removeEventListener("pointerup", up);
+      grip.removeEventListener("pointercancel", up);
+      el.classList.remove("resizing");
+      savePanel();
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", up);
+    grip.addEventListener("pointercancel", up);
+  });
+  // Left and right move between the panel's tabs, the way a tab list does.
+  el.addEventListener("keydown", (e) => {
+    const tabEl = (e.target as HTMLElement).closest<HTMLElement>("[role=tab]");
+    if (!tabEl || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
+    e.preventDefault();
+    const tabs = [...el.querySelectorAll<HTMLElement>("[role=tab]")];
+    const next = tabs[(tabs.indexOf(tabEl) + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+    v.panelTab = next.dataset.tab as PanelTab;
+    draw(v);
+    el.querySelector<HTMLElement>(`[data-tab="${next.dataset.tab}"]`)?.focus();
+  });
+  grip.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const side = el.querySelector<HTMLElement>(".cv-side");
+    setPanelWidth(el, (side?.getBoundingClientRect().width ?? PANEL_MIN) + (e.key === "ArrowLeft" ? 32 : -32));
+    savePanel();
+  });
   const input = el.querySelector<HTMLTextAreaElement>("textarea")!;
   const grow = () => { input.style.height = "auto"; input.style.height = `${Math.min(input.scrollHeight, 200)}px`; };
   /** Switching conversations stops what it is doing: ask first while it works. */
@@ -992,18 +1124,22 @@ function mount(pane: Pane): View {
       window.addEventListener("keydown", off, true);
       return;
     }
-    const fileBtn = t.closest<HTMLElement>("[data-file]");
-    if (fileBtn) {
-      const p = fileBtn.dataset.file ?? "";
-      if (v.openFiles.has(p)) v.openFiles.delete(p); else v.openFiles.add(p);
-      v.sideSig = "";
-      draw(v, true);
+    // the work panel: show or hide it, its tabs, a file's diff, a command's output
+    if (t.closest("[data-panel-toggle]")) {
+      if (el.clientWidth < PANEL_NARROW) el.classList.toggle("peek");
+      else { panelPrefs.hidden = !panelPrefs.hidden; savePanel(); el.classList.remove("peek"); }
+      applyPanel(v);
       return;
     }
-    const outBtn = t.closest<HTMLElement>("[data-task-output]");
-    if (outBtn) {
-      const task = v.chat.meta.tasks.find((x) => x.id === outBtn.dataset.taskOutput);
-      if (task?.output) void openTaskOutput(task.label, task.output);
+    const tabBtn = t.closest<HTMLElement>("[data-tab]");
+    if (tabBtn) { v.panelTab = tabBtn.dataset.tab as PanelTab; draw(v); return; }
+    const fileBtn = t.closest<HTMLElement>("[data-file]");
+    if (fileBtn) { v.selFile = fileBtn.dataset.file; v.panelTab = "changes"; draw(v); return; }
+    const taskBtn = t.closest<HTMLElement>("[data-task]");
+    if (taskBtn) { v.selTask = taskBtn.dataset.task; v.panelTab = "background"; draw(v); return; }
+    if (t.closest("[data-task-refresh]")) {
+      const task = v.chat.meta.tasks.find((x) => x.id === v.selTask) ?? v.chat.meta.tasks[0];
+      if (task) { v.taskOut.delete(task.id); draw(v); }
       return;
     }
     const modelBtn = t.closest<HTMLElement>("[data-model]");

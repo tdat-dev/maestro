@@ -15,6 +15,7 @@ const io = vi.hoisted(() => ({
   confirmOk: true,
   screen: "",
   hold: null as Promise<void> | null,
+  readFiles: [] as Array<[string, string]>,
 }));
 vi.mock("./confirmmodal", () => ({
   confirmModal: async (o: { title: string }) => { io.confirms.push(o.title); return { ok: io.confirmOk, dontAsk: false, value: "" }; },
@@ -29,6 +30,7 @@ vi.mock("./ipc", () => ({
   sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); },
   sendInput: async (id: string, data: string) => { io.keys.push([id, data]); },
   claudeSessions: async () => io.sessions,
+  fsReadFile: async (root: string, path: string) => { io.readFiles.push([root, path]); return { content: "step 1\nerror: build failed\n", mtime: 0 }; },
   claudeSessionsEverywhere: async () => io.everywhere,
   openExternal: async (url: string) => { io.opened.push(url); },
   savePastedImage: async (data: string, ext: string) => { io.saved.push({ data, ext }); return `C:/tmp/pasted-${io.saved.length}.${ext}`; },
@@ -277,7 +279,7 @@ describe("chat view", () => {
     expect(restarts).toEqual([{ session: "aaaaaaaa-2222-3333-4444-555555555555" }]);
   });
 
-  it("fills the space: a side panel with the plan, the files and the session, and a footer per turn", async () => {
+  it("fills the space: a work panel with the changes, the session and the plan in tabs, and a footer per turn", async () => {
     const usage = { input_tokens: 5, cache_read_input_tokens: 44_000, cache_creation_input_tokens: 1000, output_tokens: 900 };
     io.chunks = [
       j({ type: "user", timestamp: "2026-09-24T10:00:00.000Z", origin: { kind: "human" }, message: { content: "fix it" } }) +
@@ -290,12 +292,16 @@ describe("chat view", () => {
     showChat(p, { name: "Ana", state: "idle", branch: "maestro/ana", onReview: () => { reviewed++; } });
     await flush();
     const side = p.el.querySelector(".cv-side")!;
-    expect(side.querySelector('[aria-label="Plan"] h3')!.textContent).toContain("1 of 2");
+    // opens on what it changed: the file, and its diff large beside the list
+    expect(side.querySelector('[role=tab][aria-selected="true"]')!.textContent).toContain("Changes");
     expect(side.querySelector(".cs-fn")!.textContent).toBe("auth.ts");
-    const session = [...side.querySelectorAll(".cs-dl div")].map((d) => [d.querySelector("dt")!.textContent, d.querySelector("dd")!.textContent]);
-    expect(session).toEqual(expect.arrayContaining([["Model", "Opus 5.5"], ["Branch", "maestro/ana"], ["Context", "45k tokens"]]));
+    expect([...side.querySelectorAll(".cp-view .cv-diff span")].map((s) => s.textContent)).toEqual(["- a", "+ b"]);
     (side.querySelector(".cs-review") as HTMLButtonElement).click();
     expect(reviewed).toBe(1);
+    (side.querySelector('[data-tab="session"]') as HTMLButtonElement).click();
+    expect(side.querySelector('[aria-label="Plan"] h3')!.textContent).toContain("1 of 2");
+    const session = [...side.querySelectorAll(".cs-dl div")].map((d) => [d.querySelector("dt")!.textContent, d.querySelector("dd")!.textContent]);
+    expect(session).toEqual(expect.arrayContaining([["Model", "Opus 5.5"], ["Branch", "maestro/ana"], ["Context", "45k tokens"]]));
     expect(p.el.querySelector(".cv-tf span")!.textContent).toBe("Worked for 1m 12s");
     expect(p.el.querySelector(".cv-model .cv-chip-t")!.textContent).toBe("Opus 5.5");
   });
@@ -571,9 +577,15 @@ describe("chat view: what the CLI offers", () => {
     const p = pane();
     showChat(p, { name: "Ana", state: "idle" });
     await flush();
-    const rows = [...p.el.querySelectorAll(".cs-tasks li")].map((li) => [li.className, li.querySelector(".cs-tl")!.textContent, li.querySelector(".cs-ts")!.textContent, !!li.querySelector("[data-task-output]")]);
-    expect(rows).toEqual([["running", "Start the dev server", "Running", false], ["failed", "Build", "Failed", true]]);
-    expect(p.el.querySelector(".cs-sec[aria-label='In the background'] h3 span")!.textContent).toBe("1 running");
+    const rows = [...p.el.querySelectorAll(".cs-tasks li")].map((li) => [li.className, li.querySelector(".cs-tl")!.textContent, li.querySelector(".cs-ts")!.textContent]);
+    expect(rows).toEqual([["running", "Start the dev server", "Running"], ["failed", "Build", "Failed"]]);
+    // with nothing changed, the panel opens on what is running
+    expect(p.el.querySelector('[role=tab][aria-selected="true"]')!.textContent).toBe("Background1 running");
+    // picking one shows its output in the panel
+    p.el.querySelector<HTMLElement>('[data-task="bt2"]')!.click();
+    await flush();
+    expect(io.readFiles).toEqual([["C:/t", "bt2.output"]]);
+    expect(p.el.querySelector(".cp-out")!.textContent).toContain("error: build failed");
     p.running = false;
     showChat(p, { name: "Ana", state: "stopped" });
     await flush();
@@ -596,8 +608,11 @@ describe("chat view: what the CLI offers", () => {
     expect([...side.querySelectorAll(".cs-sub")].map((h) => h.textContent)).toEqual(["New 1", "Edited 1"]);
     const names = [...side.querySelectorAll(".cs-files li")].map((li) => [li.querySelector(".cs-fn")!.textContent, li.classList.contains("now")]);
     expect(names).toEqual([["new.ts", true], ["old.ts", false]]);
+    // the newest is picked first; picking another shows its diff large beside the list
+    expect(side.querySelector(".cp-vh b")!.textContent).toBe("new.ts");
     side.querySelector<HTMLElement>('[data-file="D:/wt/p1/src/old.ts"]')!.click();
-    const diff = p.el.querySelector(".cv-side .cs-diff")!;
+    expect(p.el.querySelector(".cv-side .cp-vh b")!.textContent).toBe("old.ts");
+    const diff = p.el.querySelector(".cv-side .cp-view .cs-diff")!;
     expect([...diff.querySelectorAll("span")].map((s) => s.textContent)).toEqual(["- a", "+ b"]);
   });
 });

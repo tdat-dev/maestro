@@ -70,7 +70,7 @@ const flush = async () => { for (let k = 0; k < 6; k++) await new Promise((r) =>
 
 describe("chat view", () => {
   beforeEach(() => { io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; io.opened = []; io.saved = []; io.confirms = []; io.confirmOk = true; io.screen = ""; });
-  afterEach(() => { dropChat("p1"); document.body.innerHTML = ""; });
+  afterEach(() => { dropChat("p1"); document.body.innerHTML = ""; localStorage.clear(); });
 
   it("shows a long conversation once it has all of it, at the bottom, not slice by slice", async () => {
     // three slices, the middle one still on its way
@@ -173,6 +173,39 @@ describe("chat view", () => {
     await flush();
     expect(input.value).toContain("@README.md ");
     io.picked = [];
+  });
+
+  it("shows what you sent at once, keeps your draft, and walks back through what you sent with Up and Down", async () => {
+    io.chunks = [j({ type: "user", origin: { kind: "human" }, message: { content: "earlier question" } })];
+    localStorage.setItem("maestro.chat.draft.p1", "half typed");
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const input = p.el.querySelector("textarea")!;
+    // the draft came back
+    expect(input.value).toBe("half typed");
+    input.value = "fix the build";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(localStorage.getItem("maestro.chat.draft.p1")).toBe("fix the build");
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    // it shows at once, as sending, and the draft is gone
+    expect(p.el.querySelector(".cv-u.sending .cv-bubble")!.textContent).toBe("fix the build");
+    expect(localStorage.getItem("maestro.chat.draft.p1")).toBeNull();
+    // Up in an empty composer: what you sent, newest first; Down back to empty
+    const key = (k: string) => input.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }));
+    key("ArrowUp");
+    expect(input.value).toBe("fix the build");
+    key("ArrowUp");
+    expect(input.value).toBe("earlier question");
+    key("ArrowDown");
+    key("ArrowDown");
+    expect(input.value).toBe("");
+    // once the conversation has it, it is no longer "sending"
+    io.chunks = [j({ type: "user", origin: { kind: "human" }, message: { content: "fix the build" } })];
+    await new Promise((r) => setTimeout(r, 900));
+    await flush();
+    expect(p.el.querySelector(".cv-u.sending")).toBeNull();
+    expect([...p.el.querySelectorAll(".cv-bubble")].map((b) => b.textContent)).toEqual(["earlier question", "fix the build"]);
   });
 
   it("writes a file as @path: relative inside the agent's folder, quoted with spaces", () => {
@@ -594,7 +627,7 @@ it("places a changed file inside the agent's folder, or says it is outside", () 
 
 describe("chat view: what the CLI offers", () => {
   beforeEach(() => { dropChat("p1"); document.body.innerHTML = ""; io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; io.screen = ""; });
-  afterEach(() => { dropChat("p1"); document.body.innerHTML = ""; });
+  afterEach(() => { dropChat("p1"); document.body.innerHTML = ""; localStorage.clear(); });
   const menuPick = (label: string) => {
     const item = [...document.querySelectorAll<HTMLElement>(".cm-item")].find((b) => b.textContent?.startsWith(label));
     item!.click();

@@ -436,6 +436,8 @@ interface View {
   /** Background commands' output as last read, and those being read. */
   taskOut: Map<string, string>;
   reading: Set<string>;
+  /** What you sent that the conversation doesn't show yet. */
+  sending: Array<{ text: string; at: number }>;
   /** Put files in its message (a drop from outside the app lands here). */
   addFiles?: (paths: string[]) => void;
   /** Its folder's files for @, asked now and then. */
@@ -625,10 +627,19 @@ function focusKey(root: HTMLElement): string | null {
   return null;
 }
 
+/** What you sent stops showing as sending once the conversation has it (or after a while). */
+const SENDING_MS = 90_000;
+function settleSending(v: View): void {
+  if (!v.sending.length) return;
+  const said = new Set(v.chat.items.filter((i) => i.kind === "user").slice(-30).map((i) => ("text" in i ? i.text.trim() : "")));
+  v.sending = v.sending.filter((s) => !said.has(s.text.trim()) && Date.now() - s.at < SENDING_MS);
+}
+
 function draw(v: View, force = false): void {
   const items = v.chat.items;
+  settleSending(v);
   const set = (s: Set<string>) => [...s].sort().join(",");
-  const sig = `${items.length}|${items.filter((i) => i.kind === "step" && i.done).length}|${v.window}|${set(v.open)}|${set(v.expanded)}|${v.path ? 1 : 0}|${v.loaded}|${v.state.state}|${v.state.problem ?? ""}|${v.state.name}`;
+  const sig = `${items.length}|${items.filter((i) => i.kind === "step" && i.done).length}|${v.window}|${set(v.open)}|${set(v.expanded)}|${v.path ? 1 : 0}|${v.loaded}|${v.state.state}|${v.state.problem ?? ""}|${v.state.name}|${v.sending.length}`;
   const scroller = v.el.querySelector<HTMLElement>(".cv-scroll")!;
   const thread = v.el.querySelector<HTMLElement>(".cv-thread")!;
   if (sig !== v.sig || force) {
@@ -643,7 +654,8 @@ function draw(v: View, force = false): void {
       const start = Math.max(0, items.length - v.window);
       // Nothing of a conversation still loading: half of it would jump as the rest comes in.
       thread.innerHTML = !v.loaded ? emptyHtml(v) : (start > 0 ? `<button type="button" class="cv-earlier" data-earlier>Show ${Math.min(start, WINDOW)} earlier messages</button>` : "") +
-        (items.length ? threadHtml(items.slice(start), v.open, v.expanded, v.state.state === "working") : emptyHtml(v));
+        (items.length || v.sending.length ? threadHtml(items.slice(start), v.open, v.expanded, v.state.state === "working") : emptyHtml(v)) +
+        v.sending.map((s) => `<div class="cv-u sending"><div class="cv-bubble">${esc(s.text)}</div><span class="cv-sending">Sending…</span></div>`).join("");
       if (nearBottom || force) scroller.scrollTop = scroller.scrollHeight;
       if (back) thread.querySelector<HTMLElement>(back)?.focus({ preventScroll: true });
       announce(v);
@@ -922,7 +934,7 @@ function mount(pane: Pane): View {
     const t = e.target;
     if (t instanceof HTMLImageElement && t.parentElement?.classList.contains("cv-shot")) fitShot(t);
   }, true);
-  const v: View = { el, chat: newChat(pane), offset: 0, path: "", sig: "", window: WINDOW, open: new Set(), expanded: new Set(), timer: null, busy: false, state: { name: pane.spec.name, state: "idle" }, pane, sideSig: "", loaded: false, held: false, said: "", pending: {}, taskOut: new Map(), reading: new Set() };
+  const v: View = { el, chat: newChat(pane), offset: 0, path: "", sig: "", window: WINDOW, open: new Set(), expanded: new Set(), timer: null, busy: false, state: { name: pane.spec.name, state: "idle" }, pane, sideSig: "", loaded: false, held: false, said: "", pending: {}, taskOut: new Map(), reading: new Set(), sending: [] };
   applyPanel(v);
   // Drag the grip (or use the arrow keys on it) to share the row between the conversation and the panel.
   const grip = el.querySelector<HTMLElement>(".cv-grip")!;
@@ -1059,8 +1071,7 @@ function mount(pane: Pane): View {
         });
         if (text) void sendMessage(pane.id, text);
       })();
-      const scroller = el.querySelector<HTMLElement>(".cv-scroll")!;
-      scroller.scrollTop = scroller.scrollHeight;
+      noteSent(text);
       return;
     }
     // /resume and /clear are Claude Code's; other CLIs answer their own commands.
@@ -1075,10 +1086,45 @@ function mount(pane: Pane): View {
     input.value = "";
     grow();
     void sendMessage(pane.id, text);
-    const scroller = el.querySelector<HTMLElement>(".cv-scroll")!;
-    scroller.scrollTop = scroller.scrollHeight;
+    noteSent(text);
   };
-  input.addEventListener("input", grow);
+  /** What you sent shows at once, as sending, until the conversation has it. */
+  const noteSent = (text: string) => {
+    if (text) v.sending.push({ text, at: Date.now() });
+    saveDraft("");
+    hist.k = -1;
+    draw(v, true);
+  };
+  // The draft stays with the agent: switching agents or restarting Maestro keeps it.
+  const draftKey = `maestro.chat.draft.${pane.id}`;
+  const saveDraft = (text: string) => {
+    try { if (text) localStorage.setItem(draftKey, text); else localStorage.removeItem(draftKey); } catch { /* storage blocked */ }
+  };
+  try { input.value = localStorage.getItem(draftKey) ?? ""; } catch { /* storage blocked */ }
+  input.addEventListener("input", () => { grow(); saveDraft(input.value); hist.k = -1; });
+  // Up and Down walk back through what you sent, like a shell; Down past the newest gives the draft back.
+  const hist = { k: -1, draft: "" };
+  const sentBefore = () => [...v.sending.map((s) => s.text).reverse(), ...v.chat.items.filter((i) => i.kind === "user").map((i) => ("text" in i ? i.text : "")).reverse()]
+    .filter((t, k, all) => t && all.indexOf(t) === k);
+  const recall = (d: 1 | -1): boolean => {
+    const list = sentBefore();
+    const k = hist.k + d;
+    if (k < -1 || k >= list.length) return false;
+    if (hist.k === -1) hist.draft = input.value;
+    hist.k = k;
+    input.value = k === -1 ? hist.draft : list[k];
+    input.setSelectionRange(input.value.length, input.value.length);
+    grow();
+    return true;
+  };
+  input.addEventListener("keydown", (e) => {
+    if (e.isComposing || e.shiftKey || e.altKey || e.ctrlKey || (mention && !menEl.hidden)) return;
+    const caret = input.selectionStart ?? 0;
+    const onFirstLine = !input.value.slice(0, caret).includes("\n") && input.selectionStart === input.selectionEnd;
+    const onLastLine = !input.value.slice(caret).includes("\n") && input.selectionStart === input.selectionEnd;
+    if (e.key === "ArrowUp" && onFirstLine && (hist.k >= 0 || !input.value.trim()) && recall(1)) e.preventDefault();
+    else if (e.key === "ArrowDown" && onLastLine && hist.k >= 0 && recall(-1)) e.preventDefault();
+  });
   /** Claude's conversations in this folder; picking one resumes it here
    *  (claude --resume <id>), so the chat knows which conversation it shows. */
   const pickConversation = async (query: string) => {

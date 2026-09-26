@@ -14,6 +14,7 @@ const io = vi.hoisted(() => ({
   confirms: [] as string[],
   confirmOk: true,
   screen: "",
+  hold: null as Promise<void> | null,
 }));
 vi.mock("./confirmmodal", () => ({
   confirmModal: async (o: { title: string }) => { io.confirms.push(o.title); return { ok: io.confirmOk, dontAsk: false, value: "" }; },
@@ -21,6 +22,7 @@ vi.mock("./confirmmodal", () => ({
 vi.mock("./ipc", () => ({
   claudeTranscript: async (dir: string, sessionId: string | null, _since: number | null, offset: number) => {
     io.asked.push({ dir, sessionId, offset });
+    if (io.hold) await io.hold;
     const text = io.chunks.shift() ?? "";
     return { path: "C:/t.jsonl", text, next: offset + text.length };
   },
@@ -61,6 +63,29 @@ const flush = async () => { for (let k = 0; k < 6; k++) await new Promise((r) =>
 describe("chat view", () => {
   beforeEach(() => { io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; io.opened = []; io.saved = []; io.confirms = []; io.confirmOk = true; io.screen = ""; });
   afterEach(() => { dropChat("p1"); document.body.innerHTML = ""; });
+
+  it("shows a long conversation once it has all of it, at the bottom, not slice by slice", async () => {
+    // three slices, the middle one still on its way
+    io.chunks = [
+      j({ type: "user", origin: { kind: "human" }, message: { content: "first" } }),
+      j({ type: "assistant", message: { content: [{ type: "text", text: "second" }] } }),
+      j({ type: "user", origin: { kind: "human" }, message: { content: "last" } }),
+    ];
+    let release!: () => void;
+    io.hold = new Promise<void>((r) => { release = r; });
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    // still reading: nothing half-drawn
+    expect(p.el.querySelector(".cv-thread")!.textContent).toContain("Loading the conversation");
+    expect(p.el.querySelector(".cv-bubble")).toBeNull();
+    io.hold = null;
+    release();
+    await flush();
+    await flush();
+    expect([...p.el.querySelectorAll(".cv-bubble")].map((b) => b.textContent)).toEqual(["first", "last"]);
+    expect(io.asked.length).toBeGreaterThanOrEqual(4); // read to the end in one go
+  });
 
   it("is for the CLIs whose conversation it can read", () => {
     expect(chatSupported(pane())).toBe(true);

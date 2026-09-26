@@ -494,7 +494,7 @@ function emptyHtml(v: View): string {
   const st = v.state.state;
   const box = (title: string, line: string, starters = false) => `<div class="cv-empty">${title ? `<b>${title}</b>` : ""}<span>${line}</span>${starters
     ? `<div class="cv-starters">${STARTERS.map((s) => `<button type="button" data-starter="${esc(s.job)}">${esc(s.label)}</button>`).join("")}</div>` : ""}</div>`;
-  if (!v.loaded && v.pane.spec.sessionId && st !== "stopped") return box("", `Loading the conversation…`);
+  if (!v.loaded) return box("", `Loading the conversation…`);
   if (v.state.problem) return box(`${name} couldn't start`, esc(v.state.problem));
   if (st === "stopped") return box(name, "Resume it to carry on, or start a new conversation.");
   if (st === "needs") return box(`${name} is waiting on you`, "Answer below to let it carry on.");
@@ -534,7 +534,8 @@ function draw(v: View, force = false): void {
       const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
       const back = focusKey(thread);
       const start = Math.max(0, items.length - v.window);
-      thread.innerHTML = (start > 0 ? `<button type="button" class="cv-earlier" data-earlier>Show ${Math.min(start, WINDOW)} earlier messages</button>` : "") +
+      // Nothing of a conversation still loading: half of it would jump as the rest comes in.
+      thread.innerHTML = !v.loaded ? emptyHtml(v) : (start > 0 ? `<button type="button" class="cv-earlier" data-earlier>Show ${Math.min(start, WINDOW)} earlier messages</button>` : "") +
         (items.length ? threadHtml(items.slice(start), v.open, v.expanded, v.state.state === "working") : emptyHtml(v));
       if (nearBottom || force) scroller.scrollTop = scroller.scrollHeight;
       if (back) thread.querySelector<HTMLElement>(back)?.focus({ preventScroll: true });
@@ -695,7 +696,11 @@ async function poll(pane: Pane, v: View): Promise<void> {
     const session = pane.spec.sessionId;
     const src = sourceOf(pane);
     if (!src) { v.loaded = true; return; }
-    for (let k = 0; k < SLICES_PER_TICK; k++) {
+    // The first read goes to the end in one go and draws once, at the bottom: a
+    // long conversation drawn slice by slice jumps and scrolls on every tick.
+    const first = !v.loaded;
+    let caughtUp = false;
+    for (let k = 0; first || k < SLICES_PER_TICK; k++) {
       const r = await src.read(pane, dir, v.offset);
       // Without a session id of its own (a preset that picks one), a new file
       // is the only sign of a new conversation.
@@ -704,11 +709,13 @@ async function poll(pane: Pane, v: View): Promise<void> {
         v.path = r.path;
       }
       if (session !== pane.spec.sessionId) return; // switched while reading: next tick
-      if (!r.text) break;
+      if (!r.text) { caughtUp = true; break; }
       v.chat.feed(r.text);
       v.offset = r.next;
+      if (first) await new Promise((res) => setTimeout(res, 0)); // let the window breathe between slices
     }
-    v.loaded = true;
+    if (caughtUp || !first) v.loaded = true;
+    if (first && v.loaded && views.get(pane.id) === v) { draw(v, true); return; }
   } catch { /* the next tick tries again */ } finally {
     v.busy = false;
   }

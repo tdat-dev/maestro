@@ -79,8 +79,9 @@ describe("codex chat", () => {
     expect(steps(c).map((s) => [s.verb, s.target, s.done, s.error])).toEqual([
       ["Wrote", "new.ts", true, false], ["Edited", "old.ts", true, false], ["Deleted", "dead.ts", true, false],
     ]);
+    // newest change first: the patch touched them in this order
     expect(c.meta.files.map((f) => [f.name, f.isNew, !!f.deleted, f.turn])).toEqual([
-      ["new.ts", true, false, 1], ["old.ts", false, false, 1], ["dead.ts", false, true, 1],
+      ["dead.ts", false, true, 1], ["old.ts", false, false, 1], ["new.ts", true, false, 1],
     ]);
   });
 

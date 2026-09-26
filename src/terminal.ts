@@ -55,10 +55,10 @@ export interface TerminalHandle {
 
 /** Hard floor for auto-fit: below this the output is there but unreadable, so a
  *  very short pane keeps the floor and clips instead of shrinking forever. */
-export const AUTO_FIT_MIN = 12;
+export const AUTO_FIT_MIN = 13;
 /** …and auto-fit never drops more than this far below the size the user picked.
  *  It is a nudge for a cramped tile, not a licence to overrule the setting. */
-export const AUTO_FIT_DROP = 4;
+export const AUTO_FIT_DROP = 1;
 
 /**
  * Largest size in [`min`, `base`] whose measured row count reaches `target`,

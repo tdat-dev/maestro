@@ -19,14 +19,14 @@ export function setHideToTray(on: boolean): void {
 const TERM_FONT_SIZE_KEY = "maestro.termFontSize";
 const TERM_FONT_MIN = 10;
 const TERM_FONT_MAX = 20;
-export const TERM_FONT_DEFAULT = 13;
+export const TERM_FONT_DEFAULT = 15;
 
 function clampFont(n: number): number {
   if (!Number.isFinite(n)) return TERM_FONT_DEFAULT;
   return Math.min(TERM_FONT_MAX, Math.max(TERM_FONT_MIN, Math.round(n)));
 }
 
-/** Terminal font size in px. Defaults to 13, clamped to 10..20. */
+/** Terminal font size in px. Defaults to 15, clamped to 10..20. */
 export function getTermFontSize(): number {
   const raw = localStorage.getItem(TERM_FONT_SIZE_KEY);
   if (raw === null) return TERM_FONT_DEFAULT;

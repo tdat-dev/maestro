@@ -52,10 +52,10 @@ describe("shrinkToFit", () => {
   });
 
   it("shrinks a 2x2 tile until it clears the row floor", () => {
-    // ~360px is what a tile gets on a 2x2 tidy: 20px font renders 15 rows.
-    const size = shrinkToFit(20, AUTO_FIT_MIN, 24, paneOf(360));
+    // ~400px is what a tile gets on a 2x2 tidy: 20px font renders 16 rows.
+    const size = shrinkToFit(20, AUTO_FIT_MIN, 24, paneOf(400));
     expect(size).toBeLessThan(20);
-    expect(paneOf(360)(size)).toBeGreaterThanOrEqual(24);
+    expect(paneOf(400)(size)).toBeGreaterThanOrEqual(24);
   });
 
   it("stops at the floor instead of shrinking to nothing", () => {

@@ -209,7 +209,11 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
 
 /* bottom: working line + composer, as wide as the conversation */
 .cv-foot { flex: none; width: min(780px, 100%); margin: 0 auto; padding: 0 28px 18px; display: flex; flex-direction: column; gap: 8px; }
-.cv-working { margin: 0 8px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ib-ink-3); }
+.cv-working { margin: 0 8px; display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; color: var(--ib-ink-3); }
+/* what it is doing, then how long and how many tokens */
+.cv-wt { min-width: 0; color: var(--ib-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-wd { flex: none; font: 12px var(--mono); font-variant-numeric: tabular-nums; color: var(--ib-ink-3); }
+.cv-wd[hidden] { display: none; }
 .cv-dots { display: inline-flex; gap: 3px; }
 .cv-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--ib-work); animation: cv-dot 1.2s ease-in-out infinite; }
 .cv-dots i:nth-child(2) { animation-delay: 0.15s; }

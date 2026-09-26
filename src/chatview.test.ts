@@ -241,6 +241,26 @@ describe("chat view", () => {
     expect(io.keys).toEqual([]);
   });
 
+  it("says what a working agent is doing: the step it runs, else what its CLI shows, with the time", async () => {
+    io.chunks = [
+      j({ type: "user", origin: { kind: "human" }, message: { content: "run the tests" } }) +
+      j({ type: "assistant", message: { content: [{ type: "tool_use", id: "b1", name: "Bash", input: { command: "npm test", description: "Run the tests" } }] } }),
+    ];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "working" });
+    await flush();
+    const line = p.el.querySelector<HTMLElement>(".cv-working")!;
+    expect(line.hidden).toBe(false);
+    expect(line.querySelector(".cv-wt")!.textContent).toBe("Run the tests");
+    // the step finished; the CLI is thinking about it
+    io.chunks = [j({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "b1", content: "ok" }] } })];
+    io.screen = "ok\n\n✻ Pondering… (42s · ↓ 1.2k tokens · esc to interrupt)\n> ";
+    await new Promise((r) => setTimeout(r, 900));
+    await flush();
+    expect(line.querySelector(".cv-wt")!.textContent).toBe("Pondering…");
+    expect(line.querySelector(".cv-wd")!.textContent).toBe("42s · 1.2k tokens");
+  });
+
   it("knows a file named in an answer from a version, a domain or a call", () => {
     expect(fileRef("src/app.ts:42")).toEqual({ path: "src/app.ts", line: 42 });
     expect(fileRef("D:\\maestro\\src\\chatview.ts")).toEqual({ path: "D:\\maestro\\src\\chatview.ts", line: undefined });

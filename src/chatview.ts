@@ -14,6 +14,7 @@ import { openPalette, type PaletteItem } from "./inboxpalette";
 import { cliFacts, profileOf, type CliChoice, type CliFacts } from "./cliprofile";
 import { STARTERS } from "./starters";
 import { sourceOf } from "./chatsource";
+import { activityOnScreen, stepDoing } from "./working";
 import { applyMention, mentionAt, mentionMatches, withFolders, type MentionHit } from "./mention";
 import { claudeSessions, claudeSessionsEverywhere, fsReadDataUrl, fsReadFile, pickFiles, savePastedFile, workspaceFiles, openExternal, savePastedImage, sendInput, sendMessage, type ClaudeSession } from "./ipc";
 import { confirmModal } from "./confirmmodal";
@@ -652,6 +653,26 @@ function focusKey(root: HTMLElement): string | null {
   return null;
 }
 
+/** What a working agent is doing, for the line above the composer: the step it
+ *  is running, else what its CLI says on screen, else thinking; with how long
+ *  this turn has taken (and its tokens, when the CLI says). */
+function nowDoing(v: View): { what: string; detail: string } {
+  const items = v.chat.items;
+  let turnAt = 0;
+  let running: StepItem | undefined;
+  for (let k = items.length - 1; k >= 0; k--) {
+    const it = items[k];
+    if (it.kind === "user") { turnAt = it.at; break; }
+    if (!running && it.kind === "step" && !it.done) running = it;
+  }
+  const sentAt = v.sending[v.sending.length - 1]?.at ?? 0;
+  const since = Math.max(turnAt, sentAt);
+  const screen = v.pane.running ? activityOnScreen(screenOf(v.pane)) : null;
+  const what = running ? stepDoing(running) : screen?.verb || "Thinking…";
+  const detail = screen?.detail || (since ? took(Date.now() - since) : "");
+  return { what, detail };
+}
+
 /** What you sent stops showing as sending once the conversation has it (or after a while). */
 const SENDING_MS = 90_000;
 function settleSending(v: View): void {
@@ -695,7 +716,16 @@ function draw(v: View, force = false): void {
   v.el.classList.toggle("asking", !!v.state.asking);
   v.el.classList.toggle("stopped", v.state.state === "stopped");
   const wl = v.el.querySelector<HTMLElement>(".cv-working");
-  if (wl) wl.hidden = !working;
+  if (wl) {
+    wl.hidden = !working;
+    if (working) {
+      const now = nowDoing(v);
+      const wt = wl.querySelector<HTMLElement>(".cv-wt");
+      const wd = wl.querySelector<HTMLElement>(".cv-wd");
+      if (wt && wt.textContent !== now.what) { wt.textContent = now.what; wt.title = now.what; }
+      if (wd) { wd.textContent = now.detail; wd.hidden = !now.detail; }
+    }
+  }
   const why = v.el.querySelector<HTMLElement>(".cv-why");
   if (why) { why.textContent = v.state.problem ?? ""; why.hidden = !v.state.problem; }
   const again = v.el.querySelector<HTMLElement>("[data-restart-agent]");
@@ -941,7 +971,7 @@ function mount(pane: Pane): View {
     <p class="ia-sr cv-live" aria-live="polite"></p>
     <div class="cv-foot" role="status">
       <button type="button" class="cv-jump" data-jump hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M4 9l4 4 4-4" /></svg><span>Latest</span></button>
-      <p class="cv-working" hidden><span class="cv-dots" aria-hidden="true"><i></i><i></i><i></i></span>Working</p>
+      <p class="cv-working" hidden><span class="cv-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="cv-wt">Working</span><span class="cv-wd" hidden></span></p>
       <div class="cv-stopped"><span class="cv-sl">Stopped</span><span class="cv-why" hidden></span><button type="button" class="cv-restart" data-restart-agent>Resume</button><button type="button" class="cv-new" data-new-convo>New conversation</button></div>
       <form class="cv-compose">
         <label class="ia-sr" for="cv-in-${pane.id}">Message ${esc(pane.spec.name)}</label>

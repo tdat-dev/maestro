@@ -96,6 +96,7 @@ pub fn run() {
             transcripts::codex::codex_transcript,
             transcripts::opencode::opencode_transcript,
             commands::save_pasted_image,
+            commands::save_pasted_file,
             commands::run_capture,
             commands::claude_session_exists,
             commands::claude_sessions,

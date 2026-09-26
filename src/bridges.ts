@@ -14,7 +14,7 @@ import {
   onExit,
 } from "./ipc";
 import { type Pane, type Workspace } from "./panetypes";
-import { typeToAgent } from "./chatview";
+import { dropFilesToAgent, typeToAgent } from "./chatview";
 import { workspaces, activeWs } from "./appstate";
 import { focusPane } from "./panelayout";
 import {
@@ -82,6 +82,8 @@ function setDropTarget(p: Pane | null, agent = false) {
  *  the OS file-drop (paths from outside the app) and the in-app file-tree drag. */
 function dropPathsIntoPane(target: Pane, paths: string[]) {
   if (paths.length === 0) return;
+  // Shown as a chat: pictures attach, other files go in as @path.
+  if (dropFilesToAgent(target, paths)) return;
   const text = paths.map((p) => (/\s/.test(p) ? `"${p}"` : p)).join(" ") + " ";
   // Shown as a chat: the path goes where you are typing, not into the hidden terminal.
   if (typeToAgent(target, text)) return;

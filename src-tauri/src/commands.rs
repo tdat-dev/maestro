@@ -333,6 +333,51 @@ pub async fn save_pasted_image(data: String, ext: String) -> Result<String, Comm
     run_blocking(move || save_pasted_image_in(&std::env::temp_dir().join(PASTE_DIR), &data, &ext)).await
 }
 
+/// Most a file pasted into the chat may be (base64 grows it by a third on the way).
+const PASTE_FILE_MAX: usize = 50 * 1024 * 1024;
+
+/// Save a file pasted into the chat composer (copied in Explorer: the page gets
+/// its content, not where it lives) under its own name, in a folder of its own
+/// so two pastes of `notes.txt` don't collide. Returns the path.
+#[tauri::command]
+pub async fn save_pasted_file(data: String, name: String) -> Result<String, CommandError> {
+    run_blocking(move || save_pasted_file_in(&std::env::temp_dir().join(PASTE_DIR), &data, &name)).await
+}
+
+fn save_pasted_file_in(dir: &Path, data: &str, name: &str) -> Result<String, CommandError> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    // Only the name: no folders, nothing Windows refuses in a file name.
+    let clean: String = Path::new(name)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
+        .chars()
+        .map(|c| if "<>:\"/\\|?*".contains(c) || c.is_control() { '_' } else { c })
+        .collect();
+    let clean = clean.trim().trim_end_matches('.').to_string();
+    let clean = if clean.is_empty() { "pasted".to_string() } else { clean };
+    if data.len() / 4 * 3 > PASTE_FILE_MAX {
+        return Err(CommandError::Failed(format!("{clean} is over {} MB", PASTE_FILE_MAX / 1024 / 1024)));
+    }
+    let bytes = STANDARD
+        .decode(data.trim())
+        .map_err(|e| CommandError::Failed(format!("bad file data: {e}")))?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let mut folder = dir.join(format!("files-{stamp}"));
+    let mut n = 1;
+    while folder.exists() {
+        folder = dir.join(format!("files-{stamp}-{n}"));
+        n += 1;
+    }
+    std::fs::create_dir_all(&folder).map_err(|e| CommandError::Failed(e.to_string()))?;
+    let path = folder.join(&clean);
+    std::fs::write(&path, bytes).map_err(|e| CommandError::Failed(e.to_string()))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
 fn save_pasted_image_in(dir: &Path, data: &str, ext: &str) -> Result<String, CommandError> {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
     let ext = ext.trim_start_matches('.').to_ascii_lowercase();
@@ -852,6 +897,21 @@ mod paste_tests {
         assert_ne!(a, b);
         assert!(a.ends_with(".png"));
         assert_eq!(std::fs::read(&a).unwrap(), b"\x89PNG\r\n\x1a\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_pasted_file_keeps_its_name_in_a_folder_of_its_own() {
+        let dir = std::env::temp_dir().join(format!("maestro-paste-test3-{}", std::process::id()));
+        let a = save_pasted_file_in(&dir, "aGk=", "notes.txt").unwrap();
+        let b = save_pasted_file_in(&dir, "aGk=", "notes.txt").unwrap();
+        assert!(a.ends_with("notes.txt") && b.ends_with("notes.txt"));
+        assert_ne!(a, b);
+        assert_eq!(std::fs::read(&a).unwrap(), b"hi");
+        // a name can't climb out of the folder or carry what Windows refuses
+        let c = save_pasted_file_in(&dir, "aGk=", "..\\..\\evil:name?.txt").unwrap();
+        assert!(Path::new(&c).starts_with(&dir));
+        assert!(c.ends_with("evil_name_.txt"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

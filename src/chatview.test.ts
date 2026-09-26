@@ -16,6 +16,8 @@ const io = vi.hoisted(() => ({
   screen: "",
   hold: null as Promise<void> | null,
   readFiles: [] as Array<[string, string]>,
+  savedFiles: [] as string[],
+  picked: [] as string[],
 }));
 vi.mock("./confirmmodal", () => ({
   confirmModal: async (o: { title: string }) => { io.confirms.push(o.title); return { ok: io.confirmOk, dontAsk: false, value: "" }; },
@@ -32,6 +34,9 @@ vi.mock("./ipc", () => ({
   claudeSessions: async () => io.sessions,
   fsReadFile: async (root: string, path: string) => { io.readFiles.push([root, path]); return { content: "step 1\nerror: build failed\n", mtime: 0 }; },
   claudeSessionsEverywhere: async () => io.everywhere,
+  fsReadDataUrl: async (root: string, path: string) => `data:image/png;base64,${btoa(root + "/" + path)}`,
+  savePastedFile: async (_data: string, name: string) => { io.savedFiles.push(name); return `C:/Temp/maestro-paste/files-1/${name}`; },
+  pickFiles: async () => io.picked,
   workspaceFiles: async () => ["src/chatview.ts", "src/chatmodel.ts", "src/styles/chat.css", "README.md"],
   openExternal: async (url: string) => { io.opened.push(url); },
   savePastedImage: async (data: string, ext: string) => { io.saved.push({ data, ext }); return `C:/tmp/pasted-${io.saved.length}.${ext}`; },
@@ -43,7 +48,7 @@ vi.mock("./ipc", () => ({
   },
 }));
 
-import { ago, chatCommand, chatSupported, dropChat, grownSize, hideChat, modelAlias, modelName, showChat, took, tokens, whereIn } from "./chatview";
+import { ago, chatCommand, chatSupported, dropChat, dropFilesToAgent, fileMention, grownSize, hideChat, modelAlias, modelName, showChat, took, tokens, whereIn } from "./chatview";
 import type { Pane } from "./panetypes";
 
 const T = "2026-09-24T10:00:00.000Z";
@@ -137,6 +142,43 @@ describe("chat view", () => {
     expect(io.keys).toEqual([]); // Esc closed the list; the agent keeps working
     await type("and @zzzz");
     expect(list.textContent).toContain("No file in its folder matches");
+  });
+
+  it("takes files dropped, pasted from Explorer or picked: pictures attach, the rest go in as @path", async () => {
+    if (!URL.createObjectURL) (URL as unknown as { createObjectURL: () => string }).createObjectURL = () => "blob:x";
+    io.savedFiles = [];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const input = p.el.querySelector("textarea")!;
+    input.value = "look at";
+    input.setSelectionRange(7, 7);
+    // a drop from outside the app: one picture, one file inside its folder, one outside
+    expect(dropFilesToAgent(p, ["D:\\wt\\p1\\shots\\home.png", "D:\\wt\\p1\\src\\app.ts", "C:\\Users\\me\\My Notes\\plan.md"])).toBe(true);
+    await flush();
+    expect(input.value).toBe('look at @src/app.ts @"C:/Users/me/My Notes/plan.md" ');
+    expect(p.el.querySelectorAll(".cv-att").length).toBe(1);
+    expect(p.el.querySelector<HTMLImageElement>(".cv-att img")!.src).toContain("data:image/png");
+    // a file copied in Explorer and pasted: saved under its name, in as @path
+    const e = new Event("paste", { bubbles: true, cancelable: true });
+    const f = new File(["hello"], "notes.txt", { type: "text/plain" });
+    Object.defineProperty(e, "clipboardData", { value: { items: [{ kind: "file", type: "text/plain", getAsFile: () => f }], getData: () => "" } });
+    input.dispatchEvent(e);
+    await flush();
+    expect(io.savedFiles).toEqual(["notes.txt"]);
+    expect(input.value).toContain("@C:/Temp/maestro-paste/files-1/notes.txt ");
+    // the + button: the native picker, same as a drop
+    io.picked = ["D:\\wt\\p1\\README.md"];
+    p.el.querySelector<HTMLElement>("[data-attach]")!.click();
+    await flush();
+    expect(input.value).toContain("@README.md ");
+    io.picked = [];
+  });
+
+  it("writes a file as @path: relative inside the agent's folder, quoted with spaces", () => {
+    expect(fileMention("D:\\wt\\p1\\src\\a.ts", "D:/wt/p1")).toBe("@src/a.ts");
+    expect(fileMention("D:\\other\\b.ts", "D:/wt/p1")).toBe("@D:/other/b.ts");
+    expect(fileMention("D:\\wt\\p1\\My Docs\\c.md", "D:\\wt\\p1\\")).toBe('@"My Docs/c.md"');
   });
 
   it("is for the CLIs whose conversation it can read", () => {

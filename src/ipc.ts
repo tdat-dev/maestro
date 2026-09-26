@@ -125,6 +125,17 @@ export async function opencodeTranscript(
   return invoke("opencode_transcript", { dir, sinceMs, session, cursor });
 }
 
+/** Save a file pasted into a chat (base64) under its own name; its path. */
+export async function savePastedFile(data: string, name: string): Promise<string> {
+  return invoke<string>("save_pasted_file", { data, name });
+}
+
+/** Native picker for one or more files (the chat's attach button). Empty when cancelled. */
+export async function pickFiles(defaultPath?: string): Promise<string[]> {
+  const res = await open({ multiple: true, directory: false, defaultPath });
+  return Array.isArray(res) ? res : typeof res === "string" ? [res] : [];
+}
+
 /** The files in `dir`, relative with forward slashes (git's list when it is a repo), for @ in the chat. */
 export async function workspaceFiles(dir: string): Promise<string[]> {
   return invoke<string[]>("workspace_files", { dir });

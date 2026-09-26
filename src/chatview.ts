@@ -14,7 +14,7 @@ import { cliFacts, profileOf, type CliChoice, type CliFacts } from "./cliprofile
 import { STARTERS } from "./starters";
 import { sourceOf } from "./chatsource";
 import { applyMention, mentionAt, mentionMatches, withFolders, type MentionHit } from "./mention";
-import { claudeSessions, claudeSessionsEverywhere, fsReadFile, workspaceFiles, openExternal, savePastedImage, sendInput, sendMessage, type ClaudeSession } from "./ipc";
+import { claudeSessions, claudeSessionsEverywhere, fsReadDataUrl, fsReadFile, pickFiles, savePastedFile, workspaceFiles, openExternal, savePastedImage, sendInput, sendMessage, type ClaudeSession } from "./ipc";
 import { confirmModal } from "./confirmmodal";
 import type { Pane } from "./panetypes";
 
@@ -232,11 +232,43 @@ export function pastedImages(dt: DataTransfer | null): File[] {
   return out;
 }
 
-async function savePasted(f: File): Promise<string> {
+async function base64Of(f: File): Promise<string> {
   const bytes = new Uint8Array(await f.arrayBuffer());
   let bin = "";
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return savePastedImage(btoa(bin), PASTE_TYPES[f.type] ?? "png");
+  return btoa(bin);
+}
+
+async function savePasted(f: File): Promise<string> {
+  return savePastedImage(await base64Of(f), PASTE_TYPES[f.type] ?? "png");
+}
+
+/** Every file on the clipboard: a screenshot, or files copied in Explorer. */
+export function pastedFiles(dt: DataTransfer | null): File[] {
+  if (!dt) return [];
+  const out: File[] = [];
+  for (const item of Array.from(dt.items ?? [])) {
+    if (item.kind !== "file") continue;
+    const f = item.getAsFile();
+    if (f) out.push(f);
+  }
+  return out;
+}
+
+/** A path that is a picture the chat can attach. */
+const PICTURE_PATH = /\.(png|jpe?g|gif|webp)$/i;
+const mediaOf = (path: string) => {
+  const ext = (/\.([a-z]+)$/i.exec(path)?.[1] ?? "png").toLowerCase();
+  return ext === "jpg" ? "image/jpeg" : `image/${ext}`;
+};
+
+/** How a file goes into a message: @path, relative inside the agent's folder, quoted when it has spaces. */
+export function fileMention(path: string, dir?: string | null): string {
+  const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
+  let p = norm(path);
+  const d = dir ? norm(dir) : "";
+  if (d && p.toLowerCase().startsWith(d.toLowerCase() + "/")) p = p.slice(d.length + 1);
+  return /\s/.test(p) ? `@"${p}"` : `@${p}`;
 }
 
 /** Most a small picture is blown up: past this it is only blur. */
@@ -404,6 +436,8 @@ interface View {
   /** Background commands' output as last read, and those being read. */
   taskOut: Map<string, string>;
   reading: Set<string>;
+  /** Put files in its message (a drop from outside the app lands here). */
+  addFiles?: (paths: string[]) => void;
   /** Its folder's files for @, asked now and then. */
   files?: { at: number; all: MentionHit[] };
 }
@@ -865,6 +899,7 @@ function mount(pane: Pane): View {
         <div class="cv-atts" hidden></div>
         <textarea id="cv-in-${pane.id}" rows="1" placeholder="Message ${esc(pane.spec.name)}… (@ for a file)" title="Enter sends · Shift+Enter starts a new line · @ picks a file" role="combobox" aria-autocomplete="list" aria-controls="cv-men-${pane.id}" aria-expanded="false"></textarea>
         <div class="cv-bar">
+          <button type="button" class="cv-chip cv-attach" data-attach aria-label="Attach files" title="Attach files (or drop them here, or type @)"><svg class="cv-chip-i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" /></svg></button>
           <button type="button" class="cv-chip cv-model" data-model aria-haspopup="menu" title="Change the model" hidden><span class="cv-chip-t">Model</span><svg class="cv-chip-c" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" /></svg></button>
           <button type="button" class="cv-chip cv-set" data-setting="effort" aria-haspopup="menu" hidden><svg class="cv-chip-i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 12.5a5.5 5.5 0 1 1 10 0" /><path d="M8 11.5 10.5 7" /></svg><span class="cv-chip-t">Effort</span><svg class="cv-chip-c" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" /></svg></button>
           <button type="button" class="cv-chip cv-set" data-setting="permission" aria-haspopup="menu" hidden><svg class="cv-chip-i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2 3 4v4c0 3 2.2 5 5 6 2.8-1 5-3 5-6V4z" /></svg><span class="cv-chip-t">Permissions</span><svg class="cv-chip-c" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" /></svg></button>
@@ -958,17 +993,49 @@ function mount(pane: Pane): View {
     if (a) URL.revokeObjectURL(a.url);
     drawAtts();
   };
+  /** Text where you are typing, a space before it when it would run into a word. */
+  const insertText = (t: string) => {
+    const s = input.selectionStart ?? input.value.length;
+    const pad = s > 0 && !/\s$/.test(input.value.slice(0, s)) ? " " : "";
+    input.setRangeText(pad + t, s, input.selectionEnd ?? s, "end");
+    grow();
+  };
+  /** Files into the message: pictures as attachments, the rest as @path where you are typing. */
+  const addFiles = (paths: string[]) => {
+    const dir = pane.spec.ranIn ?? pane.spec.cwd;
+    const words: string[] = [];
+    for (const p of paths) {
+      if (PICTURE_PATH.test(p) && atts.length < MAX_ATTACHMENTS) {
+        const a: Attachment = { url: "", pic: pictureAt("", mediaOf(p)), path: Promise.resolve(p) };
+        atts.push(a);
+        const cut = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+        void fsReadDataUrl(p.slice(0, cut), p.slice(cut + 1))
+          .then((u) => { a.url = u; a.pic = pictureAt(u, mediaOf(p)); drawAtts(); })
+          .catch(() => { a.failed = true; drawAtts(); });
+      } else words.push(fileMention(p, dir));
+    }
+    if (words.length) insertText(words.join(" ") + " ");
+    drawAtts();
+    input.focus();
+  };
+  v.addFiles = addFiles;
   input.addEventListener("paste", (e) => {
-    const files = pastedImages(e.clipboardData);
+    const files = pastedFiles(e.clipboardData);
     if (!files.length) return;
     e.preventDefault();
     const text = e.clipboardData?.getData("text/plain") ?? "";
     if (text) { input.setRangeText(text, input.selectionStart, input.selectionEnd, "end"); grow(); }
-    for (const f of files.slice(0, MAX_ATTACHMENTS - atts.length)) {
-      const url = URL.createObjectURL(f);
-      const a: Attachment = { url, pic: pictureAt(url, f.type), path: Promise.resolve(null) };
-      a.path = savePasted(f).catch(() => { a.failed = true; drawAtts(); return null; });
-      atts.push(a);
+    for (const f of files) {
+      if (PASTE_TYPES[f.type]) {
+        if (atts.length >= MAX_ATTACHMENTS) continue;
+        const url = URL.createObjectURL(f);
+        const a: Attachment = { url, pic: pictureAt(url, f.type), path: Promise.resolve(null) };
+        a.path = savePasted(f).catch(() => { a.failed = true; drawAtts(); return null; });
+        atts.push(a);
+      } else {
+        // A file copied in Explorer: the page gets its content, not its path; saved, it goes in as @path.
+        void base64Of(f).then((data) => savePastedFile(data, f.name)).then((p) => insertText(fileMention(p) + " ")).catch(() => {});
+      }
     }
     drawAtts();
   });
@@ -1165,6 +1232,10 @@ function mount(pane: Pane): View {
       return;
     }
     if (t.closest("[data-resume-pick]")) { void pickConversation(""); return; }
+    if (t.closest("[data-attach]")) {
+      void pickFiles(pane.spec.ranIn ?? pane.spec.cwd ?? undefined).then((paths) => { if (paths.length) addFiles(paths); }).catch(() => {});
+      return;
+    }
     const attX = t.closest<HTMLElement>("[data-att-x]");
     if (attX) { dropAtt(Number(attX.dataset.attX)); input.focus(); return; }
     const attOpen = t.closest<HTMLElement>("[data-att-open]");
@@ -1374,6 +1445,14 @@ export function focusAgent(pane: Pane): void {
   const box = chatShown(pane) ? pane.el.querySelector<HTMLTextAreaElement>(".cv textarea") : null;
   if (box && box.getClientRects().length) box.focus();
   else pane.term.focus();
+}
+
+/** Files dropped on this agent from outside the app: into its message when the chat shows. */
+export function dropFilesToAgent(pane: Pane, paths: string[]): boolean {
+  const v = views.get(pane.id);
+  if (!v?.addFiles || !chatShown(pane) || !v.el.getClientRects().length) return false;
+  v.addFiles(paths);
+  return true;
 }
 
 /** Type text where you would type to this agent (a dropped file's path). */

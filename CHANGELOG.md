@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-09-26
+
+The chat grows up: a work panel beside the conversation, files in every way
+you'd expect, and a working line that says what the agent is doing.
+
+### Added
+
+- **A work panel beside the conversation.** Changes (new and edited files,
+  the picked one's diff large), Background (what the agent left running, with
+  its output) and Session (plan, model, earlier conversations). Drag to
+  resize, hide it, and on a narrow window it slides over the chat.
+- **@ picks a file or folder** of the agent's folder as you type.
+- **Files in by drop, paste or the + button.** Pictures attach with a
+  thumbnail; other files go in as @path. Files copied in Explorer paste too.
+- **Questions the agent asks you** show as a card in the chat, with the
+  options and, once you answer, what you picked.
+- **Ctrl+F** finds in the conversation; **Copy** on code blocks; file names in
+  answers open in the code panel.
+- Up in an empty composer brings back what you sent; drafts stay per agent.
+
+### Changed
+
+- **The working line says what the agent is doing**: the step it runs, or
+  what Claude Code shows ("Pondering… 42s · 1.2k tokens"), and for how long.
+- What you send shows at once, until the conversation has it.
+- Reading further up, new messages no longer pull you down; a button says
+  they came.
+
+### Fixed
+
+- A long conversation opens once, at the bottom, instead of scrolling in
+  slice by slice.
+
 ## [0.6.2] - 2026-09-25
 
 Agents work in your project folder, and the list says which project each one is in.

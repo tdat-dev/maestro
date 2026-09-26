@@ -125,6 +125,11 @@ export async function opencodeTranscript(
   return invoke("opencode_transcript", { dir, sinceMs, session, cursor });
 }
 
+/** The files in `dir`, relative with forward slashes (git's list when it is a repo), for @ in the chat. */
+export async function workspaceFiles(dir: string): Promise<string[]> {
+  return invoke<string[]>("workspace_files", { dir });
+}
+
 /** Save a picture pasted into a chat (base64, no data: prefix) as a file; its path. */
 export async function savePastedImage(data: string, ext: string): Promise<string> {
   return invoke<string>("save_pasted_image", { data, ext });

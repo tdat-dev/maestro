@@ -13,7 +13,8 @@ import { openPalette, type PaletteItem } from "./inboxpalette";
 import { cliFacts, profileOf, type CliChoice, type CliFacts } from "./cliprofile";
 import { STARTERS } from "./starters";
 import { sourceOf } from "./chatsource";
-import { claudeSessions, claudeSessionsEverywhere, fsReadFile, openExternal, savePastedImage, sendInput, sendMessage, type ClaudeSession } from "./ipc";
+import { applyMention, mentionAt, mentionMatches, withFolders, type MentionHit } from "./mention";
+import { claudeSessions, claudeSessionsEverywhere, fsReadFile, workspaceFiles, openExternal, savePastedImage, sendInput, sendMessage, type ClaudeSession } from "./ipc";
 import { confirmModal } from "./confirmmodal";
 import type { Pane } from "./panetypes";
 
@@ -211,6 +212,9 @@ function forgetImages(items: ChatItem[]): void {
   }
 }
 
+const MENTION_FILE = `<svg class="cv-mi" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2h5l3 3v9H4z" /><path d="M9 2v3h3" /></svg>`;
+const MENTION_FOLDER = `<svg class="cv-mi" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4.5h4l1.5 1.5H14v6.5H2z" /></svg>`;
+
 /** A picture pasted into the composer: shown at once, saved to a file meanwhile. */
 interface Attachment { url: string; pic: ChatImage; path: Promise<string | null>; failed?: boolean }
 const MAX_ATTACHMENTS = 8;
@@ -400,6 +404,8 @@ interface View {
   /** Background commands' output as last read, and those being read. */
   taskOut: Map<string, string>;
   reading: Set<string>;
+  /** Its folder's files for @, asked now and then. */
+  files?: { at: number; all: MentionHit[] };
 }
 
 const views = new Map<string, View>();
@@ -855,8 +861,9 @@ function mount(pane: Pane): View {
       <div class="cv-stopped"><span class="cv-sl">Stopped</span><span class="cv-why" hidden></span><button type="button" class="cv-restart" data-restart-agent>Resume</button><button type="button" class="cv-new" data-new-convo>New conversation</button></div>
       <form class="cv-compose">
         <label class="ia-sr" for="cv-in-${pane.id}">Message ${esc(pane.spec.name)}</label>
+        <div class="cv-mention" id="cv-men-${pane.id}" role="listbox" aria-label="Files in its folder" hidden></div>
         <div class="cv-atts" hidden></div>
-        <textarea id="cv-in-${pane.id}" rows="1" placeholder="Message ${esc(pane.spec.name)}…" title="Enter sends · Shift+Enter starts a new line"></textarea>
+        <textarea id="cv-in-${pane.id}" rows="1" placeholder="Message ${esc(pane.spec.name)}… (@ for a file)" title="Enter sends · Shift+Enter starts a new line · @ picks a file" role="combobox" aria-autocomplete="list" aria-controls="cv-men-${pane.id}" aria-expanded="false"></textarea>
         <div class="cv-bar">
           <button type="button" class="cv-chip cv-model" data-model aria-haspopup="menu" title="Change the model" hidden><span class="cv-chip-t">Model</span><svg class="cv-chip-c" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" /></svg></button>
           <button type="button" class="cv-chip cv-set" data-setting="effort" aria-haspopup="menu" hidden><svg class="cv-chip-i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 12.5a5.5 5.5 0 1 1 10 0" /><path d="M8 11.5 10.5 7" /></svg><span class="cv-chip-t">Effort</span><svg class="cv-chip-c" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" /></svg></button>
@@ -1067,7 +1074,77 @@ function mount(pane: Pane): View {
   };
   // Warm the list up, so the first / opens at once.
   void cliFacts(pane.spec.badge, pane.spec.program, pane.spec.ranIn ?? pane.spec.cwd)?.then((f) => { v.facts = f; draw(v); }).catch(() => {});
+  // @: a file or folder of the agent's folder, picked from a list as you type.
+  let mention: { start: number; hits: MentionHit[]; k: number } | null = null;
+  const menEl = el.querySelector<HTMLElement>(".cv-mention")!;
+  const filesOf = async (): Promise<MentionHit[]> => {
+    const dir = pane.spec.ranIn ?? pane.spec.cwd;
+    if (!dir) return [];
+    if (!v.files || Date.now() - v.files.at > 60_000) {
+      const list = await workspaceFiles(dir).catch(() => [] as string[]);
+      v.files = { at: Date.now(), all: withFolders(list) };
+    }
+    return v.files.all;
+  };
+  const closeMention = () => {
+    mention = null;
+    menEl.hidden = true;
+    input.setAttribute("aria-expanded", "false");
+    input.removeAttribute("aria-activedescendant");
+  };
+  const drawMention = (query: string) => {
+    if (!mention) return;
+    menEl.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+    if (!mention.hits.length) {
+      menEl.innerHTML = `<p class="cv-mnone">No file in its folder matches “${esc(query)}”</p>`;
+      input.removeAttribute("aria-activedescendant");
+      return;
+    }
+    menEl.innerHTML = mention.hits.map((h, k) => `<button type="button" role="option" id="cv-men-${pane.id}-${k}" aria-selected="${k === mention!.k}" data-mention="${k}" tabindex="-1">${h.folder ? MENTION_FOLDER : MENTION_FILE}<span class="cv-mn">${esc(h.name)}</span><span class="cv-md">${esc(h.dir)}</span></button>`).join("");
+    input.setAttribute("aria-activedescendant", `cv-men-${pane.id}-${mention.k}`);
+    menEl.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+  };
+  const updateMention = async () => {
+    if (!mentionAt(input.value, input.selectionStart ?? 0)) { closeMention(); return; }
+    const all = await filesOf();
+    // what you typed while the list was being read
+    const at = mentionAt(input.value, input.selectionStart ?? 0);
+    if (!at) { closeMention(); return; }
+    mention = { start: at.start, hits: mentionMatches(all, at.query), k: 0 };
+    drawMention(at.query);
+  };
+  const pickMention = (k: number) => {
+    const h = mention?.hits[k];
+    if (!mention || !h) return;
+    const r = applyMention(input.value, mention.start, input.selectionStart ?? input.value.length, h.path);
+    input.value = r.text;
+    input.setSelectionRange(r.caret, r.caret);
+    closeMention();
+    grow();
+    input.focus();
+  };
+  input.addEventListener("input", () => void updateMention());
+  input.addEventListener("click", () => void updateMention());
+  input.addEventListener("blur", () => closeMention());
+  // A click on the list keeps the keyboard in the composer.
+  menEl.addEventListener("pointerdown", (e) => e.preventDefault());
+  menEl.addEventListener("click", (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>("[data-mention]");
+    if (b) pickMention(Number(b.dataset.mention));
+  });
   input.addEventListener("keydown", (e) => {
+    if (mention && !menEl.hidden) {
+      const n = mention.hits.length;
+      if ((e.key === "ArrowDown" || e.key === "ArrowUp") && n) {
+        e.preventDefault();
+        mention.k = (mention.k + (e.key === "ArrowDown" ? 1 : -1) + n) % n;
+        drawMention("");
+        return;
+      }
+      if ((e.key === "Enter" || e.key === "Tab") && n && !e.isComposing) { e.preventDefault(); pickMention(mention.k); return; }
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeMention(); return; }
+    }
     if (e.key === "/" && !input.value && cliFacts(pane.spec.badge, pane.spec.program, pane.spec.ranIn ?? pane.spec.cwd)) { e.preventDefault(); void pickCommand(); return; }
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
   });

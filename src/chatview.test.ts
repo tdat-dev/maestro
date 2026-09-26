@@ -32,6 +32,7 @@ vi.mock("./ipc", () => ({
   claudeSessions: async () => io.sessions,
   fsReadFile: async (root: string, path: string) => { io.readFiles.push([root, path]); return { content: "step 1\nerror: build failed\n", mtime: 0 }; },
   claudeSessionsEverywhere: async () => io.everywhere,
+  workspaceFiles: async () => ["src/chatview.ts", "src/chatmodel.ts", "src/styles/chat.css", "README.md"],
   openExternal: async (url: string) => { io.opened.push(url); },
   savePastedImage: async (data: string, ext: string) => { io.saved.push({ data, ext }); return `C:/tmp/pasted-${io.saved.length}.${ext}`; },
   // Claude Code's own list, as its init event gives it.
@@ -112,6 +113,30 @@ describe("chat view", () => {
     const done = p.el.querySelector(".cv-ask")!;
     expect(done.classList.contains("waiting")).toBe(false);
     expect(done.querySelector(".cv-qo li.on b")!.textContent).toBe("Chat left");
+  });
+
+  it("offers the folder's files on @, picks with the keys, and closes on Esc without stopping the agent", async () => {
+    const p = pane();
+    showChat(p, { name: "Ana", state: "working" });
+    await flush();
+    const input = p.el.querySelector("textarea")!;
+    const list = p.el.querySelector<HTMLElement>(".cv-mention")!;
+    const type = async (text: string) => { input.value = text; input.setSelectionRange(text.length, text.length); input.dispatchEvent(new Event("input", { bubbles: true })); await flush(); };
+    await type("look at @chat");
+    expect(list.hidden).toBe(false);
+    expect([...list.querySelectorAll("[role=option] .cv-mn")].map((o) => o.textContent).slice(0, 3)).toEqual(["chat.css", "chatview.ts", "chatmodel.ts"]);
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    expect(list.querySelector('[aria-selected="true"] .cv-mn')!.textContent).toBe("chatview.ts");
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    expect(input.value).toBe("look at @src/chatview.ts ");
+    expect(list.hidden).toBe(true);
+    expect(io.sent).toEqual([]); // Enter picked, it didn't send
+    await type("and @READ");
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    expect(list.hidden).toBe(true);
+    expect(io.keys).toEqual([]); // Esc closed the list; the agent keeps working
+    await type("and @zzzz");
+    expect(list.textContent).toContain("No file in its folder matches");
   });
 
   it("is for the CLIs whose conversation it can read", () => {

@@ -104,6 +104,7 @@ pub fn run() {
             worktree::worktree_add,
             worktree::worktree_remove,
             worktree::worktree_leave,
+            worktree::workspace_files,
             review::git_repos_under,
             review::repo_diff,
             review::git_changed_files,

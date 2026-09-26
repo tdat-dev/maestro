@@ -8,6 +8,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { createChat, turnsOf, type BgTask, type Chat, type ChatImage, type ChatItem, type FileChange, type StepItem } from "./chatmodel";
 import { ICON_CLOSE } from "./icons";
+import { openFileInPanel } from "./agentbridge";
 import { openMenu } from "./ctxmenu";
 import { openPalette, type PaletteItem } from "./inboxpalette";
 import { cliFacts, profileOf, type CliChoice, type CliFacts } from "./cliprofile";
@@ -172,10 +173,29 @@ function markdown(id: string, text: string): string {
     // Links say where they go; a click opens them in the browser (see mount),
     // never in the app's own window.
     for (const a of t.content.querySelectorAll("a[href]")) { a.setAttribute("rel", "noopener noreferrer"); a.setAttribute("title", a.getAttribute("href")!); }
+    // A code block copies with one click.
+    for (const pre of t.content.querySelectorAll("pre")) pre.insertAdjacentHTML("beforeend", `<button type="button" class="cv-cc" data-copy-code aria-label="Copy this code">Copy</button>`);
+    // A file named in the answer (`src/app.ts:42`) opens in the code panel.
+    for (const code of t.content.querySelectorAll("code")) {
+      if (code.closest("pre")) continue;
+      const ref = fileRef(code.textContent ?? "");
+      if (ref) { code.classList.add("cv-fref"); code.setAttribute("data-file-ref", ref.path); code.setAttribute("title", `Open ${ref.path}`); code.setAttribute("tabindex", "0"); code.setAttribute("role", "link"); }
+    }
     html = t.innerHTML;
     mdCache.set(key, html);
   }
   return html;
+}
+
+/** A file path in an answer's inline code: `src/app.ts`, `D:\x\y.rs:12`, `chatview.ts:40:3`. */
+export function fileRef(text: string): { path: string; line?: number } | null {
+  const m = /^((?:[A-Za-z]:[\\/])?[\w.@()[\]\-\\/]*[\w\-]\.[A-Za-z][A-Za-z0-9]{0,7})(?::(\d+)(?::\d+)?)?$/.exec(text.trim());
+  if (!m) return null;
+  const path = m[1];
+  // a version (1.2.3), a domain (example.com) or a method call (x.map) is not a file
+  if (/^\d/.test(path) || /^(?:www\.|[a-z]+\.(?:com|org|net|io|dev|app)$)/i.test(path)) return null;
+  if (!/[\\/]/.test(path) && !/\.(?:[jt]sx?|mjs|cjs|rs|py|go|rb|java|kt|swift|c|cc|cpp|h|hpp|cs|css|scss|html|vue|svelte|json|toml|ya?ml|md|txt|sh|ps1|sql|lock|env)$/i.test(path)) return null;
+  return { path, line: m[2] ? Number(m[2]) : undefined };
 }
 
 const urls = new WeakMap<ChatImage, string>();
@@ -436,6 +456,11 @@ interface View {
   /** Background commands' output as last read, and those being read. */
   taskOut: Map<string, string>;
   reading: Set<string>;
+  /** New messages came while you were reading further up. */
+  unseen: boolean;
+  seenItems: number;
+  /** Runs after the thread is drawn again (find marks its matches anew). */
+  afterDraw?: () => void;
   /** What you sent that the conversation doesn't show yet. */
   sending: Array<{ text: string; at: number }>;
   /** Put files in its message (a drop from outside the app lands here). */
@@ -657,6 +682,10 @@ function draw(v: View, force = false): void {
         (items.length || v.sending.length ? threadHtml(items.slice(start), v.open, v.expanded, v.state.state === "working") : emptyHtml(v)) +
         v.sending.map((s) => `<div class="cv-u sending"><div class="cv-bubble">${esc(s.text)}</div><span class="cv-sending">Sending…</span></div>`).join("");
       if (nearBottom || force) scroller.scrollTop = scroller.scrollHeight;
+      // Reading further up: new messages don't pull you down, they say they came.
+      else if (v.loaded && items.length > v.seenItems) v.unseen = true;
+      v.seenItems = items.length;
+      v.afterDraw?.();
       if (back) thread.querySelector<HTMLElement>(back)?.focus({ preventScroll: true });
       announce(v);
     }
@@ -900,9 +929,18 @@ function mount(pane: Pane): View {
   el.innerHTML = `
     <div class="cv-main">
     <button type="button" class="cv-ptoggle" data-panel-toggle aria-label="Show the work panel" title="Changes, background and session"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="2" /><path d="M9.5 3v10" /></svg></button>
+    <div class="cv-find" role="search" hidden>
+      <svg class="cv-find-i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2" /><path d="M10.2 10.2 13.5 13.5" /></svg>
+      <input type="text" class="cv-find-in" aria-label="Find in the conversation" placeholder="Find in the conversation" spellcheck="false">
+      <span class="cv-find-n" aria-live="polite"></span>
+      <button type="button" data-find="-1" aria-label="Previous match" title="Previous (Shift+Enter)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10l4-4 4 4" /></svg></button>
+      <button type="button" data-find="1" aria-label="Next match" title="Next (Enter)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg></button>
+      <button type="button" data-find-close aria-label="Close find" title="Close (Esc)">${ICON_CLOSE}</button>
+    </div>
     <div class="cv-scroll"><div class="cv-thread" role="log" aria-live="off"></div></div>
     <p class="ia-sr cv-live" aria-live="polite"></p>
     <div class="cv-foot" role="status">
+      <button type="button" class="cv-jump" data-jump hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M4 9l4 4 4-4" /></svg><span>Latest</span></button>
       <p class="cv-working" hidden><span class="cv-dots" aria-hidden="true"><i></i><i></i><i></i></span>Working</p>
       <div class="cv-stopped"><span class="cv-sl">Stopped</span><span class="cv-why" hidden></span><button type="button" class="cv-restart" data-restart-agent>Resume</button><button type="button" class="cv-new" data-new-convo>New conversation</button></div>
       <form class="cv-compose">
@@ -934,7 +972,7 @@ function mount(pane: Pane): View {
     const t = e.target;
     if (t instanceof HTMLImageElement && t.parentElement?.classList.contains("cv-shot")) fitShot(t);
   }, true);
-  const v: View = { el, chat: newChat(pane), offset: 0, path: "", sig: "", window: WINDOW, open: new Set(), expanded: new Set(), timer: null, busy: false, state: { name: pane.spec.name, state: "idle" }, pane, sideSig: "", loaded: false, held: false, said: "", pending: {}, taskOut: new Map(), reading: new Set(), sending: [] };
+  const v: View = { el, chat: newChat(pane), offset: 0, path: "", sig: "", window: WINDOW, open: new Set(), expanded: new Set(), timer: null, busy: false, state: { name: pane.spec.name, state: "idle" }, pane, sideSig: "", loaded: false, held: false, said: "", pending: {}, taskOut: new Map(), reading: new Set(), sending: [], unseen: false, seenItems: 0 };
   applyPanel(v);
   // Drag the grip (or use the arrow keys on it) to share the row between the conversation and the panel.
   const grip = el.querySelector<HTMLElement>(".cv-grip")!;
@@ -955,6 +993,102 @@ function mount(pane: Pane): View {
     grip.addEventListener("pointerup", up);
     grip.addEventListener("pointercancel", up);
   });
+  /** A file named in an answer, in the code panel: as written when it is a full
+   *  path, else in the agent's folder, else the one file of that name there. */
+  const openRef = async (ref: string) => {
+    const dir = (pane.spec.ranIn ?? pane.spec.cwd ?? "").replace(/[\\/]+$/, "");
+    const clean = ref.replace(/\\/g, "/");
+    if (/^[A-Za-z]:\//.test(clean) || clean.startsWith("/")) { openFileInPanel(clean); return; }
+    if (clean.includes("/") || !dir) { openFileInPanel(dir ? `${dir}/${clean.replace(/^\.\//, "")}` : clean); return; }
+    const dirFiles = v.files?.all ?? withFolders(await workspaceFiles(dir).catch(() => [] as string[]));
+    const hit = dirFiles.find((h) => !h.folder && (h.path === clean || h.path.endsWith(`/${clean}`)));
+    openFileInPanel(`${dir}/${hit ? hit.path : clean}`);
+  };
+  // Enter on a file name opens it too.
+  el.addEventListener("keydown", (e) => {
+    const ref = (e.target as HTMLElement).closest<HTMLElement>("[data-file-ref]");
+    if (ref && e.key === "Enter") { e.preventDefault(); void openRef(ref.dataset.fileRef ?? ""); }
+  });
+
+  // Latest: shown while you read further up, saying when new messages came.
+  const scroller = el.querySelector<HTMLElement>(".cv-scroll")!;
+  const jump = el.querySelector<HTMLElement>(".cv-jump")!;
+  const showJump = () => {
+    const far = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 240;
+    if (!far && scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80) v.unseen = false;
+    jump.hidden = !far && !v.unseen;
+    jump.classList.toggle("new", v.unseen);
+    jump.querySelector("span")!.textContent = v.unseen ? "New messages" : "Latest";
+  };
+  scroller.addEventListener("scroll", showJump, { passive: true });
+
+  // Ctrl+F: find in the conversation, every match marked, the current one brighter.
+  const findBar = el.querySelector<HTMLElement>(".cv-find")!;
+  const findIn = el.querySelector<HTMLInputElement>(".cv-find-in")!;
+  const findN = el.querySelector<HTMLElement>(".cv-find-n")!;
+  const marks = (globalThis as { CSS?: { highlights?: Map<string, unknown> } }).CSS?.highlights;
+  const Mark = (globalThis as { Highlight?: new (...r: Range[]) => unknown }).Highlight;
+  let found: Range[] = [];
+  let at = 0;
+  const paint = () => {
+    if (!marks || !Mark) return;
+    if (!found.length) { marks.delete(`cv-find`); marks.delete(`cv-find-now`); return; }
+    marks.set("cv-find", new Mark(...found));
+    marks.set("cv-find-now", new Mark(found[at]));
+  };
+  const showMatch = () => {
+    findN.textContent = findIn.value.trim() ? (found.length ? `${at + 1} of ${found.length}` : "No match") : "";
+    paint();
+    const r = found[at];
+    if (!r) return;
+    const box = r.getBoundingClientRect();
+    const view = scroller.getBoundingClientRect();
+    if (box.top < view.top + 40 || box.bottom > view.bottom - 40) scroller.scrollTop += box.top - view.top - view.height / 3;
+  };
+  const runFind = (keep = false) => {
+    const q = findIn.value.trim().toLowerCase();
+    found = [];
+    if (q) {
+      const thread = el.querySelector<HTMLElement>(".cv-thread")!;
+      const walk = document.createTreeWalker(thread, NodeFilter.SHOW_TEXT);
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+        const text = (n.textContent ?? "").toLowerCase();
+        for (let i = text.indexOf(q); i >= 0; i = text.indexOf(q, i + q.length)) {
+          const r = document.createRange();
+          r.setStart(n, i);
+          r.setEnd(n, i + q.length);
+          found.push(r);
+        }
+      }
+    }
+    at = keep ? Math.min(at, Math.max(0, found.length - 1)) : Math.max(0, found.length - 1); // start from the newest
+    showMatch();
+  };
+  const openFind = () => {
+    findBar.hidden = false;
+    const sel = document.getSelection()?.toString().trim();
+    if (sel && sel.length < 80 && !sel.includes("\n")) findIn.value = sel;
+    findIn.focus();
+    findIn.select();
+    runFind();
+  };
+  const closeFind = () => {
+    findBar.hidden = true;
+    found = [];
+    paint();
+    findN.textContent = "";
+    input.focus();
+  };
+  v.afterDraw = () => { showJump(); if (!findBar.hidden) runFind(true); };
+  findIn.addEventListener("input", () => runFind());
+  findIn.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); if (found.length) { at = (at + (e.shiftKey ? -1 : 1) + found.length) % found.length; showMatch(); } }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeFind(); }
+  });
+  el.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "f") { e.preventDefault(); e.stopPropagation(); openFind(); }
+  });
+
   // Left and right move between the panel's tabs, the way a tab list does.
   el.addEventListener("keydown", (e) => {
     const tabEl = (e.target as HTMLElement).closest<HTMLElement>("[role=tab]");
@@ -1282,6 +1416,18 @@ function mount(pane: Pane): View {
       void pickFiles(pane.spec.ranIn ?? pane.spec.cwd ?? undefined).then((paths) => { if (paths.length) addFiles(paths); }).catch(() => {});
       return;
     }
+    if (t.closest("[data-jump]")) { v.unseen = false; scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" }); return; }
+    const findBtn = t.closest<HTMLElement>("[data-find]");
+    if (findBtn) { if (found.length) { at = (at + Number(findBtn.dataset.find) + found.length) % found.length; showMatch(); } findIn.focus(); return; }
+    if (t.closest("[data-find-close]")) { closeFind(); return; }
+    const codeCopy = t.closest<HTMLElement>("[data-copy-code]");
+    if (codeCopy) {
+      const code = codeCopy.closest("pre")?.querySelector("code")?.textContent ?? "";
+      void navigator.clipboard?.writeText(code).then(() => { codeCopy.textContent = "Copied"; window.setTimeout(() => { codeCopy.textContent = "Copy"; }, 1400); }).catch(() => {});
+      return;
+    }
+    const ref = t.closest<HTMLElement>("[data-file-ref]");
+    if (ref) { void openRef(ref.dataset.fileRef ?? ""); return; }
     const attX = t.closest<HTMLElement>("[data-att-x]");
     if (attX) { dropAtt(Number(attX.dataset.attX)); input.focus(); return; }
     const attOpen = t.closest<HTMLElement>("[data-att-open]");

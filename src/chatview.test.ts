@@ -18,7 +18,9 @@ const io = vi.hoisted(() => ({
   readFiles: [] as Array<[string, string]>,
   savedFiles: [] as string[],
   picked: [] as string[],
+  openedFiles: [] as string[],
 }));
+vi.mock("./agentbridge", () => ({ openFileInPanel: (p: string) => { io.openedFiles.push(p); } }));
 vi.mock("./confirmmodal", () => ({
   confirmModal: async (o: { title: string }) => { io.confirms.push(o.title); return { ok: io.confirmOk, dontAsk: false, value: "" }; },
 }));
@@ -48,7 +50,7 @@ vi.mock("./ipc", () => ({
   },
 }));
 
-import { ago, chatCommand, chatSupported, dropChat, dropFilesToAgent, fileMention, grownSize, hideChat, modelAlias, modelName, showChat, took, tokens, whereIn } from "./chatview";
+import { ago, chatCommand, chatSupported, dropChat, dropFilesToAgent, fileMention, fileRef, grownSize, hideChat, modelAlias, modelName, showChat, took, tokens, whereIn } from "./chatview";
 import type { Pane } from "./panetypes";
 
 const T = "2026-09-24T10:00:00.000Z";
@@ -206,6 +208,45 @@ describe("chat view", () => {
     await flush();
     expect(p.el.querySelector(".cv-u.sending")).toBeNull();
     expect([...p.el.querySelectorAll(".cv-bubble")].map((b) => b.textContent)).toEqual(["earlier question", "fix the build"]);
+  });
+
+  it("reads an answer: code copies, named files open, and Ctrl+F finds without stopping the agent", async () => {
+    io.openedFiles = [];
+    io.chunks = [j({ type: "assistant", message: { content: [{ type: "text", text: "Changed `src/app.ts:42` and `chatview.ts`, see `example.com`.\n\n```ts\nconst answer = 42;\n```\n\nThe answer is here, answer me." }] } })];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "working" });
+    await flush();
+    // named files are links; a domain is not
+    const refs = [...p.el.querySelectorAll<HTMLElement>(".cv-fref")].map((c) => c.dataset.fileRef);
+    expect(refs).toEqual(["src/app.ts", "chatview.ts"]);
+    p.el.querySelector<HTMLElement>('[data-file-ref="src/app.ts"]')!.click();
+    await flush();
+    p.el.querySelector<HTMLElement>('[data-file-ref="chatview.ts"]')!.click();
+    await flush();
+    expect(io.openedFiles).toEqual(["D:/wt/p1/src/app.ts", "D:/wt/p1/src/chatview.ts"]);
+    // a code block has its copy button
+    expect(p.el.querySelector(".cv-a pre .cv-cc")).not.toBeNull();
+    // Ctrl+F: the bar opens on the newest match, Enter walks, Esc closes and the agent keeps working
+    p.el.querySelector(".cv")!.dispatchEvent(new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true, cancelable: true }));
+    const bar = p.el.querySelector<HTMLElement>(".cv-find")!;
+    expect(bar.hidden).toBe(false);
+    const find = p.el.querySelector<HTMLInputElement>(".cv-find-in")!;
+    find.value = "answer";
+    find.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(p.el.querySelector(".cv-find-n")!.textContent).toBe("3 of 3");
+    find.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    expect(p.el.querySelector(".cv-find-n")!.textContent).toBe("1 of 3");
+    find.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    expect(bar.hidden).toBe(true);
+    expect(io.keys).toEqual([]);
+  });
+
+  it("knows a file named in an answer from a version, a domain or a call", () => {
+    expect(fileRef("src/app.ts:42")).toEqual({ path: "src/app.ts", line: 42 });
+    expect(fileRef("D:\\maestro\\src\\chatview.ts")).toEqual({ path: "D:\\maestro\\src\\chatview.ts", line: undefined });
+    expect(fileRef("chatview.ts:10:3")).toEqual({ path: "chatview.ts", line: 10 });
+    expect(fileRef("Cargo.toml")?.path).toBe("Cargo.toml");
+    for (const not of ["1.2.3", "example.com", "items.map", "v0.6.2", "npm run build", "x.y"]) expect(fileRef(not)).toBeNull();
   });
 
   it("writes a file as @path: relative inside the agent's folder, quoted with spaces", () => {

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-09-26
+
+The agent list stays put.
+
+### Changed
+
+- **The list keeps its order.** Projects stay in the order you opened them and
+  agents in the order they were made; clicking or answering an agent no
+  longer re-sorts everything. Who needs you is an amber row where it is, and
+  a count on its project's name.
+- **Projects fold.** Click a project's name to fold its agents away; it stays
+  folded, and still shows how many need you.
+
 ## [0.6.3] - 2026-09-26
 
 The chat grows up: a work panel beside the conversation, files in every way

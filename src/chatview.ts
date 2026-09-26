@@ -145,11 +145,13 @@ const ICON: Record<string, string> = {
   tool: `<path d="M12 4a4 4 0 0 0-4 5l-4 4 3 3 4-4a4 4 0 0 0 5-4l-2 2-2-1-1-2z" />`,
   shot: `<path d="M3 7h3l1.5-2h5L14 7h3v9H3z" /><circle cx="10" cy="11.5" r="2.8" />`,
   image: `<rect x="3" y="4" width="14" height="12" rx="2" /><circle cx="7.5" cy="8.5" r="1.3" /><path d="M3 14l4-3.5 3 2.5 3-2.5 4 3.5" />`,
+  ask: `<path d="M4 5h12v8H9l-3 3v-3H4z" /><path d="M8.5 7.8a1.6 1.6 0 1 1 2.2 1.5c-.5.2-.7.5-.7 1" /><path d="M10 11.6v.1" />`,
 };
 function iconFor(s: StepItem): string {
   const k = s.verb in ICON ? s.verb
     : s.verb === "Took a screenshot" ? "shot"
     : s.verb === "Looked at" ? "image"
+    : s.tool === "AskUserQuestion" ? "ask"
     : /Search|Looked for|Listed/.test(s.verb) ? "search"
     : s.tool === "TodoWrite" ? "plan"
     : /helper agent/.test(s.verb) ? "agent" : "tool";
@@ -330,12 +332,34 @@ function runsHtml(items: ChatItem[], open: Set<string>, expanded: Set<string>): 
     run = [];
   };
   for (const it of items) {
+    // A question to you is part of the conversation, never folded away with the steps.
+    if (it.kind === "step" && it.questions?.length) { flush(); html += askHtml(it); continue; }
     if (it.kind === "step") { run.push(it); continue; }
     flush();
     html += itemHtml(it, open);
   }
   flush();
   return html;
+}
+
+/** What the agent asked you (AskUserQuestion): the question, its options with
+ *  what each means, and what you picked, or that it waits for you. */
+function askHtml(s: StepItem): string {
+  const waiting = !s.done;
+  const turnedDown = s.done && s.error;
+  const qs = (s.questions ?? []).map((q) => {
+    const picked = new Set((q.answer ?? "").split(/,\s*/).filter(Boolean));
+    const ownWords = q.answer && !q.options.some((o) => picked.has(o.label)) ? q.answer : "";
+    return `<section class="cv-q">${q.header ? `<span class="cv-qh">${esc(q.header)}</span>` : ""}<p class="cv-qt">${esc(q.question)}</p>
+      <ul class="cv-qo${q.multi ? " multi" : ""}">${q.options.map((o) => {
+        const on = picked.has(o.label);
+        return `<li${on ? ` class="on"` : ""}><span class="cv-qm" aria-hidden="true"></span><span class="cv-ql"><b>${esc(o.label)}</b>${o.description ? `<span>${esc(o.description)}</span>` : ""}</span>${on ? `<span class="ia-sr">(your answer)</span>` : ""}</li>`;
+      }).join("")}</ul>${ownWords ? `<p class="cv-qa">You answered: ${esc(ownWords)}</p>` : ""}</section>`;
+  }).join("");
+  const note = waiting ? `<p class="cv-qs wait"><span class="cv-dots" aria-hidden="true"><i></i><i></i><i></i></span>Waiting for your answer: pick it in the answer card, or in the terminal.</p>`
+    : turnedDown ? `<p class="cv-qs">You chose to talk it over instead of picking.</p>` : "";
+  return `<div class="cv-ask${waiting ? " waiting" : ""}" data-id="${s.id}" role="group" aria-label="${esc(s.verb)} ${esc(s.target)}">
+    <div class="cv-ask-h">${iconFor(s)}<span>${waiting ? "Asks you" : "Asked you"}</span></div>${qs}${note}</div>`;
 }
 
 interface View {

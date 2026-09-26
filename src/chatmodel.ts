@@ -31,7 +31,30 @@ export interface StepItem {
   todos?: Todo[];
   /** What the step saw: screenshots and images its tool returned. */
   images?: ChatImage[];
+  /** Questions it asked you, with your answers once you gave them. */
+  questions?: AskedQuestion[];
   at: number;
+}
+
+export interface AskedQuestion {
+  question: string;
+  header?: string;
+  multi?: boolean;
+  options: Array<{ label: string; description?: string }>;
+  /** What you picked (the option's label, or your own words); undefined while it waits. */
+  answer?: string;
+}
+
+/** The answers in an AskUserQuestion result: `"question"="answer"` pairs, or the structured ones. */
+export function askAnswers(text: string, extra: unknown): Map<string, string> {
+  const out = new Map<string, string>();
+  const answers = extra && typeof extra === "object" ? (extra as Record<string, unknown>).answers : null;
+  if (answers && typeof answers === "object") {
+    for (const [q, a] of Object.entries(answers as Record<string, unknown>)) if (typeof a === "string") out.set(q, a);
+    if (out.size) return out;
+  }
+  for (const m of text.matchAll(/"((?:[^"\\]|\\.)*)"="((?:[^"\\]|\\.)*)"/g)) out.set(m[1], m[2]);
+  return out;
 }
 export type ChatItem =
   | { kind: "user"; id: string; text: string; images: number; pics?: ChatImage[]; at: number }
@@ -114,6 +137,16 @@ export function describeTool(name: string, input: Input): Omit<StepItem, "kind" 
       const cmd = str(input.command);
       const said = str(input.description);
       return { tool: name, verb: "Ran", target: said || firstLine(cmd), full: cmd, code: !said };
+    }
+    case "AskUserQuestion": {
+      const questions: AskedQuestion[] = (Array.isArray(input.questions) ? (input.questions as Input[]) : []).map((q) => ({
+        question: str(q.question),
+        header: str(q.header) || undefined,
+        multi: q.multiSelect === true,
+        options: (Array.isArray(q.options) ? (q.options as Input[]) : []).map((o) => ({ label: str(o.label), description: str(o.description) || undefined })),
+      }));
+      const first = questions[0];
+      return { tool: name, verb: "Asked you", target: first ? first.header || firstLine(first.question) : "a question", questions };
     }
     case "Monitor": {
       const cmd = str(input.command);
@@ -386,6 +419,10 @@ export function createChat(): Chat {
         if (pics.length) step.images = pics;
         step.error = part.is_error === true;
         step.done = true;
+        if (step.questions) {
+          const got = askAnswers(out, extra);
+          for (const q of step.questions) q.answer = got.get(q.question);
+        }
         if (extra && step.full && (step.verb === "Edited" || step.verb === "Wrote") && extra.type === "create") {
           noteFile({ path: step.full, isNew: true, at });
         }

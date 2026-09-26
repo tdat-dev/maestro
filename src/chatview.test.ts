@@ -87,6 +87,31 @@ describe("chat view", () => {
     expect(io.asked.length).toBeGreaterThanOrEqual(4); // read to the end in one go
   });
 
+  it("shows a question the agent asks you as a card: waiting, then what you picked", async () => {
+    const ask = { questions: [{ question: "Which layout?", header: "Layout", options: [{ label: "Chat left", description: "Work panel on the right" }, { label: "Chat wide" }] }] };
+    io.chunks = [
+      j({ type: "assistant", message: { content: [{ type: "tool_use", id: "s1", name: "Bash", input: { command: "ls" } }] } }) +
+      j({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "s1", content: "a" }] } }) +
+      j({ type: "assistant", message: { content: [{ type: "tool_use", id: "q1", name: "AskUserQuestion", input: ask }] } }),
+    ];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "needs" });
+    await flush();
+    const card = p.el.querySelector(".cv-ask")!;
+    expect(card.classList.contains("waiting")).toBe(true);
+    expect(card.querySelector(".cv-qt")!.textContent).toBe("Which layout?");
+    expect([...card.querySelectorAll(".cv-qo li b")].map((b) => b.textContent)).toEqual(["Chat left", "Chat wide"]);
+    expect(card.querySelector(".cv-qs")!.textContent).toContain("Waiting for your answer");
+    // not folded in with the steps around it
+    expect(card.closest(".cv-steps")).toBeNull();
+    io.chunks = [j({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "q1", content: 'Your questions have been answered: "Which layout?"="Chat left".' }] } })];
+    await new Promise((r) => setTimeout(r, 900));
+    await flush();
+    const done = p.el.querySelector(".cv-ask")!;
+    expect(done.classList.contains("waiting")).toBe(false);
+    expect(done.querySelector(".cv-qo li.on b")!.textContent).toBe("Chat left");
+  });
+
   it("is for the CLIs whose conversation it can read", () => {
     expect(chatSupported(pane())).toBe(true);
     expect(chatSupported(pane("codex"))).toBe(true);

@@ -71,6 +71,20 @@ describe("chat model", () => {
     expect(users[2]).toMatchObject({ images: 1, pics: [{ media: "image/png" }] });
   });
 
+  it("keeps a question it asked you, its options, and what you picked", () => {
+    const chat = createChat();
+    const input = { questions: [
+      { question: "Which layout?", header: "Layout", multiSelect: false, options: [{ label: "Chat left", description: "Work panel on the right" }, { label: "Chat wide" }] },
+      { question: "Ship it?", header: "Ship", options: [{ label: "Yes" }, { label: "No" }] },
+    ] };
+    chat.feed(assistant([{ type: "tool_use", id: "q1", name: "AskUserQuestion", input }]));
+    const step = chat.items[0] as StepItem;
+    expect([step.verb, step.target, step.done, step.questions!.length]).toEqual(["Asked you", "Layout", false, 2]);
+    expect(step.questions![0].options[0]).toEqual({ label: "Chat left", description: "Work panel on the right" });
+    chat.feed(result("q1", 'Your questions have been answered: "Which layout?"="Chat left", "Ship it?"="Not yet, ask me tomorrow". You can now continue.'));
+    expect(step.questions!.map((q) => q.answer)).toEqual(["Chat left", "Not yet, ask me tomorrow"]);
+  });
+
   it("marks failed steps and fills results that arrive in a later chunk", () => {
     const chat = createChat();
     chat.feed(assistant([{ type: "tool_use", id: "x", name: "Bash", input: { command: "exit 1" } }]));

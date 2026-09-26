@@ -67,16 +67,21 @@ const task = (paneId: string, name: string, state: Task["status"]["state"], over
 });
 
 describe("inbox helpers", () => {
-  it("groups by project: the most urgent project first, then by name; who needs you first inside", () => {
-    const g = projectGroups([
+  it("groups by project in a fixed order: projects as opened, agents as made; a state change moves nothing", () => {
+    const order = { ws: new Map([["m", 0], ["z", 1], ["a", 2]]), pane: new Map([["m1", 0], ["z1", 1], ["z2", 2], ["a1", 3]]) };
+    const list = [
+      task("z2", "Zia", "needs", { wsId: "z", project: "zoldify" }),
+      task("a1", "Ann", "working", { wsId: "a", project: "app" }),
       task("z1", "Zed", "stopped", { wsId: "z", project: "zoldify" }),
       task("m1", "Mo", "working", { wsId: "m", project: "maestro" }),
-      task("a1", "Ann", "working", { wsId: "a", project: "app" }),
-      task("z2", "Zia", "needs", { wsId: "z", project: "zoldify" }),
+    ];
+    const g = projectGroups(list, order);
+    expect(g.map((x) => [x.name, x.tasks.map((t) => t.paneId), x.needs])).toEqual([
+      ["maestro", ["m1"], 0], ["zoldify", ["z1", "z2"], 1], ["app", ["a1"], 0],
     ]);
-    expect(g.map((x) => [x.name, x.tasks.map((t) => t.paneId)])).toEqual([
-      ["zoldify", ["z2", "z1"]], ["app", ["a1"]], ["maestro", ["m1"]],
-    ]);
+    // Zia answered, Zed started working: same places
+    const later = list.map((t) => (t.paneId === "z2" ? { ...t, status: { state: "working" as const, ask: null } } : t.paneId === "z1" ? { ...t, status: { state: "needs" as const, ask: null } } : t));
+    expect(projectGroups(later, order).map((x) => x.tasks.map((t) => t.paneId))).toEqual([["m1"], ["z1", "z2"], ["a1"]]);
   });
 
   it("groups in queue order and keeps an empty Needs you group", () => {
@@ -379,6 +384,17 @@ describe("inbox DOM", () => {
     expect(document.querySelector(".iq-chip")).toBeNull();
     // the second line says the state, not the project
     expect(document.querySelector('.iq-row[data-id="e"] .iq-l')!.textContent).toBe("Stopped");
+    // who needs you is counted on its project
+    expect(document.querySelector('[data-proj="ws-1"] .iq-need')!.textContent).toBe("1");
+    // a project folds, still showing its count, and stays folded
+    (document.querySelector('[data-proj="ws-1"]') as HTMLButtonElement).click();
+    const head = document.querySelector('[data-proj="ws-1"]')!;
+    expect(head.getAttribute("aria-expanded")).toBe("false");
+    expect((head.closest(".iq-group")!.querySelector(".iq-rows") as HTMLElement).hidden).toBe(true);
+    expect(head.querySelector(".iq-need")!.textContent).toBe("1");
+    expect(JSON.parse(localStorage.getItem("maestro.inbox.folded")!)).toEqual(["ws-1"]);
+    (document.querySelector('[data-proj="ws-1"]') as HTMLButtonElement).click();
+    expect(document.querySelector('[data-proj="ws-1"]')!.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("opens its own palette on Ctrl K with every agent and the actions", () => {

@@ -114,10 +114,28 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .iq-empty { margin: 0 10px 6px; font-size: 12.5px; color: var(--ib-ink-3); }
 
 /* one group per project: its name over its agents */
-.iq-group + .iq-group { margin-top: 10px; }
-.iq-proj { align-items: baseline; gap: 8px; padding-top: 12px; font: 600 12.5px var(--sans); color: var(--ib-ink-2); letter-spacing: -0.005em; }
-.iq-pn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.iq-proj .iq-n { flex: none; font-weight: 400; color: var(--ib-ink-3); }
+.iq-group + .iq-group { margin-top: 6px; }
+.iq-proj { display: block; padding: 8px 4px 4px; }
+/* the project's name folds its agents; a count says who needs you even folded */
+.iq-ph {
+  display: flex; align-items: center; gap: 7px; width: 100%; min-height: 32px; padding: 0 8px 0 6px; border-radius: 9px;
+  font: 600 12.5px var(--sans); color: var(--ib-ink-2); letter-spacing: -0.005em; text-align: left;
+}
+.iq-ph:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink); }
+.iq-ph:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.iq-chev { flex: none; width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; opacity: 0.7; transform: rotate(90deg); transition: transform 0.15s; }
+.iq-group.folded .iq-chev { transform: none; }
+.iq-pn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iq-need {
+  flex: none; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; display: grid; place-items: center;
+  font: 600 11px var(--mono); color: #1a1204; background: var(--ib-needs);
+}
+.iq-ph .iq-n { flex: none; font: 400 12px var(--mono); color: var(--ib-ink-3); }
+/* who needs you is marked where it is, never moved to the top */
+.iq-row.st-needs { background: var(--ib-needs-bg); box-shadow: inset 0 0 0 1px var(--ib-needs-line); }
+.iq-row.st-needs:hover { background: oklch(0.83 0.13 75 / 0.17); }
+.iq-row.st-needs[aria-current="true"] { background: oklch(0.83 0.13 75 / 0.2); box-shadow: inset 0 0 0 1px var(--ib-needs-line); }
+@media (prefers-reduced-motion: reduce) { .iq-chev { transition: none; } }
 /* the agent's state as a dot on its mark: needs you, ready, working; hollow when stopped */
 .iq-mk { position: relative; }
 .iq-mk::after {

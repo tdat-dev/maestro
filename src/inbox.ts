@@ -47,20 +47,47 @@ export function groupTasks(list: Task[]): Array<{ state: TaskState; tasks: Task[
     .filter((g) => g.tasks.length || g.state === "needs");
 }
 
-/** The queue by project: each project's agents in queue order (who needs you
- *  first); the project with the most urgent agent comes first, then by name. */
-export function projectGroups(list: Task[]): Array<{ wsId: string; name: string; tasks: Task[] }> {
-  const rank = (t: Task) => ORDER.indexOf(t.status.state);
-  const byWs = new Map<string, { wsId: string; name: string; tasks: Task[] }>();
+/** Where things sit in the list: projects in the order you opened them, agents
+ *  in the order they were made. A state change never moves anything. */
+export interface ListOrder { ws: Map<string, number>; pane: Map<string, number> }
+
+/** The queue by project, in a fixed order: nothing jumps when an agent's state changes. */
+export function projectGroups(list: Task[], order?: ListOrder): Array<{ wsId: string; name: string; tasks: Task[]; needs: number }> {
+  const byWs = new Map<string, { wsId: string; name: string; tasks: Task[]; needs: number }>();
   for (const t of list) {
-    const g = byWs.get(t.wsId) ?? { wsId: t.wsId, name: t.project, tasks: [] };
+    const g = byWs.get(t.wsId) ?? { wsId: t.wsId, name: t.project, tasks: [], needs: 0 };
     g.tasks.push(t);
+    if (t.status.state === "needs") g.needs++;
     byWs.set(t.wsId, g);
   }
+  const at = (m: Map<string, number> | undefined, id: string, fallback: number) => m?.get(id) ?? fallback;
   const groups = [...byWs.values()];
-  for (const g of groups) g.tasks.sort((a, b) => rank(a) - rank(b));
-  const top = (g: { tasks: Task[] }) => rank(g.tasks[0]);
-  return groups.sort((a, b) => top(a) - top(b) || a.name.localeCompare(b.name));
+  // Unknown ones keep the order they came in, after the known ones.
+  for (const g of groups) {
+    const was = new Map(g.tasks.map((t, k) => [t.paneId, k]));
+    g.tasks.sort((a, b) => at(order?.pane, a.paneId, 1e6 + was.get(a.paneId)!) - at(order?.pane, b.paneId, 1e6 + was.get(b.paneId)!));
+  }
+  const came = new Map(groups.map((g, k) => [g.wsId, k]));
+  return groups.sort((a, b) => at(order?.ws, a.wsId, 1e6 + came.get(a.wsId)!) - at(order?.ws, b.wsId, 1e6 + came.get(b.wsId)!));
+}
+
+/** Projects whose agents you folded away in the list, remembered. */
+const FOLDED_KEY = "maestro.inbox.folded";
+const foldedProjects = new Set<string>((() => {
+  try { return JSON.parse(localStorage.getItem(FOLDED_KEY) || "[]") as string[]; } catch { return []; }
+})());
+function saveFolded(): void {
+  try { localStorage.setItem(FOLDED_KEY, JSON.stringify([...foldedProjects])); } catch { /* storage blocked */ }
+}
+
+/** The fixed order of the projects and agents open now. */
+export function listOrder(): ListOrder {
+  const ws = new Map<string, number>();
+  const pane = new Map<string, number>();
+  let n = 0;
+  [...workspaces.keys()].forEach((id, k) => ws.set(id, k));
+  for (const w of workspaces.values()) for (const id of w.panes.keys()) pane.set(id, n++);
+  return { ws, pane };
 }
 
 /** The top-bar sentence: "2 agents need you. 1 is ready to review, 3 are working." */
@@ -447,13 +474,17 @@ export function agentMenu(t: Task): MenuItem[] {
 
 function renderQueue(list: Task[], current: string | undefined, now: number): void {
   if (!queueEl) return;
-  // One group per project, the project with the most urgent agent first;
-  // inside it, who needs you first. The state is the dot and the second line.
-  const groups = projectGroups(list);
+  // One group per project, in a fixed order (projects as you opened them,
+  // agents as they were made): nothing moves when a state changes. Who needs
+  // you is marked where it is, and counted on its project, which folds.
+  const groups = projectGroups(list, listOrder());
   const html = `<div class="iq-list">` +
-    (groups.length ? groups.map((g, gi) => `<section class="iq-group" aria-labelledby="iq-p-${gi}">
-      <h2 class="iq-gt iq-proj" id="iq-p-${gi}" title="${esc(g.name)}"><span class="iq-pn">${esc(g.name)}</span><span class="iq-n">${g.tasks.length}</span></h2>
-      <ul class="iq-rows">${g.tasks.map((t) => {
+    (groups.length ? groups.map((g, gi) => {
+      const folded = foldedProjects.has(g.wsId);
+      return `<section class="iq-group${folded ? " folded" : ""}${g.needs ? " has-needs" : ""}">
+      <h2 class="iq-gt iq-proj"><button type="button" class="iq-ph" data-proj="${esc(g.wsId)}" aria-expanded="${!folded}" aria-controls="iq-r-${gi}" title="${esc(g.name)}${folded ? " · show its agents" : " · fold"}">
+        <svg class="iq-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2.5 6 5 3.5 7.5" /></svg><span class="iq-pn">${esc(g.name)}</span>${g.needs ? `<span class="iq-need" aria-label="${g.needs} need${g.needs === 1 ? "s" : ""} you">${g.needs}</span>` : ""}<span class="iq-n">${g.tasks.length}</span></button></h2>
+      <ul class="iq-rows" id="iq-r-${gi}"${folded ? " hidden" : ""}>${g.tasks.map((t) => {
         const p = paneOf(t);
         const main = t.title ?? t.name;
         const said = rowLine(t);
@@ -468,7 +499,8 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
           <span class="iq-s">${t.title ? `<span class="iq-p">${esc(t.name)}</span><span class="iq-dot" aria-hidden="true">·</span>` : ""}${t.race ? `<span class="iq-race">race ${t.race.n}/${t.race.of}</span> ` : ""}<span class="iq-l">${esc(line)}</span>${lineCounts(t)}</span>
         </button></li>`;
       }).join("")}</ul>
-    </section>`).join("") : `<p class="iq-empty">No agents yet.</p>`) +
+    </section>`;
+    }).join("") : `<p class="iq-empty">No agents yet.</p>`) +
     `</div>`;
   // Rebuilding every second would take the keyboard focus (and a click in
   // progress) away from the list; only a real change rebuilds it.
@@ -710,7 +742,7 @@ function currentAsk() {
 
 function move(delta: number): void {
   // In the order the list shows them: project by project.
-  const list = projectGroups(allTasks()).flatMap((g) => g.tasks);
+  const list = projectGroups(allTasks(), listOrder()).filter((g) => !foldedProjects.has(g.wsId)).flatMap((g) => g.tasks);
   if (!list.length) return;
   const cur = stagePane()?.id;
   const i = list.findIndex((t) => t.paneId === cur);
@@ -1024,6 +1056,16 @@ function mount(): void {
     openMenu(r.left + 24, r.bottom - 4, agentMenu(t), `${t.name} actions`);
   });
   queueEl.addEventListener("click", (e) => {
+    // A project's name folds its agents away, or shows them again (remembered).
+    const head = (e.target as HTMLElement).closest<HTMLElement>("[data-proj]");
+    if (head) {
+      const id = head.dataset.proj ?? "";
+      if (foldedProjects.has(id)) foldedProjects.delete(id); else foldedProjects.add(id);
+      saveFolded();
+      render();
+      queueEl?.querySelector<HTMLElement>(`[data-proj="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+      return;
+    }
     const row = (e.target as HTMLElement).closest<HTMLElement>(".iq-row");
     const t = row && allTasks().find((x) => x.paneId === row.dataset.id);
     if (!t || !row) return;
